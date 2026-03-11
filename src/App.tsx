@@ -58,14 +58,17 @@ import {
   getBrandSurface,
   getBrandTextColor,
   getCardAgeMs,
+  getCardCompletionForecast,
   getCardFolderName,
   getDefaultBoardFilters,
+  getDaysSinceBriefed,
   getDueStatus,
   getEditorOptions,
   getEditorSummary,
   getNextStageForEditor,
   getQuickCreateDefaults,
   getRevisionCount,
+  isLaunchOpsRole,
   getTaskTypeById,
   getTaskTypeGroups,
   getTeamMemberById,
@@ -220,6 +223,7 @@ interface CardDetailPanelProps {
   settings: GlobalSettings
   viewerMode: RoleMode
   viewerName: string | null
+  viewerMemberRole: string | null
   copyState: CopyState | null
   isCreatingDriveFolder: boolean
   nowMs: number
@@ -338,6 +342,10 @@ function getUtilBarWidth(utilizationPct: number) {
   return `${Math.min(utilizationPct, 100)}%`
 }
 
+function canEditorDragStage(stage: StageId) {
+  return stage === 'Briefed' || stage === 'In Production' || stage === 'Review' || stage === 'Ready'
+}
+
 function getSearchCountLabel(filteredCount: number, totalCount: number) {
   return `Showing ${filteredCount} of ${totalCount} cards`
 }
@@ -354,6 +362,60 @@ async function copyToClipboard(value: string) {
   element.select()
   document.execCommand('copy')
   document.body.removeChild(element)
+}
+
+const COMPLETION_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+})
+
+function formatCompletionDateLabel(dateString: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString)
+  const safeDate = match
+    ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12))
+    : new Date(dateString)
+  const parts = COMPLETION_DATE_FORMATTER.formatToParts(safeDate)
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? ''
+  const month = parts.find((part) => part.type === 'month')?.value ?? ''
+  const day = parts.find((part) => part.type === 'day')?.value ?? ''
+
+  return [weekday, month, day].filter(Boolean).join(' ')
+}
+
+function formatEstimatedDaysLabel(days: number | null) {
+  if (days === null) {
+    return 'Unscheduled'
+  }
+
+  if (days <= 0) {
+    return 'Today'
+  }
+
+  return `~${days} ${days === 1 ? 'day' : 'days'}`
+}
+
+function formatEstimatedCompletionLabel(
+  completionDate: string | null,
+  estimatedDays: number | null,
+) {
+  if (estimatedDays === null) {
+    return 'Unscheduled until assigned'
+  }
+
+  if (!completionDate) {
+    return formatEstimatedDaysLabel(estimatedDays)
+  }
+
+  return `${formatEstimatedDaysLabel(estimatedDays)} · ${formatCompletionDateLabel(completionDate)}`
+}
+
+function formatDaysSinceBriefedLabel(daysSinceBriefed: number | null) {
+  if (daysSinceBriefed === null) {
+    return 'Not briefed yet'
+  }
+
+  return `${daysSinceBriefed} ${daysSinceBriefed === 1 ? 'day' : 'days'}`
 }
 
 function BoardCardSurface({
@@ -373,6 +435,7 @@ function BoardCardSurface({
   const ageMs = getCardAgeMs(card, nowMs)
   const tone = getAgeToneFromMs(ageMs, settings)
   const dueStatus = getDueStatus(card, nowMs)
+  const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
 
   return (
     <button
@@ -420,10 +483,10 @@ function BoardCardSurface({
         <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
           {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
         </span>
-        <span className={`card-age tone-${tone}`}>
+        <span className={`card-age ${completionForecast.isScheduled ? `tone-${tone}` : 'is-unscheduled'}`}>
           {dueStatus === 'overdue' ? <span className="due-indicator is-overdue">⏰</span> : null}
           {dueStatus === 'soon' ? <span className="due-indicator is-soon">⏰</span> : null}
-          {formatDurationShort(ageMs)}
+          {formatEstimatedDaysLabel(completionForecast.estimatedDays)}
         </span>
       </div>
     </button>
@@ -943,6 +1006,7 @@ function CardDetailPanel({
   settings,
   viewerMode,
   viewerName,
+  viewerMemberRole,
   copyState,
   isCreatingDriveFolder,
   nowMs,
@@ -959,10 +1023,15 @@ function CardDetailPanel({
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [showAllActivity, setShowAllActivity] = useState(false)
   const canEdit = viewerMode === 'manager'
-  const canComment = viewerMode === 'manager' || viewerName === card.owner
+  const isLaunchOpsViewer = viewerMode === 'editor' && isLaunchOpsRole(viewerMemberRole)
+  const canComment = viewerMode === 'manager' || isLaunchOpsViewer || viewerName === card.owner
   const canEditFrameio = viewerMode === 'manager' || viewerName === card.owner
+  const canSetBlocked = viewerMode === 'manager' || isLaunchOpsViewer
+  const canClearBlocked = viewerMode === 'manager'
   const dueStatus = getDueStatus(card, nowMs)
   const taskType = getTaskTypeById(settings, card.taskTypeId)
+  const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
+  const daysSinceBriefed = getDaysSinceBriefed(card, nowMs)
 
   function handleTaskTypeChange(taskTypeId: string) {
     const nextTaskType = getTaskTypeById(settings, taskTypeId)
@@ -974,7 +1043,9 @@ function CardDetailPanel({
 
   function handleBlockedSave() {
     if (!blockedDraft.trim()) {
-      onSave({ blocked: null })
+      if (canClearBlocked) {
+        onSave({ blocked: null })
+      }
       return
     }
 
@@ -1051,16 +1122,22 @@ function CardDetailPanel({
                 <p className="muted-copy">Not blocked</p>
               )}
             </div>
-            {canEdit ? (
+            {canSetBlocked ? (
               <div className="blocked-controls">
-                <input
-                  value={blockedDraft}
-                  onChange={(event) => setBlockedDraft(event.target.value)}
-                  placeholder="Waiting for raw footage..."
-                />
-                <button type="button" className="ghost-button" onClick={handleBlockedSave}>
-                  {blockedDraft.trim() ? 'Save Blocked' : 'Clear'}
-                </button>
+                {isLaunchOpsViewer && card.blocked ? (
+                  <p className="muted-copy">Only managers can clear blocked status.</p>
+                ) : (
+                  <>
+                    <input
+                      value={blockedDraft}
+                      onChange={(event) => setBlockedDraft(event.target.value)}
+                      placeholder="Waiting for raw footage..."
+                    />
+                    <button type="button" className="ghost-button" onClick={handleBlockedSave}>
+                      {blockedDraft.trim() ? 'Save Blocked' : 'Clear'}
+                    </button>
+                  </>
+                )}
               </div>
             ) : null}
           </div>
@@ -1299,6 +1376,10 @@ function CardDetailPanel({
               )}
             </label>
             <label>
+              <span>Estimated Completion</span>
+              <strong>{formatEstimatedCompletionLabel(completionForecast.completionDate, completionForecast.estimatedDays)}</strong>
+            </label>
+            <label>
               <span>Date Created</span>
               <strong>{formatDateLong(card.dateCreated)}</strong>
             </label>
@@ -1307,8 +1388,8 @@ function CardDetailPanel({
               <strong>{formatDateLong(card.dateAssigned)}</strong>
             </label>
             <label>
-              <span>Time in Stage</span>
-              <strong>{formatDurationShort(getCardAgeMs(card, nowMs))}</strong>
+              <span>Days Since Briefed</span>
+              <strong>{formatDaysSinceBriefedLabel(daysSinceBriefed)}</strong>
             </label>
             <label>
               <span>Revisions</span>
@@ -2277,6 +2358,7 @@ function SettingsPage({
                 <span>Weekly Hours</span>
                 <span>Hours/Day</span>
                 <span>Working Days</span>
+                <span>Timezone</span>
                 <span>WIP Cap</span>
                 <span>Status</span>
                 <span />
@@ -2365,6 +2447,23 @@ function SettingsPage({
                     placeholder="Mon, Tue, Wed, Thu, Fri"
                   />
                   <input
+                    value={member.timezone}
+                    onChange={(event) =>
+                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
+                        ...currentPortfolio,
+                        team: currentPortfolio.team.map((item, index) =>
+                          index === memberIndex
+                            ? {
+                                ...item,
+                                timezone: event.target.value,
+                              }
+                            : item,
+                        ),
+                      }))
+                    }
+                    placeholder="Asia/Bangkok"
+                  />
+                  <input
                     type="number"
                     min={0}
                     value={member.wipCap ?? ''}
@@ -2439,8 +2538,9 @@ function SettingsPage({
                       weeklyHours: currentPortfolio.team.some((member) => member.weeklyHours)
                         ? currentPortfolio.team.find((member) => member.weeklyHours)?.weeklyHours ?? 40
                         : 40,
-                      hoursPerDay: 6,
+                      hoursPerDay: 8,
                       workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
                       wipCap: 3,
                       active: true,
                     },
@@ -3044,12 +3144,15 @@ function App() {
   const currentEditor = activePortfolio
     ? getTeamMemberById(activePortfolio, state.activeRole.editorId)
     : null
+  const isLaunchOpsActive =
+    state.activeRole.mode === 'editor' && isLaunchOpsRole(currentEditor?.role ?? null)
   const viewerContext = useMemo<ViewerContext>(
     () => ({
       mode: state.activeRole.mode,
       editorName: state.activeRole.mode === 'editor' ? currentEditor?.name ?? null : null,
+      memberRole: state.activeRole.mode === 'editor' ? currentEditor?.role ?? null : null,
     }),
-    [currentEditor?.name, state.activeRole.mode],
+    [currentEditor?.name, currentEditor?.role, state.activeRole.mode],
   )
   const attention = getAttentionSummary(activePortfolio, state.settings, nowMs)
   const searchBaseCards =
@@ -3091,7 +3194,7 @@ function App() {
       ? getBoardStats(activePortfolio, viewerContext, boardFilters, state.settings, nowMs)
       : null
   const summaryOwner =
-    state.activeRole.mode === 'editor'
+    state.activeRole.mode === 'editor' && !isLaunchOpsActive
       ? viewerContext.editorName
       : boardFilters.ownerNames.length === 1
         ? boardFilters.ownerNames[0]
@@ -3545,7 +3648,23 @@ function App() {
     }
   }
 
-  function getDropTarget(overId: string | null) {
+  function getDragMidpoint(event: DragOverEvent | DragEndEvent) {
+    const translatedRect = event.active.rect.current.translated
+    const initialRect = event.active.rect.current.initial
+    const activeRect = translatedRect ?? initialRect
+
+    if (!activeRect) {
+      return null
+    }
+
+    return activeRect.top + activeRect.height / 2
+  }
+
+  function getDropTarget(
+    overId: string | null,
+    dragMidpointY: number | null = null,
+    overRect: { top: number; height: number } | null = null,
+  ) {
     if (!overId) {
       return null
     }
@@ -3560,9 +3679,18 @@ function App() {
       }
     }
     const overIndex = lane.allCardIds.indexOf(overId)
+    const insertAfterHoveredCard =
+      overIndex !== -1 &&
+      dragMidpointY !== null &&
+      overRect !== null &&
+      dragMidpointY > overRect.top + overRect.height / 2
+
     return {
       lane,
-      destinationIndex: overIndex === -1 ? lane.allCardIds.length : overIndex,
+      destinationIndex:
+        overIndex === -1
+          ? lane.allCardIds.length
+          : overIndex + (insertAfterHoveredCard ? 1 : 0),
     }
   }
 
@@ -3593,30 +3721,112 @@ function App() {
     }
 
     if (state.activeRole.mode === 'editor') {
-      if (!viewerContext.editorName || card.owner !== viewerContext.editorName) {
+      if (isLaunchOpsActive) {
+        if (card.stage !== 'Ready') {
           return {
             valid: false,
-            message: 'Editors can only move their own cards forward.',
+            message: 'Launch Ops can only act on cards in Ready.',
             tone: 'blue' as ToastTone,
           }
         }
 
-      const nextStage = getNextStageForEditor(card.stage)
-      if (!nextStage || targetLane.stage !== nextStage) {
+        if (targetLane.stage !== 'Live') {
           return {
             valid: false,
-            message: 'Editors can only move cards forward one stage at a time.',
+            message: 'Launch Ops can only move cards from Ready to Live.',
             tone: 'blue' as ToastTone,
           }
         }
+
+        return {
+          valid: true,
+          message: '',
+          tone: 'green' as ToastTone,
+        }
+      }
+
+      if (!viewerContext.editorName || card.owner !== viewerContext.editorName) {
+        return {
+          valid: false,
+          message: 'Editors can only move their own cards.',
+          tone: 'blue' as ToastTone,
+        }
+      }
 
       if (targetLane.owner && targetLane.owner !== viewerContext.editorName) {
+        return {
+          valid: false,
+          message: 'Editors can only move cards within their own lane.',
+          tone: 'blue' as ToastTone,
+        }
+      }
+
+      const targetStage = targetLane.stage as StageId
+      if (!canEditorDragStage(card.stage)) {
+        return {
+          valid: false,
+          message: 'Editors can only move cards between Briefed, In Production, Review, and Ready.',
+          tone: 'blue' as ToastTone,
+        }
+      }
+
+      if (targetStage === 'Live') {
+        return {
+          valid: false,
+          message: 'Only managers can move cards to Live.',
+          tone: 'blue' as ToastTone,
+        }
+      }
+
+      if (targetStage === 'Backlog') {
+        return {
+          valid: false,
+          message: 'Editors cannot move cards back to Backlog.',
+          tone: 'blue' as ToastTone,
+        }
+      }
+
+      const movingWithinSameSection =
+        targetStage === card.stage &&
+        (targetLane.owner ?? card.owner) === card.owner
+
+      if (movingWithinSameSection) {
+        return {
+          valid: false,
+          message: 'Only managers can reorder priority within a section.',
+          tone: 'blue' as ToastTone,
+        }
+      }
+
+      const isBackwardMove = STAGES.indexOf(targetStage) < STAGES.indexOf(card.stage)
+      if (!isBackwardMove) {
+        const nextStage = getNextStageForEditor(card.stage)
+        if (!nextStage || targetStage !== nextStage) {
           return {
             valid: false,
-            message: 'Editors can only move cards within their own lane.',
+            message: 'Editors can only move cards forward one stage at a time, up to Ready.',
             tone: 'blue' as ToastTone,
           }
         }
+      }
+
+      if (targetStage === 'In Production' && targetLane.owner) {
+        const member = getTeamMemberByName(activePortfolio, targetLane.owner)
+        const projectedWip = activePortfolio.cards.filter(
+          (currentCard) =>
+            currentCard.id !== card.id &&
+            currentCard.owner === targetLane.owner &&
+            currentCard.stage === 'In Production' &&
+            !currentCard.archivedAt,
+        ).length
+        if (member?.wipCap !== null && member?.wipCap !== undefined && projectedWip >= member.wipCap) {
+          return {
+            valid: false,
+            message: `${targetLane.owner} is at capacity (${member.wipCap}/${member.wipCap})`,
+            tone: 'red' as ToastTone,
+          }
+        }
+      }
 
       return {
         valid: true,
@@ -3669,7 +3879,11 @@ function App() {
   }
 
   function handleBoardDragOver(event: DragOverEvent) {
-    const target = getDropTarget(event.over ? String(event.over.id) : null)
+    const target = getDropTarget(
+      event.over ? String(event.over.id) : null,
+      getDragMidpoint(event),
+      event.over ? { top: event.over.rect.top, height: event.over.rect.height } : null,
+    )
     const validation = validateBoardDrop(String(event.active.id), target?.lane ?? null)
     setDragOverLaneId(target?.lane.id ?? null)
     setBlockedLaneId(validation.valid ? null : target?.lane.id ?? null)
@@ -3717,7 +3931,11 @@ function App() {
 
   function handleBoardDragEnd(event: DragEndEvent) {
     const cardId = String(event.active.id)
-    const target = getDropTarget(event.over ? String(event.over.id) : null)
+    const target = getDropTarget(
+      event.over ? String(event.over.id) : null,
+      getDragMidpoint(event),
+      event.over ? { top: event.over.rect.top, height: event.over.rect.height } : null,
+    )
     const validation = validateBoardDrop(cardId, target?.lane ?? null)
 
     if (!activePortfolio || !target || !validation.valid) {
@@ -3757,13 +3975,13 @@ function App() {
     const isBackwardMove = STAGES.indexOf(target.lane.stage as StageId) < STAGES.indexOf(card.stage)
     clearBoardDragState()
 
-    if (isBackwardMove && state.activeRole.mode === 'manager') {
+    if (isBackwardMove && state.activeRole.mode !== 'observer') {
       setPendingBackwardMove({
         portfolioId: activePortfolio.id,
         cardId: card.id,
         destinationStage: target.lane.stage as StageId,
         destinationOwner: nextOwner,
-        destinationIndex: 0,
+        destinationIndex,
         movedAt,
       })
       setBackwardMoveForm({
@@ -4088,7 +4306,14 @@ function App() {
             {summary ? (
               <section className="editor-summary-bar">
                 <div className="editor-summary-name">
-                  {summary.owner} · {summary.utilizationPct}% utilized ·{' '}
+                  {summary.owner} ·{' '}
+                  {formatHours(
+                    summary.briefedHours +
+                      summary.inProductionHours +
+                      summary.reviewHours +
+                      summary.readyHours,
+                  )}{' '}
+                  scheduled ·{' '}
                   {formatHours(summary.availableHours)}{' '}
                   available
                 </div>
@@ -4152,17 +4377,13 @@ function App() {
                                 <div className="lane-header rich">
                                   <div className="lane-header-left">
                                     <span>{lane.label}</span>
-                                    <div className="util-bar mini">
-                                      <span
-                                        className={`util-bar-fill is-${lane.utilizationTone}`}
-                                        style={{ width: getUtilBarWidth(lane.utilizationPct) }}
-                                      />
-                                    </div>
-                                    <span className={`util-inline is-${lane.utilizationTone}`}>
-                                      {lane.utilizationPct}%
-                                    </span>
-                                    <span className={`active-inline ${isWipFull ? 'is-pulsing' : ''}`}>
-                                      ({lane.activeCount} here)
+                                    <span className="queue-inline">
+                                      {column.id === 'In Production'
+                                        ? `${lane.activeCount} active`
+                                        : `${lane.activeCount} queued`}
+                                      {lane.showTotalWorkload && lane.totalWorkDays !== null
+                                        ? ` · ~${lane.totalWorkDays} days total`
+                                        : ''}
                                     </span>
                                   </div>
                                   {lane.wipCap !== null ? (
@@ -4188,8 +4409,10 @@ function App() {
                                     const canDrag =
                                       state.activeRole.mode === 'manager' ||
                                       (state.activeRole.mode === 'editor' &&
-                                        viewerContext.editorName === card.owner &&
-                                        getNextStageForEditor(card.stage) !== null)
+                                        (isLaunchOpsActive
+                                          ? card.stage === 'Ready'
+                                          : viewerContext.editorName === card.owner &&
+                                            canEditorDragStage(card.stage)))
                                     return (
                                       <SortableBoardCard
                                         key={card.id}
@@ -4363,6 +4586,7 @@ function App() {
           settings={state.settings}
           viewerMode={state.activeRole.mode}
           viewerName={viewerContext.editorName}
+          viewerMemberRole={viewerContext.memberRole}
           copyState={copyState}
           isCreatingDriveFolder={creatingDriveCardId === selectedCardData.id}
           nowMs={nowMs}

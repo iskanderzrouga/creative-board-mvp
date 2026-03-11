@@ -646,6 +646,10 @@ button {
   color: var(--red);
 }
 
+.card-age.is-unscheduled {
+  color: #8b95a7;
+}
+
 .new-card-form {
   display: grid;
   gap: 10px;
@@ -1826,6 +1830,12 @@ button {
   color: #dc2626;
 }
 
+.queue-inline {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f766e;
+}
+
 .active-inline {
   font-size: 11px;
   color: var(--muted);
@@ -2193,6 +2203,7 @@ button {
     110px
     90px
     minmax(180px, 1.2fr)
+    minmax(160px, 1fr)
     90px
     70px
     72px;

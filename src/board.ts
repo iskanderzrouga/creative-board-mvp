@@ -3,6 +3,7 @@ import importedCardsSeed from './imported-cards-seed.json'
 const DAY_MS = 24 * 60 * 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
 const REFERENCE_NOW_ISO = '2026-03-11T10:00:00Z'
+const DEFAULT_WORKDAY_END_MINUTES = 18 * 60
 
 export const STORAGE_KEY = 'creative-board-state'
 export const STATE_VERSION = 2
@@ -181,6 +182,7 @@ export interface TeamMember {
   weeklyHours: number | null
   hoursPerDay: number | null
   workingDays: WorkingDay[]
+  timezone: string
   wipCap: number | null
   active: boolean
 }
@@ -259,6 +261,7 @@ export interface AppState {
 export interface ViewerContext {
   mode: RoleMode
   editorName: string | null
+  memberRole: string | null
 }
 
 export interface BoardFilters {
@@ -280,6 +283,9 @@ export interface LaneModel {
   cards: Card[]
   allCardIds: string[]
   activeCount: number
+  queuedHours: number
+  totalWorkDays: number | null
+  showTotalWorkload: boolean
   utilizationPct: number
   utilizationTone: UtilizationTone
   capacityUsed: number
@@ -329,6 +335,13 @@ export interface EditorSummary {
   readyCount: number
   readyHours: number
   activeCount: number
+}
+
+export interface CardCompletionForecast {
+  isScheduled: boolean
+  queuedHours: number
+  estimatedDays: number | null
+  completionDate: string | null
 }
 
 export interface DashboardCardRow {
@@ -585,9 +598,13 @@ function isGroupedStage(stage: StageId): stage is GroupedStageId {
   return (GROUPED_STAGES as readonly string[]).includes(stage)
 }
 
+export function isLaunchOpsRole(role: string | null | undefined) {
+  return typeof role === 'string' && role.toLowerCase().includes('launch')
+}
+
 export function getNextStageForEditor(stage: StageId) {
   const index = STAGES.indexOf(stage)
-  return index === -1 || index === STAGES.length - 1 ? null : STAGES[index + 1]
+  return index === -1 || stage === 'Ready' || index === STAGES.length - 1 ? null : STAGES[index + 1]
 }
 
 function isManagerRole(role: string) {
@@ -635,6 +652,71 @@ function getDefaultWorkingDays() {
   return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as WorkingDay[]
 }
 
+function getDefaultTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
+const timeZoneValidityCache = new Map<string, boolean>()
+const zonedDateTimeFormatterCache = new Map<string, Intl.DateTimeFormat>()
+
+function getResolvedTimezone(timezone: string | null | undefined) {
+  const candidate = timezone?.trim() || getDefaultTimezone()
+
+  if (!timeZoneValidityCache.has(candidate)) {
+    let isValid = true
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date())
+    } catch {
+      isValid = false
+    }
+    timeZoneValidityCache.set(candidate, isValid)
+  }
+
+  return timeZoneValidityCache.get(candidate) ? candidate : getDefaultTimezone()
+}
+
+function getZonedDateTimeParts(valueMs: number, timezone: string) {
+  const formatter =
+    zonedDateTimeFormatterCache.get(timezone) ??
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+
+  zonedDateTimeFormatterCache.set(timezone, formatter)
+
+  const parts = formatter.formatToParts(new Date(valueMs))
+  const lookup = new Map(parts.map((part) => [part.type, part.value]))
+  const weekday = lookup.get('weekday') as WorkingDay | undefined
+
+  return {
+    weekday: WORKING_DAYS.includes((weekday ?? 'Mon') as WorkingDay)
+      ? (weekday ?? 'Mon')
+      : 'Mon',
+    year: Number(lookup.get('year') ?? '1970'),
+    month: Number(lookup.get('month') ?? '1'),
+    day: Number(lookup.get('day') ?? '1'),
+    hour: Number(lookup.get('hour') ?? '0'),
+    minute: Number(lookup.get('minute') ?? '0'),
+  }
+}
+
+function getZonedDayKey(valueMs: number, timezone: string) {
+  const parts = getZonedDateTimeParts(valueMs, timezone)
+
+  return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+}
+
 function createDefaultTeamMember(
   id: string,
   name: string,
@@ -650,6 +732,7 @@ function createDefaultTeamMember(
     weeklyHours,
     hoursPerDay,
     workingDays: getDefaultWorkingDays(),
+    timezone: getDefaultTimezone(),
     wipCap,
     active: true,
   }
@@ -711,6 +794,154 @@ export function formatDurationShort(durationMs: number) {
 
 export function getCardAgeMs(card: Card, nowMs = Date.now()) {
   return nowMs - new Date(card.stageEnteredAt).getTime()
+}
+
+export function getDaysSinceBriefed(card: Card, nowMs = Date.now()) {
+  if (card.stage === 'Backlog' || !card.owner) {
+    return null
+  }
+
+  const briefedAtMs = startOfDayMs(new Date(card.dateAssigned).getTime())
+  const todayMs = startOfDayMs(nowMs)
+
+  return Math.max(0, Math.floor((todayMs - briefedAtMs) / DAY_MS))
+}
+
+function getRemainingWorkHoursToday(
+  hoursPerDay: number,
+  workingDays: WorkingDay[],
+  timezone: string,
+  nowMs: number,
+) {
+  if (hoursPerDay <= 0 || workingDays.length === 0) {
+    return 0
+  }
+
+  const localNow = getZonedDateTimeParts(nowMs, timezone)
+  if (!workingDays.includes(localNow.weekday)) {
+    return 0
+  }
+
+  const currentMinute = localNow.hour * 60 + localNow.minute
+  const startMinute = Math.max(0, DEFAULT_WORKDAY_END_MINUTES - Math.round(hoursPerDay * 60))
+
+  if (currentMinute >= DEFAULT_WORKDAY_END_MINUTES) {
+    return 0
+  }
+
+  if (currentMinute <= startMinute) {
+    return hoursPerDay
+  }
+
+  return roundToTenths((DEFAULT_WORKDAY_END_MINUTES - currentMinute) / 60)
+}
+
+function getCompletionForecastFromQueueHours(
+  queuedHours: number,
+  hoursPerDay: number,
+  workingDays: WorkingDay[],
+  timezone: string,
+  nowMs: number,
+) {
+  if (queuedHours <= 0 || hoursPerDay <= 0 || workingDays.length === 0) {
+    return {
+      estimatedDays: null,
+      completionDate: null,
+    }
+  }
+
+  let remainingHours = queuedHours
+  let dayOffset = 0
+  let estimatedDays = 0
+  let completionDate: string | null = null
+  const visitedDayKeys = new Set<string>()
+  const availableToday = getRemainingWorkHoursToday(hoursPerDay, workingDays, timezone, nowMs)
+
+  while (remainingHours > 0 && visitedDayKeys.size < 400) {
+    const probeMs = nowMs + dayOffset * DAY_MS
+    const localProbe = getZonedDateTimeParts(probeMs, timezone)
+    const dayKey = getZonedDayKey(probeMs, timezone)
+
+    if (visitedDayKeys.has(dayKey)) {
+      dayOffset += 1
+      continue
+    }
+
+    visitedDayKeys.add(dayKey)
+
+    if (workingDays.includes(localProbe.weekday)) {
+      const availableHours = dayOffset === 0 ? availableToday : hoursPerDay
+
+      if (availableHours > 0) {
+        remainingHours -= Math.min(remainingHours, availableHours)
+        completionDate = dayKey
+
+        if (dayOffset > 0) {
+          estimatedDays += 1
+        }
+      }
+    }
+
+    dayOffset += 1
+  }
+
+  return {
+    estimatedDays: completionDate ? estimatedDays : null,
+    completionDate,
+  }
+}
+
+export function getCardCompletionForecast(
+  portfolio: Portfolio,
+  card: Card,
+  nowMs = Date.now(),
+): CardCompletionForecast {
+  if (card.archivedAt || !card.owner || card.stage === 'Backlog') {
+    return {
+      isScheduled: false,
+      queuedHours: 0,
+      estimatedDays: null,
+      completionDate: null,
+    }
+  }
+
+  const member = getTeamMemberByName(portfolio, card.owner)
+  const hoursPerDay = Math.max(1, member?.hoursPerDay ?? 8)
+  const workingDays = member?.workingDays?.length
+    ? member.workingDays
+    : (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as WorkingDay[])
+  const timezone = getResolvedTimezone(member?.timezone)
+  const queueCards = isGroupedStage(card.stage)
+    ? getOrderedLaneCards(portfolio.cards, card.stage, card.owner)
+    : [card]
+  const cardIndex = queueCards.findIndex((queueCard) => queueCard.id === card.id)
+
+  if (cardIndex === -1) {
+    return {
+      isScheduled: false,
+      queuedHours: 0,
+      estimatedDays: null,
+      completionDate: null,
+    }
+  }
+
+  const queuedHours = roundToTenths(
+    queueCards
+      .slice(0, cardIndex + 1)
+      .reduce((sum, queueCard) => sum + Math.max(1, queueCard.estimatedHours), 0),
+  )
+
+  return {
+    isScheduled: true,
+    queuedHours,
+    ...getCompletionForecastFromQueueHours(
+      queuedHours,
+      hoursPerDay,
+      workingDays,
+      timezone,
+      nowMs,
+    ),
+  }
 }
 
 export function getAgeToneFromMs(
@@ -1379,12 +1610,12 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
     brands: brandLabBrands,
     team: [
       createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null),
-      createDefaultTeamMember('daniel-t', 'Daniel T', 'Editor', 15, 6, 3),
-      createDefaultTeamMember('jo', 'Jo', 'Editor', 15, 6, 3),
-      createDefaultTeamMember('ezequiel', 'Ezequiel', 'Editor', 15, 6, 3),
-      createDefaultTeamMember('bryan', 'Bryan', 'Editor', 15, 6, 3),
-      createDefaultTeamMember('charit', 'Charit', 'Designer', 15, 6, 3),
-      createDefaultTeamMember('shita', 'Shita', 'Designer', 15, 6, 3),
+      createDefaultTeamMember('daniel-t', 'Daniel T', 'Editor', 40, 8, 3),
+      createDefaultTeamMember('jo', 'Jo', 'Editor', 40, 8, 3),
+      createDefaultTeamMember('ezequiel', 'Ezequiel', 'Editor', 40, 8, 3),
+      createDefaultTeamMember('bryan', 'Bryan', 'Editor', 40, 8, 3),
+      createDefaultTeamMember('charit', 'Charit', 'Designer', 40, 8, 3),
+      createDefaultTeamMember('shita', 'Shita', 'Designer', 40, 8, 3),
       createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 10, 3, 2),
     ],
     cards: brandLabCards,
@@ -1501,11 +1732,12 @@ function normalizePortfolio(
           ? member.hoursPerDay
           : isManagerRole(member.role)
             ? null
-            : 6,
+            : 8,
       workingDays:
         Array.isArray(member.workingDays) && member.workingDays.length > 0
           ? member.workingDays
           : getDefaultWorkingDays(),
+      timezone: getResolvedTimezone((member as TeamMember & { timezone?: string | null }).timezone),
       wipCap:
         member.wipCap === undefined
           ? (member as unknown as { wipLimit?: number | null }).wipLimit ?? null
@@ -1840,16 +2072,21 @@ export function getVisibleCards(
 
   return portfolio.cards.filter((card) => {
     const archived = isArchivedCard(card)
+    const isBacklogCard = card.stage === 'Backlog'
     if (archived && !filters.showArchived) {
       return false
     }
     if (!visibleBrandNames.has(card.brand)) {
       return false
     }
-    if (viewer.mode === 'editor' && viewer.editorName !== card.owner) {
+    if (
+      viewer.mode === 'editor' &&
+      !isLaunchOpsRole(viewer.memberRole) &&
+      viewer.editorName !== card.owner
+    ) {
       return false
     }
-    if (viewer.mode !== 'editor' && visibleOwnerNames.size > 0) {
+    if (viewer.mode !== 'editor' && visibleOwnerNames.size > 0 && !isBacklogCard) {
       if (!card.owner || !visibleOwnerNames.has(card.owner)) {
         return false
       }
@@ -1941,12 +2178,52 @@ export function getVisibleColumns(
 ) {
   const visibleCards = getVisibleCards(portfolio, viewer, filters, settings, nowMs)
   const ownerNames = getBoardOwners(portfolio)
+  const isLaunchOpsViewer = viewer.mode === 'editor' && isLaunchOpsRole(viewer.memberRole)
   const activeOwner =
-    viewer.mode === 'editor'
+    viewer.mode === 'editor' && !isLaunchOpsViewer
       ? viewer.editorName
       : filters.ownerNames.length === 1
         ? filters.ownerNames[0]
         : null
+  const visibleAssignedCards = visibleCards.filter(
+    (card) =>
+      card.owner !== null &&
+      (card.stage === 'Briefed' ||
+        card.stage === 'In Production' ||
+        card.stage === 'Review' ||
+        card.stage === 'Ready'),
+  )
+  const workloadByOwner = new Map(
+    ownerNames.map((owner) => {
+      const cards = visibleAssignedCards.filter((card) => card.owner === owner)
+      const member = getTeamMemberByName(portfolio, owner)
+      const hoursPerDay = member?.hoursPerDay ?? 8
+      const preferredStage =
+        cards.some((card) => card.stage === 'In Production')
+          ? 'In Production'
+          : cards.some((card) => card.stage === 'Briefed')
+            ? 'Briefed'
+            : cards.some((card) => card.stage === 'Review')
+              ? 'Review'
+              : cards.some((card) => card.stage === 'Ready')
+                ? 'Ready'
+                : null
+
+      return [
+        owner,
+        {
+          totalHours: roundToTenths(cards.reduce((sum, card) => sum + card.estimatedHours, 0)),
+          totalDays:
+            hoursPerDay > 0
+              ? roundToTenths(
+                  cards.reduce((sum, card) => sum + card.estimatedHours, 0) / hoursPerDay,
+                )
+              : 0,
+          preferredStage,
+        },
+      ] as const
+    }),
+  )
 
   const columns: ColumnModel[] = STAGES.map((stage) => {
     if (!isGroupedStage(stage)) {
@@ -1966,6 +2243,9 @@ export function getVisibleColumns(
             cards,
             allCardIds: getOrderedLaneCards(portfolio.cards, stage, null).map((card) => card.id),
             activeCount: cards.length,
+            queuedHours: roundToTenths(cards.reduce((sum, card) => sum + card.estimatedHours, 0)),
+            totalWorkDays: null,
+            showTotalWorkload: false,
             utilizationPct: 0,
             utilizationTone: 'green',
             capacityUsed: 0,
@@ -1990,6 +2270,11 @@ export function getVisibleColumns(
         const cards = getOrderedLaneCards(visibleCards, stage, owner)
         const utilization = getCurrentUtilization(portfolio, owner, settings)
         const member = getTeamMemberByName(portfolio, owner)
+        const workload = workloadByOwner.get(owner) ?? {
+          totalHours: 0,
+          totalDays: 0,
+          preferredStage: null,
+        }
 
         return {
           id: getLaneId(stage, owner),
@@ -2000,6 +2285,10 @@ export function getVisibleColumns(
           cards,
           allCardIds: getOrderedLaneCards(portfolio.cards, stage, owner).map((card) => card.id),
           activeCount: cards.length,
+          queuedHours: roundToTenths(cards.reduce((sum, card) => sum + card.estimatedHours, 0)),
+          totalWorkDays:
+            workload.preferredStage === stage ? workload.totalDays : null,
+          showTotalWorkload: workload.preferredStage === stage,
           utilizationPct: utilization.utilizationPct,
           utilizationTone: utilization.utilizationTone,
           capacityUsed: utilization.usedHours,
@@ -2037,6 +2326,11 @@ export function getVisibleColumns(
           cards: archivedCards,
           allCardIds: archivedCards.map((card) => card.id),
           activeCount: archivedCards.length,
+          queuedHours: roundToTenths(
+            archivedCards.reduce((sum, card) => sum + card.estimatedHours, 0),
+          ),
+          totalWorkDays: null,
+          showTotalWorkload: false,
           utilizationPct: 0,
           utilizationTone: 'green',
           capacityUsed: 0,
@@ -2339,7 +2633,11 @@ export function addCardToPortfolio(portfolio: Portfolio, card: Card) {
 
   return {
     ...portfolio,
-    cards: reindexCards([{ ...card, positionInSection: 0 }, ...backlogCards, ...otherCards]),
+    cards: reindexCards([
+      ...backlogCards,
+      { ...card, positionInSection: backlogCards.length },
+      ...otherCards,
+    ]),
     lastIdPerPrefix: {
       ...portfolio.lastIdPerPrefix,
       [prefix]: Math.max(
