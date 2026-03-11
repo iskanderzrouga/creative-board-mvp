@@ -2983,15 +2983,27 @@ export function applyCardUpdates(
       }
 
       const previous = card
+      const normalizedOwner =
+        updates.owner === undefined
+          ? undefined
+          : isGroupedStage(card.stage) && updates.owner === null
+            ? previous.owner
+            : updates.owner
+      const normalizedUpdates =
+        normalizedOwner === undefined ? updates : { ...updates, owner: normalizedOwner }
       let nextCard = syncGeneratedNames({
         ...card,
-        ...updates,
+        ...normalizedUpdates,
       })
 
-      if (updates.owner !== undefined && updates.owner !== previous.owner && updates.owner) {
+      if (
+        normalizedOwner !== undefined &&
+        normalizedOwner !== previous.owner &&
+        normalizedOwner
+      ) {
         nextCard = appendActivity(
           nextCard,
-          createActivityEntry(actor, `assigned to ${updates.owner}`, 'assigned', timestamp),
+          createActivityEntry(actor, `assigned to ${normalizedOwner}`, 'assigned', timestamp),
         )
       }
 

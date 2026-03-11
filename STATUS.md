@@ -56,3 +56,29 @@ Verification:
 Next step:
 
 - Start Phase 2 by auditing workflow logic in depth: drag and drop rules, backward moves, role permissions, blocked-card handling, due dates, and archival edge cases.
+
+### Phase 2: Workflow Logic Hardening
+
+Status: In progress
+
+What I learned:
+
+- Grouped stages on the board model assume an owner-backed lane.
+- The detail panel previously allowed managers to clear the owner on cards that were already in grouped work stages.
+- That combination could create a hidden-card state where the card still existed in data but no longer had a visible grouped lane to render into cleanly.
+
+What changed so far:
+
+- Added a UI guardrail so only Backlog cards can be explicitly set to `Unassigned` from the detail panel.
+- Added a state-level safeguard in `applyCardUpdates` so grouped-stage cards keep their existing owner if a null owner update is attempted programmatically.
+- Added a unit test that locks this workflow rule in place.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Next step:
+
+- Continue the phase by auditing drag-and-drop transitions, backward-move revision handling, blocked-card behavior, and auto-archive edge cases.

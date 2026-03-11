@@ -1082,6 +1082,7 @@ function CardDetailPanel({
   const canEditFrameio = viewerMode === 'manager' || viewerName === card.owner
   const canSetBlocked = viewerMode === 'manager' || isLaunchOpsViewer
   const canClearBlocked = viewerMode === 'manager'
+  const canClearOwner = card.stage === 'Backlog'
   const dueStatus = getDueStatus(card, nowMs)
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
@@ -1447,7 +1448,7 @@ function CardDetailPanel({
               <span>Assigned to</span>
               {canEdit ? (
                 <select value={card.owner ?? ''} onChange={(event) => onSave({ owner: event.target.value || null })}>
-                  <option value="">Unassigned</option>
+                  {canClearOwner ? <option value="">Unassigned</option> : null}
                   {getEditorOptions(portfolio).map((member) => (
                     <option key={member.id} value={member.name}>
                       {member.name}

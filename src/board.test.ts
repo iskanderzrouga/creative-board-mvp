@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applyCardUpdates,
   createEmptyPortfolio,
   createSeedState,
   removePortfolioFromAppState,
@@ -66,5 +67,31 @@ describe('board integrity helpers', () => {
     expect(reducedState.portfolios).toHaveLength(1)
     expect(reducedState.activePortfolioId).toBe(state.portfolios[0]?.id)
     expect(reducedState.settings.general.defaultPortfolioId).toBe(state.portfolios[0]?.id)
+  })
+
+  it('does not allow grouped-stage cards to become unassigned through direct updates', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const targetCard = portfolio.cards.find(
+      (card) =>
+        card.owner !== null &&
+        (card.stage === 'Briefed' ||
+          card.stage === 'In Production' ||
+          card.stage === 'Review'),
+    )
+
+    expect(targetCard).toBeTruthy()
+
+    const updatedPortfolio = applyCardUpdates(
+      portfolio,
+      createSeedState().settings,
+      targetCard!.id,
+      { owner: null },
+      'Naomi',
+      '2026-03-11T12:00:00Z',
+    )
+
+    expect(
+      updatedPortfolio.cards.find((card) => card.id === targetCard!.id)?.owner,
+    ).toBe(targetCard!.owner)
   })
 })
