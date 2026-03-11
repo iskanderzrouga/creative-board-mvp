@@ -2005,6 +2005,74 @@ export function createEmptyPortfolio(name: string, existingCount: number): Portf
   }
 }
 
+export function renameBrandInPortfolio(
+  portfolio: Portfolio,
+  brandIndex: number,
+  nextName: string,
+) {
+  const previousBrand = portfolio.brands[brandIndex]
+  if (!previousBrand || previousBrand.name === nextName) {
+    return portfolio
+  }
+
+  return {
+    ...portfolio,
+    brands: portfolio.brands.map((brand, index) =>
+      index === brandIndex ? { ...brand, name: nextName } : brand,
+    ),
+    cards: portfolio.cards.map((card) =>
+      card.brand === previousBrand.name ? { ...card, brand: nextName } : card,
+    ),
+  }
+}
+
+export function renameTeamMemberInPortfolio(
+  portfolio: Portfolio,
+  memberIndex: number,
+  nextName: string,
+) {
+  const previousMember = portfolio.team[memberIndex]
+  if (!previousMember || previousMember.name === nextName) {
+    return portfolio
+  }
+
+  return {
+    ...portfolio,
+    team: portfolio.team.map((member, index) =>
+      index === memberIndex ? { ...member, name: nextName } : member,
+    ),
+    cards: portfolio.cards.map((card) =>
+      card.owner === previousMember.name ? { ...card, owner: nextName } : card,
+    ),
+  }
+}
+
+export function removePortfolioFromAppState(state: AppState, portfolioId: string) {
+  const portfolios = state.portfolios.filter((portfolio) => portfolio.id !== portfolioId)
+  const fallbackPortfolioId = portfolios[0]?.id ?? ''
+  const activePortfolioId = portfolios.some((portfolio) => portfolio.id === state.activePortfolioId)
+    ? state.activePortfolioId
+    : fallbackPortfolioId
+  const defaultPortfolioId = portfolios.some(
+    (portfolio) => portfolio.id === state.settings.general.defaultPortfolioId,
+  )
+    ? state.settings.general.defaultPortfolioId
+    : fallbackPortfolioId
+
+  return {
+    ...state,
+    portfolios,
+    activePortfolioId,
+    settings: {
+      ...state.settings,
+      general: {
+        ...state.settings.general,
+        defaultPortfolioId,
+      },
+    },
+  }
+}
+
 export function getActivePortfolio(state: AppState) {
   if (state.activePortfolioId === ALL_PORTFOLIOS_ID) {
     return null

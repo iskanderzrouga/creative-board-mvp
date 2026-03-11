@@ -80,7 +80,10 @@ import {
   loadAppState,
   moveCardInPortfolio,
   persistAppState,
+  removePortfolioFromAppState,
   removeCardFromPortfolio,
+  renameBrandInPortfolio,
+  renameTeamMemberInPortfolio,
   type ActiveRole,
   type AppPage,
   type AppState,
@@ -2396,14 +2399,9 @@ function SettingsPage({
                         if (!window.confirm(`Delete ${portfolio.name}?`)) {
                           return
                         }
-                        onStateChange((current) => ({
-                          ...current,
-                          portfolios: current.portfolios.filter((item) => item.id !== portfolio.id),
-                          activePortfolioId:
-                            current.activePortfolioId === portfolio.id
-                              ? current.portfolios.find((item) => item.id !== portfolio.id)?.id ?? ''
-                              : current.activePortfolioId,
-                        }))
+                        onStateChange((current) =>
+                          removePortfolioFromAppState(current, portfolio.id),
+                        )
                       }}
                     >
                       Delete
@@ -2427,12 +2425,13 @@ function SettingsPage({
                             <input
                               value={brand.name}
                               onChange={(event) =>
-                                updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                                  ...currentPortfolio,
-                                  brands: currentPortfolio.brands.map((item, index) =>
-                                    index === brandIndex ? { ...item, name: event.target.value } : item,
+                                updatePortfolio(portfolio.id, (currentPortfolio) =>
+                                  renameBrandInPortfolio(
+                                    currentPortfolio,
+                                    brandIndex,
+                                    event.target.value,
                                   ),
-                                }))
+                                )
                               }
                             />
                             <input
@@ -2606,12 +2605,13 @@ function SettingsPage({
                   <input
                     value={member.name}
                     onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex ? { ...item, name: event.target.value } : item,
+                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) =>
+                        renameTeamMemberInPortfolio(
+                          currentPortfolio,
+                          memberIndex,
+                          event.target.value,
                         ),
-                      }))
+                      )
                     }
                   />
                   <input
