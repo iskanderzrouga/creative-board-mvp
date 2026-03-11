@@ -82,3 +82,31 @@ Verification:
 Next step:
 
 - Continue the phase by auditing drag-and-drop transitions, backward-move revision handling, blocked-card behavior, and auto-archive edge cases.
+
+### Supabase Readiness Pass
+
+Status: Foundation added, external credentials/network still blocking full activation
+
+What changed:
+
+- Added a secure Supabase data layer scaffold with [`.env.example`](/Users/iskanderzrouga/Desktop/Editors Board/.env.example), [`src/supabase.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/supabase.ts), and [`src/remoteAppState.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/remoteAppState.ts).
+- Wired the app so remote sync is optional and only turns on when valid public client env vars are present. Local storage remains the safe fallback.
+- Added a migration at [`supabase/migrations/20260311200500_create_workspace_state.sql`](/Users/iskanderzrouga/Desktop/Editors Board/supabase/migrations/20260311200500_create_workspace_state.sql) for a `workspace_state` table with row-level security restricted to authenticated users.
+- Installed `@supabase/supabase-js` and kept the existing browser regression suite green after the integration scaffolding.
+
+What I verified:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test:e2e` passed.
+- `npm run build` passed.
+
+External blocker:
+
+- A Supabase migration dry run against the provided `db.zytmxgtrpwlnogtrmmgt.supabase.co` host failed from this machine with `no route to host` on both ports `5432` and `6543`.
+- The current Supabase docs say the shared pooler is the IPv4-friendly fallback when direct or dedicated connections require IPv6. Source: [Connect to your database](https://supabase.com/docs/reference/postgres/connection-strings).
+- The browser-facing integration still needs the project’s publishable/anon key to switch from “backend-ready” to “live and authenticated” safely.
+
+Next step:
+
+- Get either the shared pooler connection string or a Supabase access token for the project, plus the publishable/anon key, then apply the migration remotely and turn on authenticated remote sync in the deployed app.

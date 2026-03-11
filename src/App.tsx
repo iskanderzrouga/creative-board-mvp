@@ -30,6 +30,11 @@ import { CSS } from '@dnd-kit/utilities'
 import './App.css'
 import { RichTextEditor } from './components/RichTextEditor'
 import {
+  isRemotePersistenceConfigured,
+  loadRemoteAppState,
+  saveRemoteAppState,
+} from './remoteAppState'
+import {
   CARD_FIELDS,
   GROUPED_STAGES,
   SETTINGS_TAB_LABELS,
@@ -3372,6 +3377,7 @@ function WorkloadPage({
 }
 
 function App() {
+  const remotePersistenceEnabled = isRemotePersistenceConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [boardFilters, setBoardFilters] = useState<BoardFilters>(() =>
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
@@ -3402,9 +3408,12 @@ function App() {
   )
   const [creatingDriveCardId, setCreatingDriveCardId] = useState<string | null>(null)
   const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null)
+  const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
 
   const searchRef = useRef<HTMLInputElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const remoteHydratedRef = useRef(!remotePersistenceEnabled)
+  const remoteSaveTimerRef = useRef<number | null>(null)
 
   const activePortfolio = getActivePortfolio(state)
   const currentPage = getCurrentPage(state)
@@ -3533,6 +3542,75 @@ function App() {
   useEffect(() => {
     persistAppState(state)
   }, [state])
+
+  useEffect(() => {
+    if (!remotePersistenceEnabled) {
+      return
+    }
+
+    let cancelled = false
+
+    void loadRemoteAppState()
+      .then((remoteState) => {
+        if (cancelled) {
+          return
+        }
+
+        if (remoteState) {
+          replaceState(remoteState)
+        }
+
+        remoteHydratedRef.current = true
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+
+        remoteHydratedRef.current = true
+        if (!remoteSyncErrorShown) {
+          setRemoteSyncErrorShown(true)
+          setToast({
+            message:
+              'Supabase sync is configured but unavailable right now. The board is using the local saved copy.',
+            tone: 'amber',
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [remotePersistenceEnabled, remoteSyncErrorShown])
+
+  useEffect(() => {
+    if (!remotePersistenceEnabled || !remoteHydratedRef.current) {
+      return
+    }
+
+    if (remoteSaveTimerRef.current !== null) {
+      window.clearTimeout(remoteSaveTimerRef.current)
+    }
+
+    remoteSaveTimerRef.current = window.setTimeout(() => {
+      void saveRemoteAppState(state).catch(() => {
+        if (!remoteSyncErrorShown) {
+          setRemoteSyncErrorShown(true)
+          setToast({
+            message:
+              'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
+            tone: 'amber',
+          })
+        }
+      })
+    }, 800)
+
+    return () => {
+      if (remoteSaveTimerRef.current !== null) {
+        window.clearTimeout(remoteSaveTimerRef.current)
+      }
+    }
+  }, [remotePersistenceEnabled, remoteSyncErrorShown, state])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
