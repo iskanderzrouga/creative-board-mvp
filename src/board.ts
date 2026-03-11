@@ -1,939 +1,699 @@
+import importedCardsSeed from './imported-cards-seed.json'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
+const REFERENCE_NOW_ISO = '2026-03-11T10:00:00Z'
+
+export const STORAGE_KEY = 'creative-board-state'
+export const STATE_VERSION = 2
+
 export const STAGES = [
-  'backlog',
-  'briefed',
-  'in_production',
-  'review',
-  'ready',
-  'live',
+  'Backlog',
+  'Briefed',
+  'In Production',
+  'Review',
+  'Ready',
+  'Live',
 ] as const
 
-export const STAGE_LABELS: Record<StageId, string> = {
-  backlog: 'Backlog',
-  briefed: 'Briefed',
-  in_production: 'In Production',
-  review: 'Review',
-  ready: 'Ready',
-  live: 'Live',
-}
-
-export const BRAND_FILTERS = ['All', 'Pluxy', 'Vivi'] as const
-export const BRAND_IDS = ['Pluxy', 'Vivi'] as const
-export const TASK_TYPES = ['Creative', 'Landing Page', 'Offer', 'Other'] as const
+export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
+export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
+export const APP_PAGES = ['board', 'analytics', 'workload', 'settings'] as const
+export const ROLE_MODES = ['manager', 'editor', 'observer'] as const
+export const TIMEFRAMES = ['this-week', 'next-week', 'this-month'] as const
+export const WORKING_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+export const FUNNEL_STAGES = [
+  'Cold',
+  'Warm',
+  'Promo',
+  'Promo Evergreen',
+] as const
+export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Other'] as const
+export const CARD_FIELDS = [
+  'hook',
+  'angle',
+  'funnelStage',
+  'audience',
+  'landingPage',
+  'product',
+  'platform',
+  'dueDate',
+] as const
+export const TASK_TYPE_CATEGORIES = [
+  'Creative',
+  'Page',
+  'Strategy',
+  'Copy',
+  'Ops',
+  'Other',
+] as const
+export const SETTING_TABS = [
+  'general',
+  'portfolios',
+  'team',
+  'task-library',
+  'capacity',
+  'integrations',
+  'data',
+] as const
+export const REVISION_REASON_OPTIONS = [
+  'Needs creative fixes',
+  'Brief was unclear',
+  'Wrong format/specs',
+  'Assets missing',
+  'Client/stakeholder feedback',
+  'Other',
+] as const
 
 export type StageId = (typeof STAGES)[number]
-export type BrandFilter = (typeof BRAND_FILTERS)[number]
-export type BrandId = (typeof BRAND_IDS)[number]
-export type TaskType = (typeof TASK_TYPES)[number]
+export type GroupedStageId = (typeof GROUPED_STAGES)[number]
+export type BoardColumnId = (typeof BOARD_COLUMN_IDS)[number]
+export type AppPage = (typeof APP_PAGES)[number]
+export type RoleMode = (typeof ROLE_MODES)[number]
+export type Timeframe = (typeof TIMEFRAMES)[number]
+export type WorkingDay = (typeof WORKING_DAYS)[number]
+export type FunnelStage = (typeof FUNNEL_STAGES)[number]
+export type Platform = (typeof PLATFORMS)[number]
+export type CardFieldKey = (typeof CARD_FIELDS)[number]
+export type TaskTypeCategory = (typeof TASK_TYPE_CATEGORIES)[number]
+export type SettingTab = (typeof SETTING_TABS)[number]
+export type RevisionReasonOption = (typeof REVISION_REASON_OPTIONS)[number]
 export type AgeTone = 'fresh' | 'aging' | 'stuck'
-
-export type UserId =
-  | 'naomi'
-  | 'daniel'
-  | 'joe'
-  | 'ezequiel'
-  | 'bryan'
-  | 'shita'
-  | 'ivan'
-  | 'iskander'
-
-export type UserKind = 'manager' | 'editor' | 'launch_ops' | 'observer'
-export type ViewerMode = 'manager' | 'editor' | 'observer'
-
-export interface BoardUser {
-  id: UserId
-  name: string
-  kind: UserKind
-  title: string
-}
+export type UtilizationTone = 'green' | 'yellow' | 'red'
 
 export interface Attachment {
-  id: string
   label: string
   url: string
 }
 
-export interface CommentItem {
-  id: string
-  authorId: UserId
-  createdAt: string
-  body: string
-  parentId: string | null
+export interface CommentEntry {
+  author: string
+  text: string
+  timestamp: string
 }
 
-export interface StageEntry {
+export interface ActivityEntry {
+  id: string
+  actor: string
+  message: string
+  timestamp: string
+  type:
+    | 'created'
+    | 'assigned'
+    | 'moved-forward'
+    | 'moved-back'
+    | 'blocked'
+    | 'unblocked'
+    | 'effort'
+    | 'due-date'
+    | 'frameio'
+    | 'drive'
+    | 'archive'
+    | 'unarchive'
+    | 'deleted'
+}
+
+export interface StageHistoryEntry {
   stage: StageId
   enteredAt: string
   exitedAt: string | null
-  transitionKind?: 'moved_back'
+  durationDays: number | null
+  movedBack?: boolean
+  revisionReason?: string
 }
 
-export interface Task {
+export interface BlockedState {
+  reason: string
+  at: string
+}
+
+export interface Card {
   id: string
-  testId: string
   title: string
-  brand: BrandId
-  type: TaskType
+  brand: string
+  product: string
+  platform: Platform
+  taskTypeId: string
+  hook: string
+  angle: string
+  audience: string
+  awarenessLevel: string
+  landingPage: string
+  funnelStage: FunnelStage
+  generatedSheetName: string
+  generatedAdName: string
+  owner: string | null
   stage: StageId
-  assigneeId: UserId | null
-  createdAt: string
-  briefHtml: string
+  stageEnteredAt: string
+  stageHistory: StageHistoryEntry[]
+  brief: string
+  comments: CommentEntry[]
   attachments: Attachment[]
-  comments: CommentItem[]
-  stageHistory: StageEntry[]
+  driveFolderUrl: string
+  driveFolderCreated: boolean
+  frameioLink: string
+  dateAssigned: string
+  dateCreated: string
+  positionInSection: number
+  estimatedHours: number
+  dueDate: string | null
+  blocked: BlockedState | null
+  archivedAt: string | null
+  activityLog: ActivityEntry[]
+  note?: string
+  legacyNaming?: boolean
 }
 
-export interface BoardState {
-  tasks: Record<string, Task>
-  columns: Record<string, string[]>
-  settings: {
-    wipLimits: Record<UserId, number>
-  }
+export interface Brand {
+  name: string
+  prefix: string
+  products: string[]
+  driveParentFolderId: string
+  color: string
+  surfaceColor: string
+  textColor: string
 }
 
-export interface VisibleContainer {
+export interface TeamMember {
   id: string
-  stage: StageId
+  name: string
+  role: string
+  weeklyHours: number | null
+  hoursPerDay: number | null
+  workingDays: WorkingDay[]
+  wipCap: number | null
+  active: boolean
+}
+
+export interface Portfolio {
+  id: string
+  name: string
+  brands: Brand[]
+  team: TeamMember[]
+  cards: Card[]
+  webhookUrl: string
+  lastIdPerPrefix: Record<string, number>
+}
+
+export interface TaskType {
+  id: string
+  name: string
+  category: TaskTypeCategory
+  icon: string
+  color: string
+  textColor: string
+  estimatedHours: number
+  requiredFields: CardFieldKey[]
+  optionalFields: CardFieldKey[]
+  isDefault: boolean
+  locked?: boolean
+  order: number
+}
+
+export interface GeneralSettings {
+  appName: string
+  theme: 'light'
+  defaultPortfolioId: string
+  timeInStageThresholds: {
+    amberStart: number
+    redStart: number
+  }
+  autoArchiveEnabled: boolean
+  autoArchiveDays: number
+}
+
+export interface CapacitySettings {
+  defaultWeeklyHours: number
+  utilizationThresholds: {
+    greenMax: number
+    yellowMax: number
+    redMin: number
+  }
+}
+
+export interface IntegrationsSettings {
+  globalDriveWebhookUrl: string
+}
+
+export interface GlobalSettings {
+  general: GeneralSettings
+  capacity: CapacitySettings
+  taskLibrary: TaskType[]
+  integrations: IntegrationsSettings
+}
+
+export interface ActiveRole {
+  mode: RoleMode
+  editorId: string | null
+}
+
+export interface AppState {
+  portfolios: Portfolio[]
+  settings: GlobalSettings
+  activePortfolioId: string
+  activeRole: ActiveRole
+  activePage: AppPage
+  version: number
+}
+
+export interface ViewerContext {
+  mode: RoleMode
+  editorName: string | null
+}
+
+export interface BoardFilters {
+  brandNames: string[]
+  ownerNames: string[]
+  searchQuery: string
+  overdueOnly: boolean
+  stuckOnly: boolean
+  blockedOnly: boolean
+  showArchived: boolean
+}
+
+export interface LaneModel {
+  id: string
+  stage: BoardColumnId
+  owner: string | null
   label: string
-  canonicalContainerId: string
-  assigneeId: UserId | null
-  assigneeName: string | null
-  taskIds: string[]
   grouped: boolean
-  emptyLabel: string
+  cards: Card[]
+  allCardIds: string[]
+  activeCount: number
+  utilizationPct: number
+  utilizationTone: UtilizationTone
+  capacityUsed: number
+  capacityTotal: number
   wipCount: number | null
-  wipLimit: number | null
+  wipCap: number | null
 }
 
-export interface StageColumnModel {
-  stage: StageId
+export interface ColumnModel {
+  id: BoardColumnId
   label: string
   grouped: boolean
-  totalCount: number
-  containers: VisibleContainer[]
+  count: number
+  lanes: LaneModel[]
+  hiddenEditorCount: number
 }
 
-export interface TaskFilters {
-  brands?: BrandId[]
-  editors?: UserId[]
+export interface BoardStats {
+  total: number
+  byStage: Record<StageId, number>
+  stuck: number
+  overdue: number
 }
 
-export interface StageHistorySegment {
-  stage: StageId
-  durationMs: number
-  durationLabel: string
-  tone: AgeTone
-  movedBack: boolean
-  isCurrent: boolean
+export interface UtilizationSummary {
+  activeCards: Card[]
+  activeCount: number
+  usedHours: number
+  totalHours: number
+  utilizationPct: number
+  utilizationTone: UtilizationTone
+  availableHours: number
+  wipCount: number
+  wipCap: number | null
 }
 
-export interface EditorSnapshot {
-  userId: UserId
-  totalVisibleCards: number
-  stageCounts: Record<StageId, number>
+export interface EditorSummary {
+  owner: string
+  utilizationPct: number
+  availableHours: number
+  briefedCount: number
+  briefedHours: number
   inProductionCount: number
-  wipLimit: number
-  estimatedWorkloadDays: number
+  inProductionHours: number
+  reviewCount: number
+  reviewHours: number
+  readyCount: number
+  readyHours: number
+  activeCount: number
 }
 
-export type BoardAction =
-  | {
-      type: 'move-task'
-      taskId: string
-      destinationStage: StageId
-      destinationAssigneeId: UserId | null
-      destinationIndex: number
-      movedAt?: string
-    }
-  | {
-      type: 'update-task'
-      taskId: string
-      updates: Partial<
-        Pick<Task, 'testId' | 'title' | 'brand' | 'type' | 'briefHtml'>
-      >
-    }
-  | {
-      type: 'update-assignee'
-      taskId: string
-      assigneeId: UserId | null
-    }
-  | {
-      type: 'replace-attachments'
-      taskId: string
-      attachments: Attachment[]
-    }
-  | {
-      type: 'add-comment'
-      taskId: string
-      comment: CommentItem
-    }
-  | {
-      type: 'create-task'
-      task: Task
-    }
-  | {
-      type: 'update-wip-limit'
-      userId: UserId
-      limit: number
-    }
-  | {
-      type: 'reset-board'
-    }
-
-export const STORAGE_KEY = 'creative-board-mvp:v1'
-
-const DAY_MS = 24 * 60 * 60 * 1000
-const HOUR_MS = 60 * 60 * 1000
-const GROUPED_STAGE_SET = new Set<StageId>([
-  'briefed',
-  'in_production',
-  'review',
-])
-
-export const USERS: BoardUser[] = [
-  {
-    id: 'naomi',
-    name: 'Naomi',
-    kind: 'manager',
-    title: 'Brand Manager',
-  },
-  {
-    id: 'daniel',
-    name: 'Daniel',
-    kind: 'editor',
-    title: 'Editor + Developer',
-  },
-  {
-    id: 'joe',
-    name: 'Joe',
-    kind: 'editor',
-    title: 'Video Editor',
-  },
-  {
-    id: 'ezequiel',
-    name: 'Ezequiel',
-    kind: 'editor',
-    title: 'Video Editor',
-  },
-  {
-    id: 'bryan',
-    name: 'Bryan',
-    kind: 'editor',
-    title: 'Video Editor',
-  },
-  {
-    id: 'shita',
-    name: 'Shita',
-    kind: 'editor',
-    title: 'Designer',
-  },
-  {
-    id: 'ivan',
-    name: 'Ivan',
-    kind: 'launch_ops',
-    title: 'Launch Ops',
-  },
-  {
-    id: 'iskander',
-    name: 'Iskander',
-    kind: 'observer',
-    title: 'Founder / Observer',
-  },
-]
-
-export const USER_MAP = Object.fromEntries(
-  USERS.map((user) => [user.id, user]),
-) as Record<UserId, BoardUser>
-
-export const ROLE_SWITCHER_ORDER: UserId[] = [
-  'naomi',
-  'daniel',
-  'joe',
-  'ezequiel',
-  'bryan',
-  'shita',
-  'ivan',
-  'iskander',
-]
-
-export const EDITOR_ROLE_IDS: UserId[] = [
-  'daniel',
-  'joe',
-  'ezequiel',
-  'bryan',
-  'shita',
-  'ivan',
-]
-
-export const WORKER_IDS: UserId[] = [
-  'daniel',
-  'joe',
-  'ezequiel',
-  'bryan',
-  'shita',
-  'ivan',
-  'naomi',
-]
-
-interface SeedComment {
-  authorId: UserId
-  body: string
-  hoursAfterEnter: number
-  parentId?: string
-}
-
-interface SeedTask {
-  testId: string
+export interface DashboardCardRow {
+  portfolioId: string
+  portfolioName: string
+  cardId: string
   title: string
-  brand: BrandId
-  type: TaskType
+  brand: string
   stage: StageId
-  assigneeId: UserId | null
-  ageDays: number
-  briefLead: string
-  bullets: string[]
-  attachments?: Array<Pick<Attachment, 'label' | 'url'>>
-  comments?: SeedComment[]
+  owner: string | null
+  daysInStage: number
+  isBlocked: boolean
+  blockedReason: string | null
+  isOverdue: boolean
 }
 
-function isGroupedStage(stage: StageId) {
-  return GROUPED_STAGE_SET.has(stage)
+export interface PortfolioOverviewCard {
+  portfolioId: string
+  name: string
+  activeCards: number
+  onTrackRatio: number
+  stuckCount: number
+  atCapacityCount: number
+  brandBreakdown: Array<{
+    brand: string
+    count: number
+  }>
 }
 
-export function getViewerMode(userId: UserId): ViewerMode {
-  if (userId === 'naomi') {
-    return 'manager'
-  }
-
-  if (userId === 'iskander') {
-    return 'observer'
-  }
-
-  return 'editor'
+export interface FunnelStageBucket {
+  stage: StageId
+  total: number
+  segments: Array<{
+    brand: string
+    color: string
+    count: number
+  }>
+  cards: DashboardCardRow[]
 }
 
-export function getCanonicalContainerId(
-  stage: StageId,
-  assigneeId: UserId | null,
-) {
-  if (stage === 'backlog' || stage === 'ready' || stage === 'live') {
-    return `${stage}::all`
-  }
-
-  return `${stage}::${assigneeId ?? 'unassigned'}`
+export interface TeamCapacityRow {
+  editorName: string
+  editorId: string
+  portfolioId: string
+  portfolioName: string
+  active: number
+  utilizationPct: number
+  utilizationTone: UtilizationTone
+  usedHours: number
+  totalHours: number
+  workloadDays: number
+  avgCycleTime: number | null
+  avgRevisionsPerCard: number | null
 }
 
-function createEmptyColumns() {
-  const columns: Record<string, string[]> = {}
-
-  for (const stage of STAGES) {
-    if (isGroupedStage(stage)) {
-      for (const userId of WORKER_IDS) {
-        columns[getCanonicalContainerId(stage, userId)] = []
-      }
-
-      columns[getCanonicalContainerId(stage, null)] = []
-      continue
-    }
-
-    columns[getCanonicalContainerId(stage, null)] = []
-  }
-
-  return columns
+export interface ThroughputWeek {
+  label: string
+  total: number
+  segments: Array<{
+    brand: string
+    color: string
+    count: number
+  }>
 }
 
-function getSeedStageHistory(stage: StageId, ageDays: number) {
-  const stageIndex = STAGES.indexOf(stage)
-  const visibleStages = STAGES.slice(0, stageIndex + 1)
-  const currentStageDuration = ageDays === 0 ? 6 * HOUR_MS : ageDays * DAY_MS
-  const earlierDurations = visibleStages
-    .slice(0, -1)
-    .map((_, index) => [1, 1, 2, 1, 1][index] ?? 1)
+export interface BrandHealthRow {
+  portfolioId: string
+  portfolioName: string
+  brand: string
+  color: string
+  active: number
+  stuck: number
+  inProduction: number
+  avgCycleTime: number | null
+  lastShipped: string | null
+}
 
-  const earlierDurationMs = earlierDurations.reduce(
-    (sum, duration) => sum + duration * DAY_MS,
-    0,
-  )
-  const createdAtMs = Date.now() - currentStageDuration - earlierDurationMs
-  const stageHistory: StageEntry[] = []
+export interface RevisionReasonStat {
+  reason: string
+  count: number
+  percent: number
+}
 
-  let cursor = createdAtMs
-  for (let index = 0; index < visibleStages.length; index += 1) {
-    const currentStageId = visibleStages[index]
-    const isCurrentStage = index === visibleStages.length - 1
-    const durationMs = isCurrentStage
-      ? currentStageDuration
-      : (earlierDurations[index] ?? 1) * DAY_MS
-    const enteredAt = new Date(cursor).toISOString()
-    const exitedAt = isCurrentStage
-      ? null
-      : new Date(cursor + durationMs).toISOString()
+export interface EditorRevisionStat {
+  editorName: string
+  avgRevisionsPerCard: number
+}
 
-    stageHistory.push({
-      stage: currentStageId,
-      enteredAt,
-      exitedAt,
-    })
+export interface DashboardData {
+  overviewCards: PortfolioOverviewCard[]
+  funnel: FunnelStageBucket[]
+  teamGrid: TeamCapacityRow[]
+  stuckCards: DashboardCardRow[]
+  throughput: ThroughputWeek[]
+  brandHealth: BrandHealthRow[]
+  revisionReasons: RevisionReasonStat[]
+  editorRevisionRates: EditorRevisionStat[]
+}
 
-    cursor += durationMs
+export interface WorkloadBreakdownItem {
+  cardId: string
+  title: string
+  taskTypeId: string
+  taskTypeName: string
+  icon: string
+  hours: number
+}
+
+export interface WorkloadRow {
+  member: TeamMember
+  utilizationPct: number
+  utilizationTone: UtilizationTone
+  capacityUsed: number
+  capacityTotal: number
+  breakdown: WorkloadBreakdownItem[]
+  activeCards: Card[]
+  partTimeLabel: string | null
+}
+
+export interface WorkloadQueueRow {
+  cardId: string
+  title: string
+  taskTypeId: string
+  taskTypeName: string
+  icon: string
+  hours: number
+  daysWaiting: number
+}
+
+export interface WorkloadData {
+  rows: WorkloadRow[]
+  queue: WorkloadQueueRow[]
+  queueHours: number
+}
+
+export interface AttentionSummary {
+  overdueCount: number
+  stuckCount: number
+  blockedCount: number
+  hasAttention: boolean
+}
+
+export interface QuickCreateInput {
+  title: string
+  brand: string
+  taskTypeId: string
+}
+
+export const DEFAULT_QUICK_CREATE_INPUT: QuickCreateInput = {
+  title: '',
+  brand: '',
+  taskTypeId: 'video-ugc-short',
+}
+
+const BRAND_PALETTES = [
+  {
+    color: '#7c3aed',
+    surfaceColor: '#f3e8ff',
+    textColor: '#7c3aed',
+  },
+  {
+    color: '#059669',
+    surfaceColor: '#d1fae5',
+    textColor: '#059669',
+  },
+  {
+    color: '#0284c7',
+    surfaceColor: '#e0f2fe',
+    textColor: '#0284c7',
+  },
+  {
+    color: '#db2777',
+    surfaceColor: '#fce7f3',
+    textColor: '#db2777',
+  },
+  {
+    color: '#d97706',
+    surfaceColor: '#fef3c7',
+    textColor: '#d97706',
+  },
+  {
+    color: '#4f46e5',
+    surfaceColor: '#e0e7ff',
+    textColor: '#4f46e5',
+  },
+] as const
+
+export const ALL_PORTFOLIOS_ID = 'all-portfolios'
+export const SETTINGS_TAB_LABELS: Record<SettingTab, string> = {
+  general: 'General',
+  portfolios: 'Portfolios',
+  team: 'Team & Roles',
+  'task-library': 'Task Library',
+  capacity: 'Capacity',
+  integrations: 'Integrations',
+  data: 'Data',
+}
+
+function roundToTenths(value: number) {
+  return Math.round(value * 10) / 10
+}
+
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function sanitizeSegment(value: string) {
+  return value.replace(/\s+/g, '').trim()
+}
+
+function getReferenceNowMs() {
+  return new Date(REFERENCE_NOW_ISO).getTime()
+}
+
+function createId(prefix: string) {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`
   }
 
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function startOfDayMs(valueMs: number) {
+  const date = new Date(valueMs)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function startOfWeekMs(valueMs: number) {
+  const date = new Date(valueMs)
+  const day = date.getDay()
+  const offset = day === 0 ? -6 : 1 - day
+  date.setDate(date.getDate() + offset)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function startOfMonthMs(valueMs: number) {
+  const date = new Date(valueMs)
+  date.setDate(1)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+function getWorkingDayLabel(valueMs: number): WorkingDay {
+  return WORKING_DAYS[(new Date(valueMs).getDay() + 6) % 7] ?? 'Mon'
+}
+
+function isGroupedStage(stage: StageId): stage is GroupedStageId {
+  return (GROUPED_STAGES as readonly string[]).includes(stage)
+}
+
+export function getNextStageForEditor(stage: StageId) {
+  const index = STAGES.indexOf(stage)
+  return index === -1 || index === STAGES.length - 1 ? null : STAGES[index + 1]
+}
+
+function isManagerRole(role: string) {
+  return role.toLowerCase() === 'manager'
+}
+
+function isArchivedCard(card: Card) {
+  return card.archivedAt !== null
+}
+
+function isActiveWorkStage(stage: StageId) {
+  return stage === 'Briefed' || stage === 'In Production' || stage === 'Review'
+}
+
+function getLaneOwner(stage: BoardColumnId, owner: string | null) {
+  if (stage === 'Archived') {
+    return null
+  }
+
+  return isGroupedStage(stage) ? owner : null
+}
+
+function getLaneId(stage: BoardColumnId, owner: string | null) {
+  return `${stage}::${getLaneOwner(stage, owner) ?? 'flat'}`
+}
+
+function getHistoryBaseDurations(stage: StageId) {
+  switch (stage) {
+    case 'Backlog':
+      return [1]
+    case 'Briefed':
+      return [0.5, 1.5]
+    case 'In Production':
+      return [0.5, 1, 2]
+    case 'Review':
+      return [0.5, 1, 2, 1]
+    case 'Ready':
+      return [0.5, 1, 2, 1, 1]
+    case 'Live':
+      return [0.5, 1, 2, 1, 1, 1]
+  }
+}
+
+function getDefaultWorkingDays() {
+  return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as WorkingDay[]
+}
+
+function createDefaultTeamMember(
+  id: string,
+  name: string,
+  role: string,
+  weeklyHours: number | null,
+  hoursPerDay: number | null,
+  wipCap: number | null,
+): TeamMember {
   return {
-    createdAt: new Date(createdAtMs).toISOString(),
-    stageHistory,
+    id,
+    name,
+    role,
+    weeklyHours,
+    hoursPerDay,
+    workingDays: getDefaultWorkingDays(),
+    wipCap,
+    active: true,
   }
 }
 
-function createSeedComments(
-  taskId: string,
-  stageEnteredAt: string,
-  comments: SeedComment[] | undefined,
-) {
-  if (!comments?.length) {
-    return []
-  }
-
-  const stageEnteredAtMs = new Date(stageEnteredAt).getTime()
-
-  return comments.map((comment, index) => ({
-    id: `${taskId}-comment-${index + 1}`,
-    authorId: comment.authorId,
-    body: comment.body,
-    parentId: comment.parentId ?? null,
-    createdAt: new Date(
-      stageEnteredAtMs + comment.hoursAfterEnter * HOUR_MS,
-    ).toISOString(),
-  }))
-}
-
-function buildBriefHtml(seed: SeedTask) {
-  return `
-    <p><strong>Objective:</strong> ${seed.briefLead}</p>
-    <ul>
-      ${seed.bullets.map((bullet) => `<li>${bullet}</li>`).join('')}
-    </ul>
-    <p><strong>Delivery:</strong> Keep the output structured so Naomi can review and move it through the board without needing a separate doc.</p>
-  `.trim()
-}
-
-function buildSeedTask(seed: SeedTask): Task {
-  const taskId = `task-${seed.testId.toLowerCase()}`
-  const { createdAt, stageHistory } = getSeedStageHistory(seed.stage, seed.ageDays)
-
+function createActivityEntry(
+  actor: string,
+  message: string,
+  type: ActivityEntry['type'],
+  timestamp: string,
+): ActivityEntry {
   return {
-    id: taskId,
-    testId: seed.testId,
-    title: seed.title,
-    brand: seed.brand,
-    type: seed.type,
-    stage: seed.stage,
-    assigneeId: seed.assigneeId,
-    createdAt,
-    briefHtml: buildBriefHtml(seed),
-    attachments: (seed.attachments ?? [
-      {
-        label: 'Drive Folder',
-        url: `https://drive.google.com/drive/folders/${seed.testId.toLowerCase()}`,
-      },
-      {
-        label: 'Reference Notes',
-        url: `https://example.com/references/${seed.testId.toLowerCase()}`,
-      },
-    ]).map((attachment, index) => ({
-      id: `${taskId}-attachment-${index + 1}`,
-      label: attachment.label,
-      url: attachment.url,
-    })),
-    comments: createSeedComments(
-      taskId,
-      stageHistory[stageHistory.length - 1].enteredAt,
-      seed.comments,
-    ),
-    stageHistory,
+    id: createId('activity'),
+    actor,
+    message,
+    type,
+    timestamp,
   }
 }
 
-const SEED_TASKS: SeedTask[] = [
-  {
-    testId: 'T-002',
-    title: 'White women Lunavia edit',
-    assigneeId: 'joe',
-    stage: 'ready',
-    brand: 'Pluxy',
-    type: 'Creative',
-    ageDays: 0,
-    briefLead: 'Package the Lunavia angle into a clean ready-to-launch edit.',
-    bullets: [
-      'Keep the opening 3 seconds tight and visual.',
-      'Cut alternate hooks for testing against the existing control.',
-      'Make the CTA feel native instead of scripted.',
-    ],
-  },
-  {
-    testId: 'T-003',
-    title: 'Top-of-funnel AppLovin pain-relief ads',
-    assigneeId: 'ezequiel',
-    stage: 'in_production',
-    brand: 'Pluxy',
-    type: 'Creative',
-    ageDays: 14,
-    briefLead:
-      'Develop a fresh top-of-funnel AppLovin set built around pain-relief messaging.',
-    bullets: [
-      'Focus on broad audience relevance before product detail.',
-      'Make the first cut social-feed native, not polished brand film.',
-      'Leave room for three fast hook variants.',
-    ],
-    comments: [
-      {
-        authorId: 'naomi',
-        body: 'Need at least one version that feels more pain-story than direct sell.',
-        hoursAfterEnter: 4,
-      },
-      {
-        authorId: 'ezequiel',
-        body: 'Hook options are in progress. I am re-cutting the first 5 seconds today.',
-        hoursAfterEnter: 22,
-      },
-    ],
-  },
-  {
-    testId: 'T-004',
-    title: 'Net new PDP for Pluxy',
-    assigneeId: 'daniel',
-    stage: 'in_production',
-    brand: 'Pluxy',
-    type: 'Landing Page',
-    ageDays: 14,
-    briefLead:
-      'Build a new PDP direction for Pluxy that sharpens the conversion narrative.',
-    bullets: [
-      'Use stronger proof blocks above the fold.',
-      'Clarify who the page is for before deep feature detail.',
-      'Design for paid traffic first, not organic browsing.',
-    ],
-  },
-  {
-    testId: 'T-005',
-    title: 'Listicle advertorial (7 reasons why)',
-    assigneeId: 'shita',
-    stage: 'in_production',
-    brand: 'Pluxy',
-    type: 'Landing Page',
-    ageDays: 14,
-    briefLead:
-      'Create a listicle advertorial format that feels editorial but still drives action.',
-    bullets: [
-      'Use an easy-to-scan list structure.',
-      'Make the visual hierarchy feel article-first.',
-      'Keep transition points tight so the page never feels bloated.',
-    ],
-  },
-  {
-    testId: 'T-008',
-    title: 'Relaunch ID575 with winner H6 hook',
-    assigneeId: 'joe',
-    stage: 'in_production',
-    brand: 'Pluxy',
-    type: 'Creative',
-    ageDays: 6,
-    briefLead:
-      'Rebuild the winning H6 hook into a launch-ready relaunch package for ID575.',
-    bullets: [
-      'Preserve what made the original hook work.',
-      'Refresh pacing and scene selection to avoid fatigue.',
-      'Export a main cut plus two quick alternates.',
-    ],
-  },
-  {
-    testId: 'T-010',
-    title: 'P002 black women for AppLovin',
-    assigneeId: 'daniel',
-    stage: 'ready',
-    brand: 'Pluxy',
-    type: 'Creative',
-    ageDays: 1,
-    briefLead:
-      'Package the AppLovin version for the black women angle so it is ready to launch.',
-    bullets: [
-      'Keep the headline emotionally direct.',
-      'Make the proof moments land earlier.',
-      'Deliver a version that can move straight into launch ops.',
-    ],
-  },
-  {
-    testId: 'T-011',
-    title: 'Unboxing video fix: music + pacing',
-    assigneeId: 'daniel',
-    stage: 'briefed',
-    brand: 'Pluxy',
-    type: 'Creative',
-    ageDays: 5,
-    briefLead:
-      'Tighten the current unboxing cut so the rhythm feels more premium and less choppy.',
-    bullets: [
-      'Smooth the music transitions between scenes.',
-      'Remove the dead space from 12 to 30 seconds.',
-      'Hold the strongest product reveal beat longer.',
-    ],
-    comments: [
-      {
-        authorId: 'naomi',
-        body: 'Please fix the music timing in the 12-30 second section before moving this forward.',
-        hoursAfterEnter: 3,
-      },
-    ],
-  },
-  {
-    testId: 'T-012',
-    title: 'BB Company/Miami MD exposed statics',
-    assigneeId: 'naomi',
-    stage: 'backlog',
-    brand: 'Pluxy',
-    type: 'Creative',
-    ageDays: 6,
-    briefLead:
-      'Explore exposed-style statics inspired by BB Company and Miami MD references.',
-    bullets: [
-      'Pull reference patterns from proven exposed creative.',
-      'Keep the copy short and punchy.',
-      'Leave room to turn this into a full brief later.',
-    ],
-  },
-  {
-    testId: 'T-013',
-    title: 'Geo-localized LP (AU/UK/CA)',
-    assigneeId: 'daniel',
-    stage: 'briefed',
-    brand: 'Pluxy',
-    type: 'Landing Page',
-    ageDays: 0,
-    briefLead:
-      'Adapt the landing page for AU, UK, and CA with localized trust and offer framing.',
-    bullets: [
-      'Swap region-specific proof and shipping cues.',
-      'Keep one clean page structure across markets.',
-      'Flag any region where legal copy needs review.',
-    ],
-  },
-  {
-    testId: 'T-023',
-    title: 'Black women advertorial page',
-    assigneeId: 'daniel',
-    stage: 'in_production',
-    brand: 'Pluxy',
-    type: 'Landing Page',
-    ageDays: 6,
-    briefLead:
-      'Build the advertorial page version tailored to the black women angle.',
-    bullets: [
-      'Let the story do more of the persuasion than the hard pitch.',
-      'Make testimonials feel matched to the audience.',
-      'Keep the CTA placement clear but not intrusive.',
-    ],
-  },
-  {
-    testId: 'T-025',
-    title: 'Launch black women LP with top creative',
-    assigneeId: null,
-    stage: 'backlog',
-    brand: 'Pluxy',
-    type: 'Landing Page',
-    ageDays: 0,
-    briefLead:
-      'Prepare the launch package once the best black women creative is chosen.',
-    bullets: [
-      'Align the page with the winning hook.',
-      'Make the launch handoff clean for Ivan.',
-      'Keep this parked until the creative decision is locked.',
-    ],
-  },
-  {
-    testId: 'T-014',
-    title: '3 iterations winning VV scripts',
-    assigneeId: 'joe',
-    stage: 'in_production',
-    brand: 'Vivi',
-    type: 'Creative',
-    ageDays: 13,
-    briefLead:
-      'Write and cut three new iterations off the current winning Vivi scripts.',
-    bullets: [
-      'Push one version further into mechanism.',
-      'Keep one version punchier and faster.',
-      'Maintain the winning insight while changing surface execution.',
-    ],
-    comments: [
-      {
-        authorId: 'joe',
-        body: 'Three hooks are drafted. I still need final voiceover timing on the strongest option.',
-        hoursAfterEnter: 12,
-      },
-    ],
-  },
-  {
-    testId: 'T-015',
-    title: 'Listicle advertorial for VV',
-    assigneeId: 'daniel',
-    stage: 'in_production',
-    brand: 'Vivi',
-    type: 'Landing Page',
-    ageDays: 14,
-    briefLead:
-      'Create a Vivi listicle advertorial that feels useful first and salesy second.',
-    bullets: [
-      'Lead with curiosity and symptom relevance.',
-      'Use the article format to slow the clicker down.',
-      'Keep the page readable on long-form paid traffic.',
-    ],
-  },
-  {
-    testId: 'T-016',
-    title: 'Resilia-inspired PDP for VV',
-    assigneeId: 'daniel',
-    stage: 'in_production',
-    brand: 'Vivi',
-    type: 'Landing Page',
-    ageDays: 21,
-    briefLead:
-      'Translate the strongest Resilia PDP cues into a Vivi-specific purchase flow.',
-    bullets: [
-      'Keep the structure modular so sections can be swapped later.',
-      'Make the proof stack feel credible and modern.',
-      'Sharpen how the product benefit unfolds down the page.',
-    ],
-    comments: [
-      {
-        authorId: 'naomi',
-        body: 'This one has been sitting too long. I need the first pass in review as soon as possible.',
-        hoursAfterEnter: 8,
-      },
-    ],
-  },
-  {
-    testId: 'T-019',
-    title: 'Launch winning videos via 3rd party page',
-    assigneeId: 'ivan',
-    stage: 'ready',
-    brand: 'Vivi',
-    type: 'Creative',
-    ageDays: 4,
-    briefLead:
-      'Package the current winning Vivi videos for the 3rd party page launch flow.',
-    bullets: [
-      'Confirm final assets and naming conventions.',
-      'Keep the launch checklist lightweight and clear.',
-      'Flag any missing URLs before this moves to live.',
-    ],
-  },
-  {
-    testId: 'T-020',
-    title: 'Day 1 vs Day 21 static iterations',
-    assigneeId: 'shita',
-    stage: 'briefed',
-    brand: 'Vivi',
-    type: 'Creative',
-    ageDays: 6,
-    briefLead:
-      'Explore static iterations around the Day 1 versus Day 21 story for Vivi.',
-    bullets: [
-      'Make the before-and-after journey instantly legible.',
-      'Test one clean educational version and one punchier ad version.',
-      'Use the copy to carry the transformation narrative.',
-    ],
-    comments: [
-      {
-        authorId: 'naomi',
-        body: 'I want one version that feels more like a diary update than a polished ad.',
-        hoursAfterEnter: 5,
-      },
-    ],
-  },
-  {
-    testId: 'T-021',
-    title: 'Acid pocket static iterations',
-    assigneeId: null,
-    stage: 'backlog',
-    brand: 'Vivi',
-    type: 'Creative',
-    ageDays: 6,
-    briefLead:
-      'Explore static concepts around the acid pocket angle for Vivi.',
-    bullets: [
-      'Keep the visual concept simple enough to brief quickly.',
-      'Test a few copy framings before full production.',
-      'Use this as a concept parking spot until assigned.',
-    ],
-  },
-  {
-    testId: 'T-022',
-    title: 'Reposition to long-term gut health',
-    assigneeId: null,
-    stage: 'backlog',
-    brand: 'Vivi',
-    type: 'Offer',
-    ageDays: 6,
-    briefLead:
-      'Reframe the Vivi offer around long-term gut health rather than short-term relief.',
-    bullets: [
-      'Clarify the strategic angle before production starts.',
-      'Map how the message changes on creative and landing pages.',
-      'Keep the brief flexible while the idea is still forming.',
-    ],
-  },
-  {
-    testId: 'T-026',
-    title: 'VV videos without raft mechanism',
-    assigneeId: null,
-    stage: 'backlog',
-    brand: 'Vivi',
-    type: 'Creative',
-    ageDays: 0,
-    briefLead:
-      'Develop Vivi video versions that work without leaning on the raft mechanism.',
-    bullets: [
-      'Find a stronger emotional or symptom-led angle.',
-      'Keep the structure simple enough to iterate fast.',
-      'Use this as a clean testing lane away from the current mechanism.',
-    ],
-  },
-  {
-    testId: 'T-027',
-    title: 'Make TSLs for Vivi',
-    assigneeId: null,
-    stage: 'backlog',
-    brand: 'Vivi',
-    type: 'Creative',
-    ageDays: 0,
-    briefLead:
-      'Create TSL concepts for Vivi that can support fresh creative testing.',
-    bullets: [
-      'Draft multiple top-line story approaches.',
-      'Keep the structure easy to hand off into production.',
-      'Focus on ideas that can scale into several ad variations.',
-    ],
-  },
-]
-
-function createSeedBoardState(): BoardState {
-  const tasks = Object.fromEntries(
-    SEED_TASKS.map((seed) => {
-      const task = buildSeedTask(seed)
-      return [task.id, task]
-    }),
-  )
-  const columns = createEmptyColumns()
-
-  for (const seed of SEED_TASKS) {
-    const taskId = `task-${seed.testId.toLowerCase()}`
-    const containerId = getCanonicalContainerId(seed.stage, seed.assigneeId)
-    columns[containerId] = [...(columns[containerId] ?? []), taskId]
-  }
-
+function appendActivity(card: Card, entry: ActivityEntry) {
   return {
-    tasks,
-    columns,
-    settings: {
-      wipLimits: {
-        naomi: 3,
-        daniel: 3,
-        joe: 3,
-        ezequiel: 3,
-        bryan: 3,
-        shita: 3,
-        ivan: 3,
-        iskander: 3,
-      },
-    },
+    ...card,
+    activityLog: [entry, ...card.activityLog],
   }
 }
 
-function normalizeBoardState(raw: BoardState): BoardState {
-  const fresh = createSeedBoardState()
-  const columns = createEmptyColumns()
-
-  for (const [columnId, taskIds] of Object.entries(raw.columns ?? {})) {
-    columns[columnId] = [...taskIds]
-  }
-
-  return {
-    tasks: raw.tasks ?? fresh.tasks,
-    columns,
-    settings: {
-      wipLimits: {
-        ...fresh.settings.wipLimits,
-        ...(raw.settings?.wipLimits ?? {}),
-      },
-    },
-  }
+export function formatDateShort(isoString: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(isoString))
 }
 
-export function loadBoardState() {
-  if (typeof window === 'undefined') {
-    return createSeedBoardState()
-  }
-
-  try {
-    const saved = window.localStorage.getItem(STORAGE_KEY)
-
-    if (!saved) {
-      return createSeedBoardState()
-    }
-
-    return normalizeBoardState(JSON.parse(saved) as BoardState)
-  } catch {
-    return createSeedBoardState()
-  }
-}
-
-export function persistBoardState(state: BoardState) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-}
-
-function getCurrentStageEntry(task: Task) {
-  return task.stageHistory[task.stageHistory.length - 1]
-}
-
-export function getTaskTimeInStageMs(task: Task, nowMs = Date.now()) {
-  const currentStage = getCurrentStageEntry(task)
-  return nowMs - new Date(currentStage?.enteredAt ?? task.createdAt).getTime()
-}
-
-export function getAgeToneFromMs(durationMs: number): AgeTone {
-  const dayCount = durationMs / DAY_MS
-
-  if (dayCount >= 5) {
-    return 'stuck'
-  }
-
-  if (dayCount >= 3) {
-    return 'aging'
-  }
-
-  return 'fresh'
-}
-
-export function formatDurationShort(durationMs: number) {
-  if (durationMs < DAY_MS) {
-    return `${Math.max(1, Math.floor(durationMs / HOUR_MS) || 1)}h`
-  }
-
-  return `${Math.max(1, Math.floor(durationMs / DAY_MS))}d`
-}
-
-export function formatDateLabel(isoString: string) {
-  return new Intl.DateTimeFormat('en', {
+export function formatDateLong(isoString: string) {
+  return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(isoString))
 }
 
-export function formatDateTimeLabel(isoString: string) {
-  return new Intl.DateTimeFormat('en', {
+export function formatDateTime(isoString: string) {
+  return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
@@ -941,557 +701,2278 @@ export function formatDateTimeLabel(isoString: string) {
   }).format(new Date(isoString))
 }
 
-function getEntryDurationMs(entry: StageEntry, nowMs = Date.now()) {
-  const endTime = entry.exitedAt ? new Date(entry.exitedAt).getTime() : nowMs
-  const startTime = new Date(entry.enteredAt).getTime()
-  return endTime - startTime
+export function formatDurationShort(durationMs: number) {
+  if (durationMs < DAY_MS) {
+    return `${Math.max(1, Math.floor(durationMs / HOUR_MS) || 1)}h`
+  }
+
+  return `${Math.max(1, Math.round(durationMs / DAY_MS))}d`
 }
 
-export function getStageHistorySegments(task: Task, nowMs = Date.now()) {
-  return task.stageHistory.map((entry, index) => {
-    const durationMs = getEntryDurationMs(entry, nowMs)
+export function getCardAgeMs(card: Card, nowMs = Date.now()) {
+  return nowMs - new Date(card.stageEnteredAt).getTime()
+}
 
-    return {
-      stage: entry.stage,
-      durationMs,
-      durationLabel: formatDurationShort(durationMs),
-      tone: getAgeToneFromMs(durationMs),
-      movedBack: entry.transitionKind === 'moved_back',
-      isCurrent: index === task.stageHistory.length - 1,
-    } satisfies StageHistorySegment
+export function getAgeToneFromMs(
+  durationMs: number,
+  settings?: GlobalSettings,
+): AgeTone {
+  const days = durationMs / DAY_MS
+  const amberStart = settings?.general.timeInStageThresholds.amberStart ?? 3
+  const redStart = settings?.general.timeInStageThresholds.redStart ?? 5
+
+  if (days >= redStart) {
+    return 'stuck'
+  }
+  if (days >= amberStart) {
+    return 'aging'
+  }
+  return 'fresh'
+}
+
+export function getDueStatus(card: Card, nowMs = Date.now()) {
+  if (!card.dueDate) {
+    return 'none' as const
+  }
+
+  const diff = startOfDayMs(new Date(card.dueDate).getTime()) - startOfDayMs(nowMs)
+  if (diff < 0) {
+    return 'overdue' as const
+  }
+  if (diff <= 2 * DAY_MS) {
+    return 'soon' as const
+  }
+  return 'none' as const
+}
+
+export function getRevisionCount(card: Card) {
+  return card.stageHistory.filter((entry) => entry.movedBack).length
+}
+
+export function getBrandByName(portfolio: Portfolio, brandName: string) {
+  return portfolio.brands.find((brand) => brand.name === brandName) ?? null
+}
+
+export function getBrandColor(portfolio: Portfolio, brandName: string) {
+  return getBrandByName(portfolio, brandName)?.color ?? '#94a3b8'
+}
+
+export function getBrandSurface(portfolio: Portfolio, brandName: string) {
+  return getBrandByName(portfolio, brandName)?.surfaceColor ?? '#f3f4f6'
+}
+
+export function getBrandTextColor(portfolio: Portfolio, brandName: string) {
+  return getBrandByName(portfolio, brandName)?.textColor ?? '#475569'
+}
+
+export function getTaskTypeById(settings: GlobalSettings, taskTypeId: string) {
+  return (
+    settings.taskLibrary.find((taskType) => taskType.id === taskTypeId) ??
+    settings.taskLibrary.find((taskType) => taskType.id === 'custom') ??
+    settings.taskLibrary[0]
+  )
+}
+
+export function getTaskTypeGroups(settings: GlobalSettings) {
+  const grouped = new Map<TaskTypeCategory, TaskType[]>()
+  settings.taskLibrary
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((taskType) => {
+      const bucket = grouped.get(taskType.category) ?? []
+      bucket.push(taskType)
+      grouped.set(taskType.category, bucket)
+    })
+
+  return TASK_TYPE_CATEGORIES.map((category) => ({
+    category,
+    items: grouped.get(category) ?? [],
+  })).filter((group) => group.items.length > 0)
+}
+
+export function getTeamMemberById(portfolio: Portfolio, memberId: string | null) {
+  if (!memberId) {
+    return null
+  }
+  return portfolio.team.find((member) => member.id === memberId) ?? null
+}
+
+export function getTeamMemberByName(portfolio: Portfolio, name: string | null) {
+  if (!name) {
+    return null
+  }
+  return portfolio.team.find((member) => member.name === name) ?? null
+}
+
+export function getAssignableMembers(portfolio: Portfolio) {
+  return portfolio.team.filter((member) => member.active && !isManagerRole(member.role))
+}
+
+export function getEditorOptions(portfolio: Portfolio) {
+  return getAssignableMembers(portfolio)
+}
+
+export function getCardFolderName(card: Card) {
+  return `${card.id}_${sanitizeSegment(card.product)}`
+}
+
+export function generateSheetName(
+  card: Pick<Card, 'id' | 'product' | 'platform' | 'hook' | 'angle' | 'funnelStage'>,
+) {
+  const left = [card.id, sanitizeSegment(card.product), sanitizeSegment(card.platform)]
+    .filter(Boolean)
+    .join('_')
+  const right = [card.hook, card.angle, card.funnelStage]
+    .map((value) => sanitizeSegment(value))
+    .filter(Boolean)
+    .join('_')
+
+  return right ? `${left}__${right}` : left
+}
+
+export function generateAdName(
+  card: Pick<Card, 'id' | 'title' | 'hook' | 'angle' | 'audience' | 'owner' | 'brand' | 'funnelStage'>,
+) {
+  return [
+    card.funnelStage,
+    card.hook || card.title,
+    card.angle || card.title,
+    card.audience || card.owner || card.brand,
+    card.id,
+  ]
+    .filter((value) => value && value.trim().length > 0)
+    .join(' | ')
+}
+
+export function syncGeneratedNames(card: Card) {
+  if (card.legacyNaming) {
+    return card
+  }
+
+  return {
+    ...card,
+    generatedSheetName: generateSheetName(card),
+    generatedAdName: generateAdName(card),
+  }
+}
+
+function createStageHistoryEntry(
+  stage: StageId,
+  enteredAtMs: number,
+  exitedAtMs: number | null,
+  movedBack = false,
+  revisionReason?: string,
+): StageHistoryEntry {
+  return {
+    stage,
+    enteredAt: new Date(enteredAtMs).toISOString(),
+    exitedAt: exitedAtMs === null ? null : new Date(exitedAtMs).toISOString(),
+    durationDays:
+      exitedAtMs === null ? null : roundToTenths((exitedAtMs - enteredAtMs) / DAY_MS),
+    movedBack,
+    revisionReason,
+  }
+}
+
+function buildDefaultStageHistory(stage: StageId, dateCreated: string) {
+  const createdAtMs = new Date(dateCreated).getTime()
+  const totalDays = Math.max(0.2, (getReferenceNowMs() - createdAtMs) / DAY_MS)
+  const stages = STAGES.slice(0, STAGES.indexOf(stage) + 1)
+  const baseDurations = getHistoryBaseDurations(stage)
+  const totalBase = baseDurations.reduce((sum, duration) => sum + duration, 0)
+  const durations =
+    totalDays >= totalBase
+      ? baseDurations.map((duration, index) =>
+          index === baseDurations.length - 1
+            ? duration + (totalDays - totalBase)
+            : duration,
+        )
+      : baseDurations.map((duration) => (duration / totalBase) * totalDays)
+
+  let cursorMs = createdAtMs
+  return stages.map((entryStage, index) => {
+    const durationMs = durations[index] * DAY_MS
+    const isLast = index === stages.length - 1
+    const enteredAtMs = cursorMs
+    const exitedAtMs = isLast ? null : cursorMs + durationMs
+    cursorMs += durationMs
+    return createStageHistoryEntry(entryStage, enteredAtMs, exitedAtMs)
   })
 }
 
-export function getStageHistoryLabel(task: Task, nowMs = Date.now()) {
-  return getStageHistorySegments(task, nowMs)
-    .map((entry) => {
-      const movedBackLabel = entry.movedBack ? ' moved back' : ''
-      return `${STAGE_LABELS[entry.stage]} (${entry.durationLabel}${movedBackLabel})`
+function inferTaskTypeId(
+  taskLibrary: TaskType[],
+  legacyType: string,
+  legacyTitle: string,
+  legacyVideoType: string,
+) {
+  if (legacyType === 'Landing Page') {
+    return 'landing-page'
+  }
+  if (legacyType === 'Offer') {
+    return 'offer'
+  }
+  if (legacyType === 'Video') {
+    if (legacyVideoType.includes('1-2 min')) {
+      return 'video-ugc-medium'
+    }
+    if (legacyVideoType.toLowerCase().includes('relaunch')) {
+      return 'video-relaunch'
+    }
+    return 'video-ugc-short'
+  }
+  if (legacyType === 'Static') {
+    return legacyTitle.toLowerCase().includes('statics') ? 'static-set' : 'static-single'
+  }
+
+  return taskLibrary.find((taskType) => taskType.id === 'custom')?.id ?? taskLibrary[0].id
+}
+
+function createSeedTaskLibrary(): TaskType[] {
+  const definitions: Array<Omit<TaskType, 'order'>> = [
+    {
+      id: 'video-ugc-short',
+      name: 'Video (UGC < 1 min)',
+      category: 'Creative',
+      icon: '🎬',
+      color: '#e0f2fe',
+      textColor: '#0284c7',
+      estimatedHours: 8,
+      requiredFields: ['hook', 'angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage'],
+      isDefault: true,
+    },
+    {
+      id: 'video-ugc-medium',
+      name: 'Video (UGC 1-2 min)',
+      category: 'Creative',
+      icon: '🎬',
+      color: '#bfdbfe',
+      textColor: '#1d4ed8',
+      estimatedHours: 16,
+      requiredFields: ['hook', 'angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage'],
+      isDefault: true,
+    },
+    {
+      id: 'video-relaunch',
+      name: 'Video (Relaunch)',
+      category: 'Creative',
+      icon: '🔄',
+      color: '#dbeafe',
+      textColor: '#2563eb',
+      estimatedHours: 4,
+      requiredFields: ['hook', 'funnelStage'],
+      optionalFields: ['angle', 'audience'],
+      isDefault: true,
+    },
+    {
+      id: 'static-single',
+      name: 'Static (Single)',
+      category: 'Creative',
+      icon: '🖼',
+      color: '#fef3c7',
+      textColor: '#d97706',
+      estimatedHours: 4,
+      requiredFields: ['hook'],
+      optionalFields: ['angle', 'audience', 'funnelStage'],
+      isDefault: true,
+    },
+    {
+      id: 'static-set',
+      name: 'Static (Set)',
+      category: 'Creative',
+      icon: '🖼',
+      color: '#fde68a',
+      textColor: '#b45309',
+      estimatedHours: 8,
+      requiredFields: ['hook'],
+      optionalFields: ['angle', 'audience', 'funnelStage'],
+      isDefault: true,
+    },
+    {
+      id: 'landing-page',
+      name: 'Landing Page',
+      category: 'Page',
+      icon: '📄',
+      color: '#fce7f3',
+      textColor: '#db2777',
+      estimatedHours: 20,
+      requiredFields: ['product', 'platform'],
+      optionalFields: ['landingPage', 'dueDate'],
+      isDefault: true,
+    },
+    {
+      id: 'offer',
+      name: 'Offer',
+      category: 'Strategy',
+      icon: '🏷',
+      color: '#f3f4f6',
+      textColor: '#6b7280',
+      estimatedHours: 12,
+      requiredFields: ['funnelStage'],
+      optionalFields: ['audience', 'dueDate'],
+      isDefault: true,
+    },
+    {
+      id: 'ad-copy',
+      name: 'Ad Copy',
+      category: 'Copy',
+      icon: '✍️',
+      color: '#dcfce7',
+      textColor: '#15803d',
+      estimatedHours: 3,
+      requiredFields: ['funnelStage'],
+      optionalFields: ['hook', 'angle', 'audience'],
+      isDefault: true,
+    },
+    {
+      id: 'launch-prep',
+      name: 'Launch Prep',
+      category: 'Ops',
+      icon: '🚀',
+      color: '#ede9fe',
+      textColor: '#7c3aed',
+      estimatedHours: 2,
+      requiredFields: ['dueDate'],
+      optionalFields: ['platform'],
+      isDefault: true,
+    },
+    {
+      id: 'custom',
+      name: 'Custom',
+      category: 'Other',
+      icon: '⚡',
+      color: '#e5e7eb',
+      textColor: '#4b5563',
+      estimatedHours: 5,
+      requiredFields: [],
+      optionalFields: ['hook', 'angle', 'funnelStage', 'audience', 'landingPage'],
+      isDefault: true,
+      locked: true,
+    },
+  ]
+
+  return definitions.map((definition, index) => ({
+    ...definition,
+    order: index,
+  }))
+}
+
+function createBrand(
+  name: string,
+  prefix: string,
+  products: string[],
+  index: number,
+  driveParentFolderId = '',
+): Brand {
+  const palette = BRAND_PALETTES[index % BRAND_PALETTES.length]
+  return {
+    name,
+    prefix,
+    products,
+    driveParentFolderId,
+    color: palette.color,
+    surfaceColor: palette.surfaceColor,
+    textColor: palette.textColor,
+  }
+}
+
+function createSeedActivity(
+  actor: string,
+  message: string,
+  type: ActivityEntry['type'],
+  timestamp: string,
+) {
+  return createActivityEntry(actor, message, type, timestamp)
+}
+
+function inflateSeedCard(
+  taskLibrary: TaskType[],
+  seed: {
+    id: string
+    title: string
+    brand: string
+    product: string
+    platform: Platform
+    type: string
+    videoType?: string
+    hook?: string
+    angle?: string
+    audience?: string
+    awarenessLevel?: string
+    funnelStage: FunnelStage
+    owner: string | null
+    stage: StageId
+    dateAssigned: string
+    dateCreated?: string
+    brief?: string
+    comments?: CommentEntry[]
+    attachments?: Attachment[]
+    frameioLink?: string
+    driveFolderUrl?: string
+    note?: string
+    generatedSheetName?: string
+    generatedAdName?: string
+    customStageHistory?: StageHistoryEntry[]
+    dueDate?: string
+  },
+): Card {
+  const dateCreated = seed.dateCreated ?? seed.dateAssigned
+  const taskTypeId = inferTaskTypeId(taskLibrary, seed.type, seed.title, seed.videoType ?? '')
+  const taskType = taskLibrary.find((item) => item.id === taskTypeId) ?? taskLibrary[0]
+  const stageHistory = seed.customStageHistory ?? buildDefaultStageHistory(seed.stage, dateCreated)
+  const stageEnteredAt = stageHistory[stageHistory.length - 1]?.enteredAt ?? `${dateCreated}T00:00:00Z`
+  const activityLog = [
+    createSeedActivity('Naomi', 'created this card', 'created', `${dateCreated}T00:00:00Z`),
+  ]
+
+  if (seed.owner) {
+    activityLog.unshift(
+      createSeedActivity(
+        'Naomi',
+        `assigned to ${seed.owner}`,
+        'assigned',
+        `${seed.dateAssigned}T09:00:00Z`,
+      ),
+    )
+  }
+
+  if (seed.frameioLink) {
+    activityLog.unshift(
+      createSeedActivity(
+        seed.owner ?? 'Editor',
+        'added Frame.io review link',
+        'frameio',
+        `${seed.dateAssigned}T12:00:00Z`,
+      ),
+    )
+  }
+
+  const card: Card = {
+    id: seed.id,
+    title: seed.title,
+    brand: seed.brand,
+    product: seed.product,
+    platform: seed.platform,
+    taskTypeId,
+    hook: seed.hook ?? '',
+    angle: seed.angle ?? '',
+    audience: seed.audience ?? '',
+    awarenessLevel: seed.awarenessLevel ?? '',
+    landingPage: '',
+    funnelStage: seed.funnelStage,
+    generatedSheetName: seed.generatedSheetName ?? seed.title,
+    generatedAdName:
+      seed.generatedAdName ??
+      generateAdName({
+        id: seed.id,
+        title: seed.title,
+        hook: seed.hook ?? '',
+        angle: seed.angle ?? '',
+        audience: seed.audience ?? '',
+        owner: seed.owner,
+        brand: seed.brand,
+        funnelStage: seed.funnelStage,
+      }),
+    owner: seed.stage === 'Backlog' ? null : seed.owner,
+    stage: seed.stage,
+    stageEnteredAt,
+    stageHistory,
+    brief: seed.brief ?? '',
+    comments: seed.comments ?? [],
+    attachments: seed.attachments ?? [],
+    driveFolderUrl: seed.driveFolderUrl ?? '',
+    driveFolderCreated: Boolean(seed.driveFolderUrl),
+    frameioLink: seed.frameioLink ?? '',
+    dateAssigned: seed.dateAssigned,
+    dateCreated,
+    positionInSection: 0,
+    estimatedHours: taskType.estimatedHours,
+    dueDate: seed.dueDate ?? null,
+    blocked: null,
+    archivedAt: null,
+    activityLog,
+    note: seed.note,
+    legacyNaming: true,
+  }
+
+  return card
+}
+
+interface ImportedCardSeed {
+  id: string
+  generatedSheetName: string
+  title: string
+  brand: string
+  product: string
+  platform: string
+  type: string
+  videoType?: string
+  hook?: string
+  audience?: string
+  angle?: string
+  funnelStage?: string
+  owner: string | null
+  stage: StageId
+  dateAssigned: string
+  driveFolderUrl?: string
+  driveFolderCreated?: boolean
+  reviewLink?: string
+  frameioLink?: string
+  briefDoc?: string
+  comments?: CommentEntry[]
+  attachments?: Attachment[]
+}
+
+function toImportedPlatform(value: string): Platform {
+  if (PLATFORMS.includes(value as Platform)) {
+    return value as Platform
+  }
+
+  return 'Other'
+}
+
+function createImportedSeedCard(
+  taskLibrary: TaskType[],
+  seed: ImportedCardSeed,
+): Card {
+  const attachments = [...(seed.attachments ?? [])]
+  const stageEnteredAt = `${seed.dateAssigned}T00:00:00.000Z`
+
+  if (seed.reviewLink && !seed.frameioLink) {
+    attachments.unshift({
+      label: seed.reviewLink.includes('figma.com')
+        ? 'Design Review'
+        : seed.reviewLink.includes('drive.google.com')
+          ? 'Review Folder'
+          : 'Review Link',
+      url: seed.reviewLink,
     })
-    .join(' -> ')
+  }
+
+  if (seed.briefDoc?.startsWith('http')) {
+    attachments.unshift({
+      label: 'Brief Doc',
+      url: seed.briefDoc,
+    })
+  }
+
+  return inflateSeedCard(taskLibrary, {
+    id: seed.id,
+    title: seed.title,
+    brand: seed.brand,
+    product: seed.product,
+    platform: toImportedPlatform(seed.platform),
+    type: seed.type,
+    videoType: seed.videoType ?? '',
+    hook: seed.hook ?? '',
+    angle: seed.angle ?? '',
+    audience: '',
+    funnelStage: 'Cold',
+    owner: seed.owner ?? null,
+    stage: seed.stage,
+    dateAssigned: seed.dateAssigned,
+    dateCreated: seed.dateAssigned,
+    brief: seed.briefDoc && !seed.briefDoc.startsWith('http') ? seed.briefDoc : '',
+    comments: seed.comments ?? [],
+    attachments,
+    frameioLink: seed.frameioLink ?? '',
+    driveFolderUrl: seed.driveFolderUrl ?? '',
+    note: seed.briefDoc,
+    generatedSheetName: seed.generatedSheetName,
+    customStageHistory: buildCustomHistory([
+      {
+        stage: seed.stage,
+        enteredAt: stageEnteredAt,
+        exitedAt: null,
+      },
+    ]),
+  })
 }
 
-export function matchesTaskFilters(task: Task, filters: TaskFilters = {}) {
-  const brandIds = filters.brands ?? []
-  const editorIds = filters.editors ?? []
+function reindexCards(cards: Card[]) {
+  const grouped = new Map<string, Card[]>()
 
-  const matchesBrand =
-    brandIds.length === 0 || brandIds.length === BRAND_IDS.length
-      ? true
-      : brandIds.includes(task.brand)
-  const matchesEditor =
-    editorIds.length === 0
-      ? true
-      : task.assigneeId !== null && editorIds.includes(task.assigneeId)
+  for (const card of cards) {
+    const laneId = card.archivedAt
+      ? getLaneId('Archived', null)
+      : getLaneId(card.stage, card.owner)
+    const laneCards = grouped.get(laneId) ?? []
+    laneCards.push(card)
+    grouped.set(laneId, laneCards)
+  }
 
-  return matchesBrand && matchesEditor
+  for (const laneCards of grouped.values()) {
+    laneCards
+      .sort((left, right) => {
+        if (left.positionInSection !== right.positionInSection) {
+          return left.positionInSection - right.positionInSection
+        }
+        if (left.dateCreated !== right.dateCreated) {
+          return left.dateCreated.localeCompare(right.dateCreated)
+        }
+        return left.id.localeCompare(right.id)
+      })
+      .forEach((card, index) => {
+        card.positionInSection = index
+      })
+  }
+
+  return cards
 }
 
-export function filterTasks(state: BoardState, filters: TaskFilters = {}) {
-  return Object.values(state.tasks).filter((task) => matchesTaskFilters(task, filters))
+function getLastIdPerPrefix(brands: Brand[], cards: Card[]) {
+  const lastIdPerPrefix: Record<string, number> = {}
+
+  for (const brand of brands) {
+    lastIdPerPrefix[brand.prefix] = 0
+  }
+
+  for (const card of cards) {
+    const brand = brands.find((item) => item.name === card.brand)
+    if (!brand) {
+      continue
+    }
+
+    const numericPart = Number(card.id.replace(brand.prefix, ''))
+    if (!Number.isNaN(numericPart)) {
+      lastIdPerPrefix[brand.prefix] = Math.max(lastIdPerPrefix[brand.prefix] ?? 0, numericPart)
+    }
+  }
+
+  return lastIdPerPrefix
 }
 
-export function getBoardStats(
-  state: BoardState,
-  filters: TaskFilters = {},
+function buildCustomHistory(entries: Array<{
+  stage: StageId
+  enteredAt: string
+  exitedAt: string | null
+  movedBack?: boolean
+  revisionReason?: string
+}>) {
+  return entries.map((entry) =>
+    createStageHistoryEntry(
+      entry.stage,
+      new Date(entry.enteredAt).getTime(),
+      entry.exitedAt ? new Date(entry.exitedAt).getTime() : null,
+      entry.movedBack ?? false,
+      entry.revisionReason,
+    ),
+  )
+}
+
+function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
+  const brandLabBrands = [
+    createBrand('Pluxy', 'PX', ['Epil Pro 3.0'], 0),
+    createBrand('ViVi', 'VV', ['UltraGut'], 1),
+    createBrand('TrueClean', 'TC', ['Toilet Cleaner'], 2),
+  ]
+  const importedCards = importedCardsSeed as ImportedCardSeed[]
+  const brandLabCards = reindexCards(
+    importedCards.map((card) => createImportedSeedCard(taskLibrary, card)),
+  )
+
+  const brandLab: Portfolio = {
+    id: 'portfolio-brandlab',
+    name: 'BrandLab',
+    brands: brandLabBrands,
+    team: [
+      createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null),
+      createDefaultTeamMember('daniel-t', 'Daniel T', 'Editor', 15, 6, 3),
+      createDefaultTeamMember('jo', 'Jo', 'Editor', 15, 6, 3),
+      createDefaultTeamMember('ezequiel', 'Ezequiel', 'Editor', 15, 6, 3),
+      createDefaultTeamMember('bryan', 'Bryan', 'Editor', 15, 6, 3),
+      createDefaultTeamMember('charit', 'Charit', 'Designer', 15, 6, 3),
+      createDefaultTeamMember('shita', 'Shita', 'Designer', 15, 6, 3),
+      createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 10, 3, 2),
+    ],
+    cards: brandLabCards,
+    webhookUrl: '',
+    lastIdPerPrefix: getLastIdPerPrefix(brandLabBrands, brandLabCards),
+  }
+
+  return [brandLab]
+}
+
+export function createSeedState(): AppState {
+  const taskLibrary = createSeedTaskLibrary()
+  const portfolios = createSeedPortfolios(taskLibrary)
+
+  return {
+    portfolios,
+    settings: {
+      general: {
+        appName: 'Creative Board',
+        theme: 'light',
+        defaultPortfolioId: portfolios[0]?.id ?? '',
+        timeInStageThresholds: {
+          amberStart: 3,
+          redStart: 5,
+        },
+        autoArchiveEnabled: true,
+        autoArchiveDays: 14,
+      },
+      capacity: {
+        defaultWeeklyHours: 40,
+        utilizationThresholds: {
+          greenMax: 70,
+          yellowMax: 90,
+          redMin: 90,
+        },
+      },
+      taskLibrary,
+      integrations: {
+        globalDriveWebhookUrl: '',
+      },
+    },
+    activePortfolioId: portfolios[0]?.id ?? '',
+    activeRole: {
+      mode: 'manager',
+      editorId: 'daniel-t',
+    },
+    activePage: 'board',
+    version: STATE_VERSION,
+  }
+}
+
+function ensureManagerMember(portfolio: Portfolio) {
+  if (portfolio.team.some((member) => isManagerRole(member.role))) {
+    return portfolio
+  }
+
+  return {
+    ...portfolio,
+    team: [createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null), ...portfolio.team],
+  }
+}
+
+function normalizeTaskLibrary(raw: TaskType[] | undefined) {
+  const seed = createSeedTaskLibrary()
+  const source = Array.isArray(raw) && raw.length > 0 ? raw : seed
+
+  const taskLibrary = source.map((taskType, index) => ({
+    ...taskType,
+    requiredFields: taskType.requiredFields ?? [],
+    optionalFields: taskType.optionalFields ?? [],
+    order: typeof taskType.order === 'number' ? taskType.order : index,
+  }))
+
+  if (!taskLibrary.some((taskType) => taskType.id === 'custom')) {
+    taskLibrary.push({
+      ...seed.find((taskType) => taskType.id === 'custom')!,
+      order: taskLibrary.length,
+    })
+  }
+
+  return taskLibrary
+}
+
+function normalizePortfolio(
+  portfolio: Portfolio,
+  taskLibrary: TaskType[],
+  settings: GlobalSettings,
+  portfolioIndex: number,
+): Portfolio {
+  const normalizedBrands = portfolio.brands.map((brand, index) => {
+    const fallback = BRAND_PALETTES[(portfolioIndex + index) % BRAND_PALETTES.length]
+    return {
+      ...brand,
+      products: [...brand.products],
+      driveParentFolderId: brand.driveParentFolderId ?? '',
+      color: brand.color ?? fallback.color,
+      surfaceColor: brand.surfaceColor ?? fallback.surfaceColor,
+      textColor: brand.textColor ?? fallback.textColor,
+    }
+  })
+
+  const normalizedTeam = ensureManagerMember({
+    ...portfolio,
+    team: portfolio.team.map((member) => ({
+      ...member,
+      weeklyHours:
+        typeof member.weeklyHours === 'number'
+          ? member.weeklyHours
+          : isManagerRole(member.role)
+            ? null
+            : settings.capacity.defaultWeeklyHours,
+      hoursPerDay:
+        typeof member.hoursPerDay === 'number'
+          ? member.hoursPerDay
+          : isManagerRole(member.role)
+            ? null
+            : 6,
+      workingDays:
+        Array.isArray(member.workingDays) && member.workingDays.length > 0
+          ? member.workingDays
+          : getDefaultWorkingDays(),
+      wipCap:
+        member.wipCap === undefined
+          ? (member as unknown as { wipLimit?: number | null }).wipLimit ?? null
+          : member.wipCap,
+      active: member.active ?? true,
+    })),
+  }).team
+
+  const normalizedCards = reindexCards(
+    portfolio.cards.map((rawCard) => {
+      const taskTypeId =
+        rawCard.taskTypeId ?? inferTaskTypeId(taskLibrary, 'Video', rawCard.title, '')
+      const taskType = getTaskTypeById({ ...settings, taskLibrary }, taskTypeId)
+      const activityLog =
+        rawCard.activityLog && rawCard.activityLog.length > 0
+          ? rawCard.activityLog
+          : [
+              createSeedActivity(
+                'Naomi',
+                'created this card',
+                'created',
+                `${rawCard.dateCreated}T00:00:00Z`,
+              ),
+            ]
+
+      return {
+        ...rawCard,
+        taskTypeId,
+        estimatedHours:
+          typeof rawCard.estimatedHours === 'number'
+            ? rawCard.estimatedHours
+            : typeof (rawCard as unknown as { effortPoints?: number }).effortPoints === 'number'
+              ? (rawCard as unknown as { effortPoints: number }).effortPoints
+              : taskType.estimatedHours,
+        dueDate: rawCard.dueDate ?? null,
+        blocked: rawCard.blocked ?? null,
+        archivedAt: rawCard.archivedAt ?? null,
+        activityLog,
+        stageEnteredAt:
+          rawCard.stageHistory[rawCard.stageHistory.length - 1]?.enteredAt ?? rawCard.stageEnteredAt,
+      }
+    }),
+  )
+
+  return {
+    ...portfolio,
+    brands: normalizedBrands,
+    team: normalizedTeam,
+    cards: normalizedCards,
+    webhookUrl: portfolio.webhookUrl ?? '',
+    lastIdPerPrefix: {
+      ...getLastIdPerPrefix(normalizedBrands, normalizedCards),
+      ...(portfolio.lastIdPerPrefix ?? {}),
+    },
+  }
+}
+
+function normalizeSettings(raw: Partial<GlobalSettings> | undefined, fallbackPortfolioId: string) {
+  const seed = createSeedState().settings
+  const taskLibrary = normalizeTaskLibrary(raw?.taskLibrary)
+
+  return {
+    general: {
+      ...seed.general,
+      ...(raw?.general ?? {}),
+      defaultPortfolioId:
+        raw?.general?.defaultPortfolioId ?? fallbackPortfolioId ?? seed.general.defaultPortfolioId,
+      timeInStageThresholds: {
+        ...seed.general.timeInStageThresholds,
+        ...(raw?.general?.timeInStageThresholds ?? {}),
+      },
+    },
+    capacity: {
+      ...seed.capacity,
+      ...(raw?.capacity ?? {}),
+      utilizationThresholds: {
+        ...seed.capacity.utilizationThresholds,
+        ...(raw?.capacity?.utilizationThresholds ?? {}),
+      },
+    },
+    taskLibrary,
+    integrations: {
+      ...seed.integrations,
+      ...(raw?.integrations ?? {}),
+    },
+  } satisfies GlobalSettings
+}
+
+export function coerceAppState(raw: unknown): AppState {
+  const seed = createSeedState()
+  if (!raw || typeof raw !== 'object') {
+    return seed
+  }
+
+  const candidate = raw as Partial<AppState>
+  const fallbackPortfolioId =
+    Array.isArray(candidate.portfolios) && candidate.portfolios[0]
+      ? candidate.portfolios[0].id
+      : seed.activePortfolioId
+  const settings = normalizeSettings(candidate.settings, fallbackPortfolioId)
+  const portfolios = Array.isArray(candidate.portfolios)
+    ? candidate.portfolios.map((portfolio, index) =>
+        normalizePortfolio(portfolio, settings.taskLibrary, settings, index),
+      )
+    : seed.portfolios
+
+  return {
+    portfolios,
+    settings,
+    activePortfolioId:
+      typeof candidate.activePortfolioId === 'string'
+        ? candidate.activePortfolioId
+        : settings.general.defaultPortfolioId,
+    activeRole:
+      candidate.activeRole &&
+      typeof candidate.activeRole === 'object' &&
+      ROLE_MODES.includes(candidate.activeRole.mode as RoleMode)
+        ? {
+            mode: candidate.activeRole.mode as RoleMode,
+            editorId:
+              typeof candidate.activeRole.editorId === 'string'
+                ? candidate.activeRole.editorId
+                : seed.activeRole.editorId,
+          }
+        : seed.activeRole,
+    activePage:
+      typeof candidate.activePage === 'string' && APP_PAGES.includes(candidate.activePage as AppPage)
+        ? (candidate.activePage as AppPage)
+        : seed.activePage,
+    version: STATE_VERSION,
+  }
+}
+
+export function loadAppState() {
+  if (typeof window === 'undefined') {
+    return createSeedState()
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return createSeedState()
+    }
+    return coerceAppState(JSON.parse(raw))
+  } catch {
+    return createSeedState()
+  }
+}
+
+export function persistAppState(state: AppState) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+}
+
+export function createEmptyPortfolio(name: string, existingCount: number): Portfolio {
+  return {
+    id: `portfolio-${slugify(name || `portfolio-${existingCount + 1}`)}-${Date.now()}`,
+    name: name || `Portfolio ${existingCount + 1}`,
+    brands: [],
+    team: [createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null)],
+    cards: [],
+    webhookUrl: '',
+    lastIdPerPrefix: {},
+  }
+}
+
+export function getActivePortfolio(state: AppState) {
+  if (state.activePortfolioId === ALL_PORTFOLIOS_ID) {
+    return null
+  }
+
+  return (
+    state.portfolios.find((portfolio) => portfolio.id === state.activePortfolioId) ??
+    state.portfolios[0] ??
+    null
+  )
+}
+
+export function getDefaultBoardFilters(portfolio: Portfolio | null): BoardFilters {
+  return {
+    brandNames: portfolio ? portfolio.brands.map((brand) => brand.name) : [],
+    ownerNames: [],
+    searchQuery: '',
+    overdueOnly: false,
+    stuckOnly: false,
+    blockedOnly: false,
+    showArchived: false,
+  }
+}
+
+export function getNextCardId(portfolio: Portfolio, brandName: string) {
+  const brand = getBrandByName(portfolio, brandName)
+  if (!brand) {
+    return 'XX0001'
+  }
+
+  const nextNumber = (portfolio.lastIdPerPrefix[brand.prefix] ?? 0) + 1
+  return `${brand.prefix}${String(nextNumber).padStart(4, '0')}`
+}
+
+export function getQuickCreateDefaults(portfolio: Portfolio, settings: GlobalSettings): QuickCreateInput {
+  return {
+    title: '',
+    brand: portfolio.brands[0]?.name ?? '',
+    taskTypeId: settings.taskLibrary[0]?.id ?? 'custom',
+  }
+}
+
+export function createCardFromQuickInput(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  input: QuickCreateInput,
+  actor: string,
+  createdAt = new Date().toISOString(),
+) {
+  const taskType = getTaskTypeById(settings, input.taskTypeId)
+  const brand = getBrandByName(portfolio, input.brand) ?? portfolio.brands[0] ?? null
+  const cardId = getNextCardId(portfolio, brand?.name ?? input.brand)
+  const dateOnly = createdAt.slice(0, 10)
+
+  const baseCard: Card = {
+    id: cardId,
+    title: input.title.trim(),
+    brand: brand?.name ?? input.brand,
+    product: brand?.products[0] ?? '',
+    platform: 'Meta',
+    taskTypeId: taskType.id,
+    hook: '',
+    angle: '',
+    audience: '',
+    awarenessLevel: '',
+    landingPage: '',
+    funnelStage: 'Cold',
+    generatedSheetName: '',
+    generatedAdName: '',
+    owner: null,
+    stage: 'Backlog',
+    stageEnteredAt: createdAt,
+    stageHistory: [
+      {
+        stage: 'Backlog',
+        enteredAt: createdAt,
+        exitedAt: null,
+        durationDays: null,
+      },
+    ],
+    brief: '',
+    comments: [],
+    attachments: [],
+    driveFolderUrl: '',
+    driveFolderCreated: false,
+    frameioLink: '',
+    dateAssigned: dateOnly,
+    dateCreated: dateOnly,
+    positionInSection: 0,
+    estimatedHours: taskType.estimatedHours,
+    dueDate: null,
+    blocked: null,
+    archivedAt: null,
+    activityLog: [
+      createActivityEntry(actor, 'created this card', 'created', createdAt),
+    ],
+    legacyNaming: false,
+  }
+
+  return syncGeneratedNames(baseCard)
+}
+
+function getOrderedLaneCards(
+  cards: Card[],
+  stage: BoardColumnId,
+  owner: string | null,
+) {
+  return cards
+    .filter((card) => {
+      if (stage === 'Archived') {
+        return card.archivedAt !== null
+      }
+
+      return card.archivedAt === null && card.stage === stage && getLaneOwner(stage, owner) === getLaneOwner(stage, card.owner)
+    })
+    .slice()
+    .sort((left, right) => {
+      if (left.positionInSection !== right.positionInSection) {
+        return left.positionInSection - right.positionInSection
+      }
+      if (stage === 'Archived' && left.archivedAt && right.archivedAt && left.archivedAt !== right.archivedAt) {
+        return right.archivedAt.localeCompare(left.archivedAt)
+      }
+      if (left.dateCreated !== right.dateCreated) {
+        return left.dateCreated.localeCompare(right.dateCreated)
+      }
+      return left.id.localeCompare(right.id)
+    })
+}
+
+function matchesSearch(card: Card, query: string) {
+  if (!query.trim()) {
+    return true
+  }
+
+  const normalized = query.toLowerCase()
+  const haystack = [
+    card.id,
+    card.title,
+    card.owner ?? '',
+    card.hook,
+    card.angle,
+    card.brief.replace(/<[^>]+>/g, ' '),
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  return haystack.includes(normalized)
+}
+
+export function getVisibleCards(
+  portfolio: Portfolio,
+  viewer: ViewerContext,
+  filters: BoardFilters,
+  settings: GlobalSettings,
   nowMs = Date.now(),
 ) {
-  const tasks = filterTasks(state, filters)
+  const visibleBrandNames =
+    filters.brandNames.length > 0
+      ? new Set(filters.brandNames)
+      : new Set(portfolio.brands.map((brand) => brand.name))
+  const visibleOwnerNames = new Set(filters.ownerNames)
 
-  const byStage = Object.fromEntries(
-    STAGES.map((stage) => [stage, 0]),
-  ) as Record<StageId, number>
-
-  let stuck = 0
-  for (const task of tasks) {
-    byStage[task.stage] += 1
-    if (getAgeToneFromMs(getTaskTimeInStageMs(task, nowMs)) === 'stuck') {
-      stuck += 1
+  return portfolio.cards.filter((card) => {
+    const archived = isArchivedCard(card)
+    if (archived && !filters.showArchived) {
+      return false
     }
+    if (!visibleBrandNames.has(card.brand)) {
+      return false
+    }
+    if (viewer.mode === 'editor' && viewer.editorName !== card.owner) {
+      return false
+    }
+    if (viewer.mode !== 'editor' && visibleOwnerNames.size > 0) {
+      if (!card.owner || !visibleOwnerNames.has(card.owner)) {
+        return false
+      }
+    }
+    if (!matchesSearch(card, filters.searchQuery)) {
+      return false
+    }
+    if (filters.overdueOnly && getDueStatus(card, nowMs) !== 'overdue') {
+      return false
+    }
+    if (filters.stuckOnly && getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) !== 'stuck') {
+      return false
+    }
+    if (filters.blockedOnly && card.blocked === null) {
+      return false
+    }
+
+    return true
+  })
+}
+
+function getUtilizationTone(utilizationPct: number, settings: GlobalSettings): UtilizationTone {
+  if (utilizationPct >= settings.capacity.utilizationThresholds.redMin) {
+    return 'red'
   }
+  if (utilizationPct >= settings.capacity.utilizationThresholds.greenMax) {
+    return 'yellow'
+  }
+  return 'green'
+}
+
+export function getCurrentUtilization(
+  portfolio: Portfolio,
+  ownerName: string,
+  settings: GlobalSettings,
+) {
+  const member = getTeamMemberByName(portfolio, ownerName)
+  const activeCards = portfolio.cards.filter(
+    (card) => !isArchivedCard(card) && card.owner === ownerName && isActiveWorkStage(card.stage),
+  )
+  const usedHours = roundToTenths(
+    activeCards.reduce((sum, card) => sum + card.estimatedHours, 0),
+  )
+  const totalHours = member ? getWeeklyCapacityHours(member) : 0
+  const utilizationPct =
+    totalHours > 0 ? Math.round((usedHours / totalHours) * 100) : 0
 
   return {
-    total: tasks.length,
-    stuck,
-    byStage,
-  }
+    activeCards,
+    activeCount: activeCards.length,
+    usedHours,
+    totalHours,
+    utilizationPct,
+    utilizationTone: getUtilizationTone(utilizationPct, settings),
+    availableHours: Math.max(0, roundToTenths(totalHours - usedHours)),
+    wipCount: portfolio.cards.filter(
+      (card) => !isArchivedCard(card) && card.owner === ownerName && card.stage === 'In Production',
+    ).length,
+    wipCap: member?.wipCap ?? null,
+  } satisfies UtilizationSummary
 }
 
-export function getInProductionCount(
-  state: BoardState,
-  userId: UserId,
-  excludingTaskId?: string,
-) {
-  return (state.columns[getCanonicalContainerId('in_production', userId)] ?? []).filter(
-    (taskId) => taskId !== excludingTaskId,
-  ).length
-}
+function getBoardOwners(portfolio: Portfolio) {
+  const orderedActiveNames = getAssignableMembers(portfolio).map((member) => member.name)
+  const extraNames = Array.from(
+    new Set(
+      portfolio.cards
+        .map((card) => card.owner)
+        .filter(
+          (owner): owner is string =>
+            owner !== null && owner.length > 0 && !orderedActiveNames.includes(owner),
+        ),
+    ),
+  ).sort((left, right) => left.localeCompare(right))
 
-export function canEnterInProduction(
-  state: BoardState,
-  userId: UserId,
-  taskId?: string,
-) {
-  return (
-    getInProductionCount(state, userId, taskId) < state.settings.wipLimits[userId]
-  )
-}
-
-export function getEditorNextStage(task: Task, viewerId: UserId) {
-  switch (task.stage) {
-    case 'briefed':
-      return 'in_production'
-    case 'in_production':
-      return 'review'
-    case 'review':
-      return 'ready'
-    case 'ready':
-      return viewerId === 'ivan' ? 'live' : null
-    default:
-      return null
-  }
-}
-
-export function canCommentOnTask(task: Task, viewerId: UserId) {
-  if (viewerId === 'iskander') {
-    return false
-  }
-
-  return viewerId === 'naomi' || viewerId === task.assigneeId
-}
-
-function moveTaskInBoard(
-  state: BoardState,
-  taskId: string,
-  destinationStage: StageId,
-  destinationAssigneeId: UserId | null,
-  destinationIndex: number,
-  movedAt: string,
-) {
-  const task = state.tasks[taskId]
-  if (!task) {
-    return state
-  }
-
-  const sourceContainerId = getCanonicalContainerId(task.stage, task.assigneeId)
-  const nextAssigneeId =
-    destinationStage === 'backlog'
-      ? null
-      : isGroupedStage(destinationStage)
-        ? destinationAssigneeId ?? task.assigneeId
-        : destinationAssigneeId ?? task.assigneeId
-  const targetContainerId = getCanonicalContainerId(destinationStage, nextAssigneeId)
-  const sourceIds = [...(state.columns[sourceContainerId] ?? [])]
-  const targetIds =
-    sourceContainerId === targetContainerId
-      ? sourceIds
-      : [...(state.columns[targetContainerId] ?? [])]
-  const activeIndex = sourceIds.indexOf(taskId)
-  const isBackwardMove =
-    STAGES.indexOf(destinationStage) < STAGES.indexOf(task.stage)
-
-  if (activeIndex === -1) {
-    return state
-  }
-
-  sourceIds.splice(activeIndex, 1)
-  const boundedIndex = Math.max(0, Math.min(destinationIndex, targetIds.length))
-
-  if (sourceContainerId === targetContainerId) {
-    sourceIds.splice(boundedIndex, 0, taskId)
-
-    return {
-      ...state,
-      columns: {
-        ...state.columns,
-        [sourceContainerId]: sourceIds,
-      },
-      tasks: {
-        ...state.tasks,
-        [taskId]: {
-          ...task,
-          assigneeId: nextAssigneeId,
-        },
-      },
-    }
-  }
-
-  targetIds.splice(boundedIndex, 0, taskId)
-
-  const nextStageEntry: StageEntry = {
-    stage: destinationStage,
-    enteredAt: movedAt,
-    exitedAt: null,
-    transitionKind: isBackwardMove ? 'moved_back' : undefined,
-  }
-
-  const nextTask: Task =
-    task.stage === destinationStage
-      ? {
-          ...task,
-          assigneeId: nextAssigneeId,
-        }
-      : {
-          ...task,
-          stage: destinationStage,
-          assigneeId: nextAssigneeId,
-          stageHistory: [
-            ...task.stageHistory.slice(0, -1),
-            {
-              ...task.stageHistory[task.stageHistory.length - 1],
-              exitedAt: movedAt,
-            },
-            nextStageEntry,
-          ],
-        }
-
-  return {
-    ...state,
-    tasks: {
-      ...state.tasks,
-      [taskId]: nextTask,
-    },
-    columns: {
-      ...state.columns,
-      [sourceContainerId]: sourceIds,
-      [targetContainerId]: targetIds,
-    },
-  }
-}
-
-function updateTaskAssignee(state: BoardState, taskId: string, assigneeId: UserId | null) {
-  const task = state.tasks[taskId]
-  if (!task) {
-    return state
-  }
-
-  if (!isGroupedStage(task.stage)) {
-    return {
-      ...state,
-      tasks: {
-        ...state.tasks,
-        [taskId]: {
-          ...task,
-          assigneeId,
-        },
-      },
-    }
-  }
-
-  return moveTaskInBoard(
-    state,
-    taskId,
-    task.stage,
-    assigneeId,
-    (state.columns[getCanonicalContainerId(task.stage, assigneeId)] ?? []).length,
-    new Date().toISOString(),
-  )
-}
-
-export function boardReducer(state: BoardState, action: BoardAction): BoardState {
-  switch (action.type) {
-    case 'move-task':
-      return moveTaskInBoard(
-        state,
-        action.taskId,
-        action.destinationStage,
-        action.destinationAssigneeId,
-        action.destinationIndex,
-        action.movedAt ?? new Date().toISOString(),
-      )
-    case 'update-task':
-      return {
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [action.taskId]: {
-            ...state.tasks[action.taskId],
-            ...action.updates,
-          },
-        },
-      }
-    case 'update-assignee':
-      return updateTaskAssignee(state, action.taskId, action.assigneeId)
-    case 'replace-attachments':
-      return {
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [action.taskId]: {
-            ...state.tasks[action.taskId],
-            attachments: action.attachments,
-          },
-        },
-      }
-    case 'add-comment':
-      return {
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [action.taskId]: {
-            ...state.tasks[action.taskId],
-            comments: [...state.tasks[action.taskId].comments, action.comment],
-          },
-        },
-      }
-    case 'create-task': {
-      const backlogId = getCanonicalContainerId('backlog', null)
-
-      return {
-        ...state,
-        tasks: {
-          ...state.tasks,
-          [action.task.id]: action.task,
-        },
-        columns: {
-          ...state.columns,
-          [backlogId]: [...state.columns[backlogId], action.task.id],
-        },
-      }
-    }
-    case 'update-wip-limit':
-      return {
-        ...state,
-        settings: {
-          ...state.settings,
-          wipLimits: {
-            ...state.settings.wipLimits,
-            [action.userId]: Math.max(1, action.limit),
-          },
-        },
-      }
-    case 'reset-board':
-      return createSeedBoardState()
-    default:
-      return state
-  }
+  return [...orderedActiveNames, ...extraNames]
 }
 
 export function getVisibleColumns(
-  state: BoardState,
-  viewerId: UserId,
-  filters: TaskFilters = {},
+  portfolio: Portfolio,
+  viewer: ViewerContext,
+  filters: BoardFilters,
+  settings: GlobalSettings,
+  nowMs = Date.now(),
+  options?: {
+    showEmptyGroupedSections?: boolean
+    manuallyExpandedStages?: StageId[]
+  },
 ) {
-  const viewerMode = getViewerMode(viewerId)
-  const managerEditorIds = filters.editors ?? []
-  const flattenSingleEditor = viewerMode === 'manager' && managerEditorIds.length === 1
+  const visibleCards = getVisibleCards(portfolio, viewer, filters, settings, nowMs)
+  const ownerNames = getBoardOwners(portfolio)
+  const activeOwner =
+    viewer.mode === 'editor'
+      ? viewer.editorName
+      : filters.ownerNames.length === 1
+        ? filters.ownerNames[0]
+        : null
 
-  return STAGES.map((stage) => {
-    if (viewerMode === 'editor') {
-      const sourceIds = state.columns[getCanonicalContainerId(stage, viewerId)] ?? []
-      const flatSourceIds = state.columns[getCanonicalContainerId(stage, null)] ?? []
-      const taskIds =
-        isGroupedStage(stage)
-          ? sourceIds
-          : flatSourceIds.filter((taskId) => state.tasks[taskId]?.assigneeId === viewerId)
-
-      const visibleTaskIds = taskIds.filter((taskId) =>
-        matchesTaskFilters(state.tasks[taskId], filters),
-      )
-      const wipCount =
-        stage === 'in_production' ? getInProductionCount(state, viewerId) : null
-      const wipLimit =
-        stage === 'in_production' ? state.settings.wipLimits[viewerId] : null
-
+  const columns: ColumnModel[] = STAGES.map((stage) => {
+    if (!isGroupedStage(stage)) {
+      const cards = getOrderedLaneCards(visibleCards, stage, null)
       return {
-        stage,
-        label: STAGE_LABELS[stage],
+        id: stage,
+        label: stage,
         grouped: false,
-        totalCount: visibleTaskIds.length,
-        containers: [
+        count: cards.length,
+        lanes: [
           {
-            id: `viewer::${viewerId}::${stage}`,
+            id: getLaneId(stage, null),
             stage,
-            label: STAGE_LABELS[stage],
-            canonicalContainerId: getCanonicalContainerId(
-              stage,
-              isGroupedStage(stage) ? viewerId : null,
-            ),
-            assigneeId: viewerId,
-            assigneeName: USER_MAP[viewerId].name,
-            taskIds: visibleTaskIds,
+            owner: null,
+            label: stage,
             grouped: false,
-            emptyLabel:
-              stage === 'backlog'
-                ? 'No assigned backlog cards.'
-                : 'Nothing in this stage.',
-            wipCount,
-            wipLimit,
+            cards,
+            allCardIds: getOrderedLaneCards(portfolio.cards, stage, null).map((card) => card.id),
+            activeCount: cards.length,
+            utilizationPct: 0,
+            utilizationTone: 'green',
+            capacityUsed: 0,
+            capacityTotal: 0,
+            wipCount: null,
+            wipCap: null,
           },
         ],
-      } satisfies StageColumnModel
+        hiddenEditorCount: 0,
+      } satisfies ColumnModel
     }
 
-    if (isGroupedStage(stage)) {
-      const visibleWorkerIds =
-        viewerMode === 'manager' && managerEditorIds.length > 0
-          ? managerEditorIds
-          : Array.from(
-              new Set([
-                ...EDITOR_ROLE_IDS,
-                ...Object.values(state.tasks)
-                  .filter(
-                    (task) =>
-                      task.stage === stage &&
-                      task.assigneeId !== null &&
-                      task.assigneeId !== 'iskander',
-                  )
-                  .map((task) => task.assigneeId as UserId),
-              ]),
-            )
-      const containers = visibleWorkerIds.map((userId) => {
-        const containerId = getCanonicalContainerId(stage, userId)
-        const taskIds = (state.columns[containerId] ?? []).filter((taskId) =>
-          matchesTaskFilters(state.tasks[taskId], filters),
-        )
-        const wipCount =
-          stage === 'in_production' ? getInProductionCount(state, userId) : null
-        const wipLimit =
-          stage === 'in_production' ? state.settings.wipLimits[userId] : null
+    const showSingle = Boolean(activeOwner)
+    const showAllGrouped =
+      showSingle ||
+      options?.showEmptyGroupedSections ||
+      options?.manuallyExpandedStages?.includes(stage) ||
+      false
+    const owners = showSingle ? [activeOwner!] : ownerNames
+    const visibleLanes = owners
+      .map((owner) => {
+        const cards = getOrderedLaneCards(visibleCards, stage, owner)
+        const utilization = getCurrentUtilization(portfolio, owner, settings)
+        const member = getTeamMemberByName(portfolio, owner)
 
         return {
-          id: containerId,
+          id: getLaneId(stage, owner),
           stage,
-          label: USER_MAP[userId].name,
-          canonicalContainerId: containerId,
-          assigneeId: userId,
-          assigneeName: USER_MAP[userId].name,
-          taskIds,
-          grouped: true,
-          emptyLabel: `Drop into ${USER_MAP[userId].name}'s queue.`,
-          wipCount,
-          wipLimit,
-        } satisfies VisibleContainer
+          owner,
+          label: owner,
+          grouped: !showSingle,
+          cards,
+          allCardIds: getOrderedLaneCards(portfolio.cards, stage, owner).map((card) => card.id),
+          activeCount: cards.length,
+          utilizationPct: utilization.utilizationPct,
+          utilizationTone: utilization.utilizationTone,
+          capacityUsed: utilization.usedHours,
+          capacityTotal: utilization.totalHours,
+          wipCount: utilization.wipCount,
+          wipCap: member?.wipCap ?? null,
+        } satisfies LaneModel
+      })
+      .filter((lane) => showAllGrouped || lane.cards.length > 0)
+
+    return {
+      id: stage,
+      label: stage,
+      grouped: !showSingle,
+      count: visibleLanes.reduce((sum, lane) => sum + lane.cards.length, 0),
+      lanes: visibleLanes,
+      hiddenEditorCount: showSingle || showAllGrouped ? 0 : ownerNames.length - visibleLanes.length,
+    } satisfies ColumnModel
+  })
+
+  if (filters.showArchived) {
+    const archivedCards = getOrderedLaneCards(visibleCards, 'Archived', null)
+    columns.push({
+      id: 'Archived',
+      label: 'Archived',
+      grouped: false,
+      count: archivedCards.length,
+      lanes: [
+        {
+          id: getLaneId('Archived', null),
+          stage: 'Archived',
+          owner: null,
+          label: 'Archived',
+          grouped: false,
+          cards: archivedCards,
+          allCardIds: archivedCards.map((card) => card.id),
+          activeCount: archivedCards.length,
+          utilizationPct: 0,
+          utilizationTone: 'green',
+          capacityUsed: 0,
+          capacityTotal: 0,
+          wipCount: null,
+          wipCap: null,
+        },
+      ],
+      hiddenEditorCount: 0,
+    })
+  }
+
+  return columns
+}
+
+export function getBoardStats(
+  portfolio: Portfolio,
+  viewer: ViewerContext,
+  filters: BoardFilters,
+  settings: GlobalSettings,
+  nowMs = Date.now(),
+) {
+  const cards = getVisibleCards(
+    portfolio,
+    viewer,
+    {
+      ...filters,
+      showArchived: false,
+    },
+    settings,
+    nowMs,
+  )
+
+  const byStage = Object.fromEntries(STAGES.map((stage) => [stage, 0])) as Record<StageId, number>
+  let stuck = 0
+  let overdue = 0
+  for (const card of cards) {
+    byStage[card.stage] += 1
+    if (getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck') {
+      stuck += 1
+    }
+    if (getDueStatus(card, nowMs) === 'overdue') {
+      overdue += 1
+    }
+  }
+
+  return {
+    total: cards.length,
+    byStage,
+    stuck,
+    overdue,
+  } satisfies BoardStats
+}
+
+export function getEditorSummary(
+  portfolio: Portfolio,
+  owner: string,
+  visibleBrandNames: string[],
+  settings: GlobalSettings,
+) {
+  const cards = portfolio.cards.filter(
+    (card) => !isArchivedCard(card) && card.owner === owner && visibleBrandNames.includes(card.brand),
+  )
+  const utilization = getCurrentUtilization(portfolio, owner, settings)
+  const sumHours = (stage: StageId) =>
+    roundToTenths(
+      cards
+        .filter((card) => card.stage === stage)
+        .reduce((sum, card) => sum + card.estimatedHours, 0),
+    )
+
+  return {
+    owner,
+    utilizationPct: utilization.utilizationPct,
+    availableHours: utilization.availableHours,
+    briefedCount: cards.filter((card) => card.stage === 'Briefed').length,
+    briefedHours: sumHours('Briefed'),
+    inProductionCount: cards.filter((card) => card.stage === 'In Production').length,
+    inProductionHours: sumHours('In Production'),
+    reviewCount: cards.filter((card) => card.stage === 'Review').length,
+    reviewHours: sumHours('Review'),
+    readyCount: cards.filter((card) => card.stage === 'Ready').length,
+    readyHours: sumHours('Ready'),
+    activeCount: utilization.activeCount,
+  } satisfies EditorSummary
+}
+
+function getCardsSortedForScheduling(cards: Card[]) {
+  const stageOrder: Record<StageId, number> = {
+    Backlog: 5,
+    Briefed: 0,
+    'In Production': 1,
+    Review: 2,
+    Ready: 3,
+    Live: 4,
+  }
+
+  return cards.slice().sort((left, right) => {
+    if (stageOrder[left.stage] !== stageOrder[right.stage]) {
+      return stageOrder[left.stage] - stageOrder[right.stage]
+    }
+    if (left.positionInSection !== right.positionInSection) {
+      return left.positionInSection - right.positionInSection
+    }
+    return left.dateAssigned.localeCompare(right.dateAssigned)
+  })
+}
+
+function getTimeframeRange(timeframe: Timeframe, nowMs: number) {
+  if (timeframe === 'this-week') {
+    const start = startOfWeekMs(nowMs)
+    return {
+      startMs: start,
+      endMs: start + 7 * DAY_MS,
+    }
+  }
+
+  if (timeframe === 'next-week') {
+    const start = startOfWeekMs(nowMs) + 7 * DAY_MS
+    return {
+      startMs: start,
+      endMs: start + 7 * DAY_MS,
+    }
+  }
+
+  const start = startOfMonthMs(nowMs)
+  const date = new Date(start)
+  date.setMonth(date.getMonth() + 1)
+  return {
+    startMs: start,
+    endMs: date.getTime(),
+  }
+}
+
+function countWorkingDays(member: TeamMember, rangeStartMs: number, rangeEndMs: number) {
+  let count = 0
+  for (let cursor = rangeStartMs; cursor < rangeEndMs; cursor += DAY_MS) {
+    if (member.workingDays.includes(getWorkingDayLabel(cursor))) {
+      count += 1
+    }
+  }
+  return count
+}
+
+function getWeeklyCapacityHours(member: TeamMember) {
+  return member.weeklyHours ?? ((member.hoursPerDay ?? 0) * member.workingDays.length)
+}
+
+function getPeriodCapacity(member: TeamMember, timeframe: Timeframe, nowMs: number) {
+  const range = getTimeframeRange(timeframe, nowMs)
+  const workingDaysCount = countWorkingDays(member, range.startMs, range.endMs)
+  const capacityHours = roundToTenths((member.hoursPerDay ?? 0) * workingDaysCount)
+
+  return {
+    ...range,
+    capacityHours,
+  }
+}
+
+function scheduleMemberLoad(
+  portfolio: Portfolio,
+  member: TeamMember,
+  settings: GlobalSettings,
+  timeframe: Timeframe,
+  nowMs: number,
+) {
+  const activeCards = getCardsSortedForScheduling(
+    portfolio.cards.filter(
+      (card) => !isArchivedCard(card) && card.owner === member.name && isActiveWorkStage(card.stage),
+    ),
+  )
+  const period = getPeriodCapacity(member, timeframe, nowMs)
+  const breakdownMap = new Map<string, WorkloadBreakdownItem>()
+  let capacityUsedHours = 0
+  let cursorDayMs = startOfDayMs(nowMs)
+  let hoursUsedInCurrentDay = 0
+
+  function advanceToNextWorkingSlot() {
+    while (!member.workingDays.includes(getWorkingDayLabel(cursorDayMs))) {
+      cursorDayMs += DAY_MS
+      hoursUsedInCurrentDay = 0
+    }
+    if ((member.hoursPerDay ?? 0) === 0) {
+      return
+    }
+    if (hoursUsedInCurrentDay >= (member.hoursPerDay ?? 0)) {
+      cursorDayMs += DAY_MS
+      hoursUsedInCurrentDay = 0
+      advanceToNextWorkingSlot()
+    }
+  }
+
+  for (const card of activeCards) {
+    let remainingHours = Math.max(1, card.estimatedHours)
+    while (remainingHours > 0) {
+      advanceToNextWorkingSlot()
+      if ((member.hoursPerDay ?? 0) === 0) {
+        break
+      }
+
+      const availableHours = Math.max(0, (member.hoursPerDay ?? 0) - hoursUsedInCurrentDay)
+      if (availableHours <= 0) {
+        cursorDayMs += DAY_MS
+        hoursUsedInCurrentDay = 0
+        continue
+      }
+
+      const allocation = Math.min(remainingHours, availableHours)
+
+      if (cursorDayMs >= period.startMs && cursorDayMs < period.endMs) {
+        capacityUsedHours += allocation
+        const taskType = getTaskTypeById(settings, card.taskTypeId)
+        const existing = breakdownMap.get(card.id)
+        breakdownMap.set(card.id, {
+          cardId: card.id,
+          title: card.title,
+          taskTypeId: card.taskTypeId,
+          taskTypeName: taskType.name,
+          icon: taskType.icon,
+          hours: roundToTenths((existing?.hours ?? 0) + allocation),
+        })
+      }
+
+      remainingHours -= allocation
+      hoursUsedInCurrentDay += allocation
+    }
+  }
+
+  const capacityTotal = period.capacityHours
+  const capacityUsed = roundToTenths(capacityUsedHours)
+  const utilizationPct =
+    capacityTotal > 0 ? Math.round((capacityUsed / capacityTotal) * 100) : 0
+
+  return {
+    breakdown: Array.from(breakdownMap.values()),
+    activeCards,
+    capacityUsed,
+    capacityTotal,
+    utilizationPct,
+    utilizationTone: getUtilizationTone(utilizationPct, settings),
+  }
+}
+
+export function getWorkloadData(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  timeframe: Timeframe,
+  nowMs = Date.now(),
+) {
+  const rows = getAssignableMembers(portfolio).map((member) => {
+    const scheduled = scheduleMemberLoad(portfolio, member, settings, timeframe, nowMs)
+    const weeklyHours = getWeeklyCapacityHours(member)
+    const partTimeLabel =
+      member.weeklyHours !== null &&
+      member.weeklyHours < settings.capacity.defaultWeeklyHours
+        ? `part-time: ${member.weeklyHours}h/wk`
+        : weeklyHours > 0 && weeklyHours < settings.capacity.defaultWeeklyHours
+          ? `part-time: ${weeklyHours}h/wk`
+          : null
+
+    return {
+      member,
+      utilizationPct: scheduled.utilizationPct,
+      utilizationTone: scheduled.utilizationTone,
+      capacityUsed: scheduled.capacityUsed,
+      capacityTotal: scheduled.capacityTotal,
+      breakdown: scheduled.breakdown,
+      activeCards: scheduled.activeCards,
+      partTimeLabel,
+    } satisfies WorkloadRow
+  })
+
+  const queue = portfolio.cards
+    .filter((card) => !isArchivedCard(card) && card.stage === 'Backlog')
+    .map((card) => {
+      const taskType = getTaskTypeById(settings, card.taskTypeId)
+      return {
+        cardId: card.id,
+        title: card.title,
+        taskTypeId: card.taskTypeId,
+        taskTypeName: taskType.name,
+        icon: taskType.icon,
+        hours: card.estimatedHours,
+        daysWaiting: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
+      } satisfies WorkloadQueueRow
+    })
+
+  return {
+    rows,
+    queue,
+    queueHours: roundToTenths(queue.reduce((sum, item) => sum + item.hours, 0)),
+  } satisfies WorkloadData
+}
+
+export function addCardToPortfolio(portfolio: Portfolio, card: Card) {
+  const brand = getBrandByName(portfolio, card.brand)
+  const prefix = brand?.prefix ?? ''
+  const backlogCards = getOrderedLaneCards(portfolio.cards, 'Backlog', null)
+  const otherCards = portfolio.cards.filter((existingCard) => existingCard.stage !== 'Backlog' || isArchivedCard(existingCard))
+
+  return {
+    ...portfolio,
+    cards: reindexCards([{ ...card, positionInSection: 0 }, ...backlogCards, ...otherCards]),
+    lastIdPerPrefix: {
+      ...portfolio.lastIdPerPrefix,
+      [prefix]: Math.max(
+        portfolio.lastIdPerPrefix[prefix] ?? 0,
+        Number(card.id.replace(prefix, '')) || 0,
+      ),
+    },
+  }
+}
+
+export function removeCardFromPortfolio(
+  portfolio: Portfolio,
+  cardId: string,
+  actor: string,
+  timestamp: string,
+) {
+  const targetCard = portfolio.cards.find((card) => card.id === cardId)
+  if (!targetCard) {
+    return portfolio
+  }
+
+  const deletedCard = appendActivity(
+    targetCard,
+    createActivityEntry(actor, 'deleted this card', 'deleted', timestamp),
+  )
+
+  const remainingCards = portfolio.cards.filter((card) => card.id !== cardId)
+
+  return {
+    ...portfolio,
+    cards: reindexCards([...remainingCards, deletedCard].filter((card) => card.id !== cardId)),
+  }
+}
+
+function closeCurrentStageEntry(entries: StageHistoryEntry[], movedAt: string) {
+  if (entries.length === 0) {
+    return entries
+  }
+
+  const nextEntries = [...entries]
+  const lastEntry = nextEntries[nextEntries.length - 1]
+  nextEntries[nextEntries.length - 1] = {
+    ...lastEntry,
+    exitedAt: movedAt,
+    durationDays: roundToTenths(
+      (new Date(movedAt).getTime() - new Date(lastEntry.enteredAt).getTime()) / DAY_MS,
+    ),
+  }
+
+  return nextEntries
+}
+
+export function moveCardInPortfolio(
+  portfolio: Portfolio,
+  cardId: string,
+  destinationStage: StageId,
+  destinationOwner: string | null,
+  destinationIndex: number,
+  movedAt: string,
+  actor: string,
+  revisionReason?: string,
+) {
+  const existingCard = portfolio.cards.find((card) => card.id === cardId)
+  if (!existingCard) {
+    return portfolio
+  }
+
+  const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? existingCard.owner
+  const otherCards = portfolio.cards.filter((card) => card.id !== cardId)
+  const sourceLaneCards = getOrderedLaneCards(
+    otherCards,
+    existingCard.archivedAt ? 'Archived' : existingCard.stage,
+    existingCard.owner,
+  ).map((card) => card.id)
+  const targetLaneCards = getOrderedLaneCards(
+    otherCards,
+    destinationStage,
+    nextOwner,
+  ).map((card) => card.id)
+  const boundedIndex = Math.max(0, Math.min(destinationIndex, targetLaneCards.length))
+  const nextTargetLane = [...targetLaneCards]
+  nextTargetLane.splice(boundedIndex, 0, cardId)
+  const positionMap = new Map<string, number>()
+  sourceLaneCards.forEach((id, index) => positionMap.set(id, index))
+  nextTargetLane.forEach((id, index) => positionMap.set(id, index))
+
+  const stageChanged = existingCard.stage !== destinationStage
+  const ownerChanged = existingCard.owner !== nextOwner
+  const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(existingCard.stage)
+  const nextHistory = stageChanged
+    ? [
+        ...closeCurrentStageEntry(existingCard.stageHistory, movedAt),
+        {
+          stage: destinationStage,
+          enteredAt: movedAt,
+          exitedAt: null,
+          durationDays: null,
+          movedBack: isBackwardMove || undefined,
+          revisionReason: isBackwardMove ? revisionReason : undefined,
+        },
+      ]
+    : [...existingCard.stageHistory]
+
+  let updatedCard: Card = {
+    ...existingCard,
+    owner: nextOwner,
+    stage: destinationStage,
+    stageEnteredAt: stageChanged ? movedAt : existingCard.stageEnteredAt,
+    stageHistory: nextHistory,
+    dateAssigned:
+      existingCard.stage === 'Backlog' && destinationStage !== 'Backlog'
+        ? movedAt.slice(0, 10)
+        : existingCard.dateAssigned,
+    positionInSection: positionMap.get(cardId) ?? existingCard.positionInSection,
+  }
+
+  if (ownerChanged && nextOwner) {
+    updatedCard = appendActivity(
+      updatedCard,
+      createActivityEntry(actor, `assigned to ${nextOwner}`, 'assigned', movedAt),
+    )
+  }
+
+  if (stageChanged) {
+    updatedCard = appendActivity(
+      updatedCard,
+      createActivityEntry(
+        actor,
+        isBackwardMove
+          ? `moved back to ${destinationStage}${revisionReason ? ` — Reason: ${revisionReason}` : ''}`
+          : `moved to ${destinationStage}`,
+        isBackwardMove ? 'moved-back' : 'moved-forward',
+        movedAt,
+      ),
+    )
+  }
+
+  const updatedCards = otherCards.map((card) =>
+    positionMap.has(card.id)
+      ? { ...card, positionInSection: positionMap.get(card.id) ?? card.positionInSection }
+      : card,
+  )
+
+  return {
+    ...portfolio,
+    cards: reindexCards([...updatedCards, syncGeneratedNames(updatedCard)]),
+  }
+}
+
+export function applyCardUpdates(
+  portfolio: Portfolio,
+  _settings: GlobalSettings,
+  cardId: string,
+  updates: Partial<Card>,
+  actor: string,
+  timestamp: string,
+) {
+  return {
+    ...portfolio,
+    cards: portfolio.cards.map((card) => {
+      if (card.id !== cardId) {
+        return card
+      }
+
+      const previous = card
+      let nextCard = syncGeneratedNames({
+        ...card,
+        ...updates,
       })
 
-      return {
-        stage,
-        label: STAGE_LABELS[stage],
-        grouped: !flattenSingleEditor,
-        totalCount: containers.reduce((sum, container) => sum + container.taskIds.length, 0),
-        containers,
-      } satisfies StageColumnModel
-    }
+      if (updates.owner !== undefined && updates.owner !== previous.owner && updates.owner) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(actor, `assigned to ${updates.owner}`, 'assigned', timestamp),
+        )
+      }
 
-    const containerId = getCanonicalContainerId(stage, null)
-    const taskIds = (state.columns[containerId] ?? []).filter((taskId) =>
-      matchesTaskFilters(state.tasks[taskId], filters),
+      if (
+        updates.estimatedHours !== undefined &&
+        updates.estimatedHours !== previous.estimatedHours
+      ) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(
+            actor,
+            `changed estimate from ${previous.estimatedHours}h to ${updates.estimatedHours}h`,
+            'effort',
+            timestamp,
+          ),
+        )
+      }
+
+      if (updates.dueDate !== undefined && updates.dueDate !== previous.dueDate) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(
+            actor,
+            updates.dueDate
+              ? `set due date to ${formatDateShort(updates.dueDate)}`
+              : 'cleared the due date',
+            'due-date',
+            timestamp,
+          ),
+        )
+      }
+
+      if (updates.frameioLink !== undefined && updates.frameioLink !== previous.frameioLink && updates.frameioLink) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(actor, 'added Frame.io review link', 'frameio', timestamp),
+        )
+      }
+
+      if (updates.blocked !== undefined && updates.blocked !== previous.blocked) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(
+            actor,
+            updates.blocked
+              ? `marked as blocked — ${updates.blocked.reason}`
+              : 'removed blocked status',
+            updates.blocked ? 'blocked' : 'unblocked',
+            timestamp,
+          ),
+        )
+      }
+
+      if (
+        updates.driveFolderCreated !== undefined &&
+        updates.driveFolderCreated &&
+        !previous.driveFolderCreated
+      ) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(actor, 'created Drive folder', 'drive', timestamp),
+        )
+      }
+
+      if (updates.archivedAt !== undefined && updates.archivedAt !== previous.archivedAt) {
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(
+            actor,
+            updates.archivedAt ? 'archived this card' : 'unarchived this card',
+            updates.archivedAt ? 'archive' : 'unarchive',
+            timestamp,
+          ),
+        )
+      }
+
+      return nextCard
+    }),
+  }
+}
+
+export function archiveEligibleCards(state: AppState, nowMs = Date.now()) {
+  if (!state.settings.general.autoArchiveEnabled) {
+    return state
+  }
+
+  let changed = false
+  const nextPortfolios = state.portfolios.map((portfolio) => ({
+    ...portfolio,
+    cards: portfolio.cards.map((card) => {
+      if (
+        card.archivedAt === null &&
+        card.stage === 'Live' &&
+        getCardAgeMs(card, nowMs) >= state.settings.general.autoArchiveDays * DAY_MS
+      ) {
+        changed = true
+        return appendActivity(
+          {
+            ...card,
+            archivedAt: new Date(nowMs).toISOString(),
+          },
+          createActivityEntry('System', 'archived this card', 'archive', new Date(nowMs).toISOString()),
+        )
+      }
+      return card
+    }),
+  }))
+
+  return changed ? { ...state, portfolios: nextPortfolios } : state
+}
+
+function getFirstStageEntry(card: Card, stage: StageId) {
+  return card.stageHistory.find((entry) => entry.stage === stage) ?? null
+}
+
+function getLastStageEntry(card: Card, stage: StageId) {
+  return [...card.stageHistory].reverse().find((entry) => entry.stage === stage) ?? null
+}
+
+export function getCycleTimeDays(card: Card) {
+  const firstBriefed = getFirstStageEntry(card, 'Briefed')
+  const firstReady = getFirstStageEntry(card, 'Ready') ?? getFirstStageEntry(card, 'Live')
+  if (!firstBriefed || !firstReady) {
+    return null
+  }
+
+  return roundToTenths(
+    (new Date(firstReady.enteredAt).getTime() -
+      new Date(firstBriefed.enteredAt).getTime()) /
+      DAY_MS,
+  )
+}
+
+function getCurrentWorkloadDays(card: Card) {
+  return roundToTenths(card.estimatedHours / 4)
+}
+
+function getCardsEnteredLiveWithin(portfolio: Portfolio, startMs: number, endMs: number) {
+  return portfolio.cards.filter((card) => {
+    const liveEntry = getLastStageEntry(card, 'Live')
+    if (!liveEntry) {
+      return false
+    }
+    const enteredAtMs = new Date(liveEntry.enteredAt).getTime()
+    return enteredAtMs >= startMs && enteredAtMs < endMs
+  })
+}
+
+export function buildDashboardData(
+  portfolios: Portfolio[],
+  settings: GlobalSettings,
+  nowMs = Date.now(),
+) {
+  const thirtyDaysAgo = nowMs - 30 * DAY_MS
+  const overviewCards = portfolios.map((portfolio) => {
+    const activeCards = portfolio.cards.filter((card) => !isArchivedCard(card) && card.stage !== 'Live')
+    const freshCount = activeCards.filter(
+      (card) => getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'fresh',
+    ).length
+    const stuckCount = activeCards.filter(
+      (card) => getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck',
+    ).length
+    const atCapacityCount = getAssignableMembers(portfolio).filter((member) => {
+      const utilization = getCurrentUtilization(portfolio, member.name, settings)
+      return (
+        utilization.utilizationPct >= settings.capacity.utilizationThresholds.redMin ||
+        (member.wipCap !== null && utilization.wipCount >= member.wipCap)
+      )
+    }).length
+
+    return {
+      portfolioId: portfolio.id,
+      name: portfolio.name,
+      activeCards: activeCards.length,
+      onTrackRatio: activeCards.length === 0 ? 0 : freshCount / activeCards.length,
+      stuckCount,
+      atCapacityCount,
+      brandBreakdown: portfolio.brands.map((brand) => ({
+        brand: brand.name,
+        count: activeCards.filter((card) => card.brand === brand.name).length,
+      })),
+    } satisfies PortfolioOverviewCard
+  })
+
+  const funnel = STAGES.map((stage) => {
+    const cards = portfolios.flatMap((portfolio) =>
+      portfolio.cards
+        .filter((card) => !isArchivedCard(card) && card.stage === stage)
+        .map((card) => ({
+          portfolioId: portfolio.id,
+          portfolioName: portfolio.name,
+          cardId: card.id,
+          title: card.title,
+          brand: card.brand,
+          stage: card.stage,
+          owner: card.owner,
+          daysInStage: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
+          isBlocked: Boolean(card.blocked),
+          blockedReason: card.blocked?.reason ?? null,
+          isOverdue: getDueStatus(card, nowMs) === 'overdue',
+        })),
+    )
+    const segments = portfolios.flatMap((portfolio) =>
+      portfolio.brands
+        .map((brand) => ({
+          brand: brand.name,
+          color: brand.color,
+          count: portfolio.cards.filter(
+            (card) => !isArchivedCard(card) && card.stage === stage && card.brand === brand.name,
+          ).length,
+        }))
+        .filter((segment) => segment.count > 0),
     )
 
     return {
       stage,
-      label: STAGE_LABELS[stage],
-      grouped: false,
-      totalCount: taskIds.length,
-      containers: [
-        {
-          id: containerId,
-          stage,
-          label: STAGE_LABELS[stage],
-          canonicalContainerId: containerId,
-          assigneeId: null,
-          assigneeName: null,
-          taskIds,
-          grouped: false,
-          emptyLabel:
-            stage === 'backlog'
-              ? 'New cards land here until Naomi assigns them.'
-              : `No cards in ${STAGE_LABELS[stage].toLowerCase()}.`,
-          wipCount: null,
-          wipLimit: null,
-        },
-      ],
-    } satisfies StageColumnModel
+      total: cards.length,
+      segments,
+      cards,
+    } satisfies FunnelStageBucket
   })
+
+  const teamGrid = portfolios.flatMap((portfolio) =>
+    getAssignableMembers(portfolio).map((member) => {
+      const utilization = getCurrentUtilization(portfolio, member.name, settings)
+      const avgCycleTimeValues = portfolio.cards
+        .filter((card) => card.owner === member.name)
+        .map((card) => getCycleTimeDays(card))
+        .filter((value): value is number => value !== null)
+      const avgRevisionsValues = portfolio.cards
+        .filter((card) => card.owner === member.name)
+        .map((card) => getRevisionCount(card))
+
+      return {
+        editorName: member.name,
+        editorId: member.id,
+        portfolioId: portfolio.id,
+        portfolioName: portfolio.name,
+        active: utilization.activeCount,
+        utilizationPct: utilization.utilizationPct,
+        utilizationTone: utilization.utilizationTone,
+        usedHours: utilization.usedHours,
+        totalHours: utilization.totalHours,
+        workloadDays: roundToTenths(
+          utilization.activeCards.reduce((sum, card) => sum + getCurrentWorkloadDays(card), 0),
+        ),
+        avgCycleTime:
+          avgCycleTimeValues.length > 0
+            ? roundToTenths(
+                avgCycleTimeValues.reduce((sum, value) => sum + value, 0) /
+                  avgCycleTimeValues.length,
+              )
+            : null,
+        avgRevisionsPerCard:
+          avgRevisionsValues.length > 0
+            ? roundToTenths(
+                avgRevisionsValues.reduce((sum, value) => sum + value, 0) /
+                  avgRevisionsValues.length,
+              )
+            : null,
+      } satisfies TeamCapacityRow
+    }),
+  )
+
+  const stuckCards = portfolios
+    .flatMap((portfolio) =>
+      portfolio.cards
+        .filter((card) => !isArchivedCard(card) && (getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck' || getDueStatus(card, nowMs) === 'overdue'))
+        .map((card) => ({
+          portfolioId: portfolio.id,
+          portfolioName: portfolio.name,
+          cardId: card.id,
+          title: card.title,
+          brand: card.brand,
+          stage: card.stage,
+          owner: card.owner,
+          daysInStage: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
+          isBlocked: Boolean(card.blocked),
+          blockedReason: card.blocked?.reason ?? null,
+          isOverdue: getDueStatus(card, nowMs) === 'overdue',
+        })),
+    )
+    .sort((left, right) => right.daysInStage - left.daysInStage)
+
+  const currentWeekStart = startOfWeekMs(nowMs)
+  const throughput = Array.from({ length: 8 }, (_, index) => {
+    const startMs = currentWeekStart - (7 - index) * 7 * DAY_MS
+    const endMs = startMs + 7 * DAY_MS
+    const label = formatDateShort(new Date(startMs).toISOString())
+    const segments = portfolios.flatMap((portfolio) =>
+      portfolio.brands
+        .map((brand) => ({
+          brand: brand.name,
+          color: brand.color,
+          count: getCardsEnteredLiveWithin(portfolio, startMs, endMs).filter(
+            (card) => card.brand === brand.name,
+          ).length,
+        }))
+        .filter((segment) => segment.count > 0),
+    )
+    return {
+      label,
+      total: segments.reduce((sum, segment) => sum + segment.count, 0),
+      segments,
+    } satisfies ThroughputWeek
+  })
+
+  const brandHealth = portfolios.flatMap((portfolio) =>
+    portfolio.brands.map((brand) => {
+      const brandCards = portfolio.cards.filter((card) => card.brand === brand.name)
+      const recentCycleTimes = brandCards
+        .filter((card) => {
+          const readyEntry = getLastStageEntry(card, 'Ready') ?? getLastStageEntry(card, 'Live')
+          return readyEntry !== null && new Date(readyEntry.enteredAt).getTime() >= thirtyDaysAgo
+        })
+        .map((card) => getCycleTimeDays(card))
+        .filter((value): value is number => value !== null)
+      const lastShipped = brandCards
+        .map((card) => getLastStageEntry(card, 'Live'))
+        .filter((entry): entry is StageHistoryEntry => entry !== null)
+        .sort((left, right) => right.enteredAt.localeCompare(left.enteredAt))[0]
+
+      return {
+        portfolioId: portfolio.id,
+        portfolioName: portfolio.name,
+        brand: brand.name,
+        color: brand.color,
+        active: brandCards.filter((card) => !isArchivedCard(card) && card.stage !== 'Live').length,
+        stuck: brandCards.filter(
+          (card) =>
+            !isArchivedCard(card) &&
+            card.stage !== 'Live' &&
+            getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck',
+        ).length,
+        inProduction: brandCards.filter(
+          (card) => !isArchivedCard(card) && card.stage === 'In Production',
+        ).length,
+        avgCycleTime:
+          recentCycleTimes.length > 0
+            ? roundToTenths(
+                recentCycleTimes.reduce((sum, value) => sum + value, 0) /
+                  recentCycleTimes.length,
+              )
+            : null,
+        lastShipped: lastShipped?.enteredAt ?? null,
+      } satisfies BrandHealthRow
+    }),
+  )
+
+  const revisionReasonCounts = new Map<string, number>()
+  const editorRevisionAccumulator = new Map<string, number[]>()
+  portfolios.forEach((portfolio) => {
+    portfolio.cards.forEach((card) => {
+      const recentEntries = card.stageHistory.filter(
+        (entry) => new Date(entry.enteredAt).getTime() >= thirtyDaysAgo,
+      )
+      const recentRevisionCount = recentEntries.filter(
+        (entry) => entry.movedBack && Boolean(entry.revisionReason),
+      ).length
+
+      recentEntries.forEach((entry) => {
+        if (entry.movedBack && entry.revisionReason) {
+          revisionReasonCounts.set(
+            entry.revisionReason,
+            (revisionReasonCounts.get(entry.revisionReason) ?? 0) + 1,
+          )
+        }
+      })
+
+      const hasRecentCardActivity =
+        new Date(card.dateCreated).getTime() >= thirtyDaysAgo || recentEntries.length > 0
+      if (card.owner && hasRecentCardActivity) {
+        const values = editorRevisionAccumulator.get(card.owner) ?? []
+        values.push(recentRevisionCount)
+        editorRevisionAccumulator.set(card.owner, values)
+      }
+    })
+  })
+
+  const totalRevisionEvents = Array.from(revisionReasonCounts.values()).reduce(
+    (sum, value) => sum + value,
+    0,
+  )
+  const revisionReasons = Array.from(revisionReasonCounts.entries())
+    .map(([reason, count]) => ({
+      reason,
+      count,
+      percent: totalRevisionEvents > 0 ? Math.round((count / totalRevisionEvents) * 100) : 0,
+    }))
+    .sort((left, right) => right.count - left.count)
+
+  const editorRevisionRates = Array.from(editorRevisionAccumulator.entries())
+    .map(([editorName, values]) => ({
+      editorName,
+      avgRevisionsPerCard:
+        values.length > 0
+          ? roundToTenths(values.reduce((sum, value) => sum + value, 0) / values.length)
+          : 0,
+    }))
+    .sort((left, right) => right.avgRevisionsPerCard - left.avgRevisionsPerCard)
+
+  return {
+    overviewCards,
+    funnel,
+    teamGrid,
+    stuckCards,
+    throughput,
+    brandHealth,
+    revisionReasons,
+    editorRevisionRates,
+  } satisfies DashboardData
 }
 
-export function estimateTaskWorkloadDays(task: Task) {
-  if (task.type === 'Landing Page') {
-    return 5
-  }
-
-  if (task.type === 'Offer') {
-    return 3
-  }
-
-  if (task.type === 'Other') {
-    return 2
-  }
-
-  return /static|image/i.test(task.title) ? 1 : 3
-}
-
-export function getEditorSnapshot(
-  state: BoardState,
-  userId: UserId,
-  filters: TaskFilters = {},
+export function getAttentionSummary(
+  portfolio: Portfolio | null,
+  settings: GlobalSettings,
+  nowMs = Date.now(),
 ) {
-  const stageCounts = Object.fromEntries(
-    STAGES.map((stage) => [stage, 0]),
-  ) as Record<StageId, number>
-  let estimatedWorkloadDays = 0
-  let totalVisibleCards = 0
-
-  for (const task of Object.values(state.tasks)) {
-    if (task.assigneeId !== userId || !matchesTaskFilters(task, filters)) {
-      continue
-    }
-
-    totalVisibleCards += 1
-    stageCounts[task.stage] += 1
-
-    if (task.stage === 'briefed' || task.stage === 'in_production') {
-      estimatedWorkloadDays += estimateTaskWorkloadDays(task)
-    }
+  if (!portfolio) {
+    return {
+      overdueCount: 0,
+      stuckCount: 0,
+      blockedCount: 0,
+      hasAttention: false,
+    } satisfies AttentionSummary
   }
 
-  return {
-    userId,
-    totalVisibleCards,
-    stageCounts,
-    inProductionCount: stageCounts.in_production,
-    wipLimit: state.settings.wipLimits[userId],
-    estimatedWorkloadDays,
-  } satisfies EditorSnapshot
-}
-
-function parseTestIdNumber(testId: string) {
-  const match = /T-(\d+)/i.exec(testId)
-  return match ? Number(match[1]) : 0
-}
-
-export function getNextTestId(tasks: Task[]) {
-  const highest = tasks.reduce((max, task) => {
-    return Math.max(max, parseTestIdNumber(task.testId))
-  }, 0)
-
-  return `T-${String(highest + 1).padStart(3, '0')}`
-}
-
-export function createDraftTask(state: BoardState): Task {
-  const now = new Date().toISOString()
+  const cards = portfolio.cards.filter((card) => !isArchivedCard(card))
+  const overdueCount = cards.filter((card) => getDueStatus(card, nowMs) === 'overdue').length
+  const stuckCount = cards.filter(
+    (card) => getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck',
+  ).length
+  const blockedCount = cards.filter((card) => card.blocked !== null).length
 
   return {
-    id:
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `task-${Date.now()}`,
-    testId: getNextTestId(Object.values(state.tasks)),
-    title: '',
-    brand: 'Pluxy',
-    type: 'Creative',
-    stage: 'backlog',
-    assigneeId: null,
-    createdAt: now,
-    briefHtml: '<p><strong>Objective:</strong> </p><ul><li></li></ul>',
-    attachments: [],
-    comments: [],
-    stageHistory: [
-      {
-        stage: 'backlog',
-        enteredAt: now,
-        exitedAt: null,
-      },
-    ],
-  }
+    overdueCount,
+    stuckCount,
+    blockedCount,
+    hasAttention: overdueCount > 0 || stuckCount > 0 || blockedCount > 0,
+  } satisfies AttentionSummary
+}
+
+export function formatHours(hours: number) {
+  return `${roundToTenths(hours)}h`
+}
+
+export function getBackwardMoveReasonsInLast30Days(
+  portfolios: Portfolio[],
+  nowMs = Date.now(),
+) {
+  const threshold = nowMs - 30 * DAY_MS
+  return portfolios.flatMap((portfolio) =>
+    portfolio.cards.flatMap((card) =>
+      card.stageHistory.filter(
+        (entry) =>
+          entry.movedBack &&
+          entry.revisionReason &&
+          new Date(entry.enteredAt).getTime() >= threshold,
+      ),
+    ),
+  )
 }
