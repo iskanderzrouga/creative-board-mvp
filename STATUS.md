@@ -85,7 +85,7 @@ Next step:
 
 ### Supabase Production Rollout
 
-Status: Implementation complete, production deployment retry in progress
+Status: Deployed to production, live login confirmation still needs a real inbox click-through
 
 What I learned:
 
@@ -105,6 +105,7 @@ What changed:
 - Ignored Supabase CLI temp artifacts in [`.gitignore`](/Users/iskanderzrouga/Desktop/Editors Board/.gitignore).
 - Applied the existing migration to the live Supabase project with the shared pooler, creating `public.workspace_state` with authenticated RLS policies.
 - Added `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_REMOTE_WORKSPACE_ID` to the linked Vercel project for production and development environments.
+- Deployed the app to Vercel production at [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app).
 
 What failed along the way:
 
@@ -114,7 +115,8 @@ What failed along the way:
 How those failures were resolved:
 
 - Removed the over-aggressive post-hydration skip guard so the first authenticated edit now syncs correctly.
-- Prepared a release commit with the Vercel-account email so the next production deployment can satisfy the author-access check without rewriting earlier history.
+- Prepared a release commit with the Vercel-account email so the next production deployment could satisfy the author-access check without rewriting earlier history.
+- Re-ran the production deployment from the newly authored commit, which cleared the Vercel access check and published successfully.
 
 Verification:
 
@@ -122,7 +124,9 @@ Verification:
 - `npm run lint` passed.
 - `npm run test` passed.
 - `npm run build` passed.
+- `npx vercel --prod --yes` passed and aliased the production site to [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app).
+- A live browser check against [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app) loaded the production sign-in screen successfully and captured `artifacts/phase-2/production-login-gate.png`.
 
 Next step:
 
-- Commit the rollout with the authorized Vercel email and rerun `npx vercel --prod --yes`, then record the live production URL and any remaining manual dashboard setup such as final auth redirect URL confirmation.
+- Perform one real magic-link login from a team inbox and confirm Supabase Auth redirect URLs include the final production origin, then continue the broader deploy-readiness roadmap with deeper workflow hardening and scale guardrails.
