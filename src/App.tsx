@@ -32,7 +32,6 @@ import { RichTextEditor } from './components/RichTextEditor'
 import {
   CARD_FIELDS,
   GROUPED_STAGES,
-  REVISION_REASON_OPTIONS,
   SETTINGS_TAB_LABELS,
   STAGES,
   TASK_TYPE_CATEGORIES,
@@ -66,9 +65,11 @@ import {
   getEditorOptions,
   getEditorSummary,
   getNextStageForEditor,
+  getRevisionReasonById,
   getQuickCreateDefaults,
   getRevisionCount,
   isLaunchOpsRole,
+  getCardScheduledHours,
   getTaskTypeById,
   getTaskTypeGroups,
   getTeamMemberById,
@@ -91,7 +92,7 @@ import {
   type LaneModel,
   type Portfolio,
   type QuickCreateInput,
-  type RevisionReasonOption,
+  type RevisionReason,
   type RoleMode,
   type SettingTab,
   type StageId,
@@ -134,8 +135,9 @@ interface PendingDeleteCard {
 }
 
 interface BackwardMoveFormState {
-  reason: RevisionReasonOption | ''
+  reasonId: string
   otherReason: string
+  estimatedHours: number | ''
 }
 
 interface BoardCardSurfaceProps {
@@ -210,6 +212,7 @@ interface QuickCreateModalProps {
 interface BackwardMoveModalProps {
   card: Card
   destinationStage: StageId
+  settings: GlobalSettings
   formState: BackwardMoveFormState
   onChange: (updates: Partial<BackwardMoveFormState>) => void
   onCancel: () => void
@@ -346,6 +349,24 @@ function canEditorDragStage(stage: StageId) {
   return stage === 'Briefed' || stage === 'In Production' || stage === 'Review' || stage === 'Ready'
 }
 
+function shouldShowBoardEstimate(stage: StageId) {
+  return stage === 'Briefed' || stage === 'In Production'
+}
+
+function getSortedRevisionReasons(settings: GlobalSettings) {
+  return settings.revisionReasons.slice().sort((left, right) => left.order - right.order)
+}
+
+function getDefaultBackwardMoveForm(settings: GlobalSettings): BackwardMoveFormState {
+  const defaultReason = getSortedRevisionReasons(settings)[0] ?? null
+
+  return {
+    reasonId: defaultReason?.id ?? '',
+    otherReason: '',
+    estimatedHours: defaultReason?.estimatedHours ?? '',
+  }
+}
+
 function getSearchCountLabel(filteredCount: number, totalCount: number) {
   return `Showing ${filteredCount} of ${totalCount} cards`
 }
@@ -436,6 +457,7 @@ function BoardCardSurface({
   const tone = getAgeToneFromMs(ageMs, settings)
   const dueStatus = getDueStatus(card, nowMs)
   const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
+  const showEstimate = shouldShowBoardEstimate(card.stage)
 
   return (
     <button
@@ -483,11 +505,13 @@ function BoardCardSurface({
         <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
           {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
         </span>
-        <span className={`card-age ${completionForecast.isScheduled ? `tone-${tone}` : 'is-unscheduled'}`}>
-          {dueStatus === 'overdue' ? <span className="due-indicator is-overdue">⏰</span> : null}
-          {dueStatus === 'soon' ? <span className="due-indicator is-soon">⏰</span> : null}
-          {formatEstimatedDaysLabel(completionForecast.estimatedDays)}
-        </span>
+        {showEstimate ? (
+          <span className={`card-age ${completionForecast.isScheduled ? `tone-${tone}` : 'is-unscheduled'}`}>
+            {dueStatus === 'overdue' ? <span className="due-indicator is-overdue">⏰</span> : null}
+            {dueStatus === 'soon' ? <span className="due-indicator is-soon">⏰</span> : null}
+            {formatEstimatedDaysLabel(completionForecast.estimatedDays)}
+          </span>
+        ) : null}
       </div>
     </button>
   )
@@ -949,13 +973,20 @@ function QuickCreateModal({
 function BackwardMoveModal({
   card,
   destinationStage,
+  settings,
   formState,
   onChange,
   onCancel,
   onConfirm,
 }: BackwardMoveModalProps) {
-  const otherSelected = formState.reason === 'Other'
-  const canConfirm = Boolean(formState.reason) && (!otherSelected || formState.otherReason.trim())
+  const reasons = getSortedRevisionReasons(settings)
+  const selectedReason = getRevisionReasonById(settings, formState.reasonId)
+  const otherSelected = selectedReason?.id === 'revision-other'
+  const canConfirm =
+    Boolean(selectedReason) &&
+    Boolean(formState.estimatedHours) &&
+    Number(formState.estimatedHours) > 0 &&
+    (!otherSelected || formState.otherReason.trim())
 
   return (
     <>
@@ -967,14 +998,20 @@ function BackwardMoveModal({
 
         <div className="backward-move-body">
           <span>Why?</span>
-          {REVISION_REASON_OPTIONS.map((reason) => (
-            <label key={reason} className="radio-option">
+          {reasons.map((reason) => (
+            <label key={reason.id} className="radio-option">
               <input
                 type="radio"
-                checked={formState.reason === reason}
-                onChange={() => onChange({ reason })}
+                checked={formState.reasonId === reason.id}
+                onChange={() =>
+                  onChange({
+                    reasonId: reason.id,
+                    estimatedHours: reason.estimatedHours,
+                    otherReason: reason.id === 'revision-other' ? formState.otherReason : '',
+                  })
+                }
               />
-              <span>{reason}</span>
+              <span>{`${reason.name} · ${formatHours(reason.estimatedHours)}`}</span>
             </label>
           ))}
           {otherSelected ? (
@@ -984,6 +1021,20 @@ function BackwardMoveModal({
               placeholder="Other reason"
             />
           ) : null}
+          <label className="backward-move-estimate">
+            <span>Revision estimate</span>
+            <input
+              type="number"
+              min={1}
+              step={0.5}
+              value={formState.estimatedHours}
+              onChange={(event) =>
+                onChange({
+                  estimatedHours: event.target.value ? Number(event.target.value) : '',
+                })
+              }
+            />
+          </label>
         </div>
 
         <div className="quick-create-actions">
@@ -1176,7 +1227,13 @@ function CardDetailPanel({
                   </span>
                   {entry.movedBack ? (
                     <span className="stage-history-moved-back">
-                      {entry.revisionReason ? `(moved back: ${entry.revisionReason})` : '(moved back)'}
+                      {entry.revisionReason
+                        ? `(moved back: ${entry.revisionReason}${
+                            entry.revisionEstimatedHours
+                              ? ` · ${formatHours(entry.revisionEstimatedHours)}`
+                              : ''
+                          })`
+                        : '(moved back)'}
                     </span>
                   ) : null}
                   {index < card.stageHistory.length - 1 ? (
@@ -1288,7 +1345,7 @@ function CardDetailPanel({
               )}
             </label>
             <label>
-              <span>Estimated Hours</span>
+              <span>Original Estimate</span>
               {canEdit ? (
                 <input
                   type="number"
@@ -1301,6 +1358,43 @@ function CardDetailPanel({
               ) : (
                 <strong>{formatHours(card.estimatedHours)}</strong>
               )}
+            </label>
+            <label>
+              <span>Revision Estimate</span>
+              {canEdit && card.revisionEstimatedHours !== null ? (
+                <div className="inline-hours-field">
+                  <input
+                    type="number"
+                    min={1}
+                    step={0.5}
+                    value={card.revisionEstimatedHours}
+                    onChange={(event) =>
+                      onSave({
+                        revisionEstimatedHours: event.target.value
+                          ? Number(event.target.value)
+                          : null,
+                      })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="clear-link"
+                    onClick={() => onSave({ revisionEstimatedHours: null })}
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <strong>
+                  {card.revisionEstimatedHours !== null
+                    ? formatHours(card.revisionEstimatedHours)
+                    : '—'}
+                </strong>
+              )}
+            </label>
+            <label>
+              <span>Current Scheduling Estimate</span>
+              <strong>{formatHours(getCardScheduledHours(card))}</strong>
             </label>
             <label>
               <span>Funnel Stage</span>
@@ -1680,6 +1774,7 @@ function TaskLibraryEditor({
 
   return (
     <div className="settings-block">
+      <div className="nested-settings-title">Task Types</div>
       <div className="settings-table full-table">
         <div className="settings-row settings-head task-library-head">
           <span>Type</span>
@@ -1880,6 +1975,149 @@ function TaskLibraryEditor({
         }
       >
         + Add task type
+      </button>
+    </div>
+  )
+}
+
+function RevisionReasonLibraryEditor({
+  settings,
+  onRevisionReasonChange,
+  onDeleteRevisionReason,
+  showToast,
+}: {
+  settings: GlobalSettings
+  onRevisionReasonChange: (updater: (reasons: RevisionReason[]) => RevisionReason[]) => void
+  onDeleteRevisionReason: (revisionReasonId: string) => void
+  showToast: (message: string, tone: ToastTone) => void
+}) {
+  const [draggingReasonId, setDraggingReasonId] = useState<string | null>(null)
+
+  function handleDelete(reason: RevisionReason) {
+    if (reason.locked) {
+      showToast('Other reason cannot be deleted', 'red')
+      return
+    }
+
+    if (!window.confirm(`Delete ${reason.name}?`)) {
+      return
+    }
+
+    onDeleteRevisionReason(reason.id)
+  }
+
+  function reorderReasons(sourceId: string, targetId: string) {
+    if (sourceId === targetId) {
+      return
+    }
+
+    onRevisionReasonChange((current) => {
+      const sorted = current.slice().sort((left, right) => left.order - right.order)
+      const sourceIndex = sorted.findIndex((reason) => reason.id === sourceId)
+      const targetIndex = sorted.findIndex((reason) => reason.id === targetId)
+
+      if (sourceIndex === -1 || targetIndex === -1) {
+        return current
+      }
+
+      const reordered = sorted.slice()
+      const [moved] = reordered.splice(sourceIndex, 1)
+      reordered.splice(targetIndex, 0, moved)
+
+      return reordered.map((reason, order) => ({
+        ...reason,
+        order,
+      }))
+    })
+  }
+
+  const sortedReasons = getSortedRevisionReasons(settings)
+
+  return (
+    <div className="settings-block">
+      <div className="nested-settings-title">Revision Reasons</div>
+      <div className="settings-table full-table">
+        <div className="settings-row settings-head revision-reason-head">
+          <span>Reason</span>
+          <span>Default Hours</span>
+          <span>Order</span>
+          <span />
+        </div>
+        {sortedReasons.map((reason) => (
+          <div
+            key={reason.id}
+            className={`task-type-entry ${draggingReasonId === reason.id ? 'is-dragging' : ''}`}
+            draggable
+            onDragStart={() => setDraggingReasonId(reason.id)}
+            onDragEnd={() => setDraggingReasonId(null)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault()
+              if (draggingReasonId) {
+                reorderReasons(draggingReasonId, reason.id)
+              }
+              setDraggingReasonId(null)
+            }}
+          >
+            <div className="settings-row revision-reason-row">
+              <input
+                value={reason.name}
+                disabled={reason.locked}
+                onChange={(event) =>
+                  onRevisionReasonChange((current) =>
+                    current.map((item) =>
+                      item.id === reason.id ? { ...item, name: event.target.value } : item,
+                    ),
+                  )
+                }
+              />
+              <input
+                type="number"
+                min={1}
+                step={0.5}
+                value={reason.estimatedHours}
+                onChange={(event) =>
+                  onRevisionReasonChange((current) =>
+                    current.map((item) =>
+                      item.id === reason.id
+                        ? { ...item, estimatedHours: Number(event.target.value) || 1 }
+                        : item,
+                    ),
+                  )
+                }
+              />
+              <div className="task-type-drag-handle" title="Drag to reorder">
+                ⋮⋮
+              </div>
+              <div className="task-type-actions">
+                <button
+                  type="button"
+                  className="clear-link danger-link"
+                  onClick={() => handleDelete(reason)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="ghost-button"
+        onClick={() =>
+          onRevisionReasonChange((current) => [
+            ...current,
+            {
+              id: `revision-reason-${Date.now()}`,
+              name: 'New reason',
+              estimatedHours: 4,
+              order: current.length,
+            },
+          ])
+        }
+      >
+        + Add revision reason
       </button>
     </div>
   )
@@ -2554,40 +2792,70 @@ function SettingsPage({
         ) : null}
 
         {settingsTab === 'task-library' ? (
-          <TaskLibraryEditor
-            settings={state.settings}
-            portfolios={state.portfolios}
-            onTaskTypeChange={(updater) =>
-              onStateChange((current) => ({
-                ...current,
-                settings: {
-                  ...current.settings,
-                  taskLibrary: updater(current.settings.taskLibrary)
-                    .slice()
-                    .sort((left, right) => left.order - right.order)
-                    .map((taskType, order) => ({ ...taskType, order })),
-                },
-              }))
-            }
-            onDeleteTaskType={(taskTypeId) =>
-              onStateChange((current) => ({
-                ...current,
-                portfolios: current.portfolios.map((portfolio) => ({
-                  ...portfolio,
-                  cards: portfolio.cards.map((card) =>
-                    card.taskTypeId === taskTypeId ? { ...card, taskTypeId: 'custom' } : card,
-                  ),
-                })),
-                settings: {
-                  ...current.settings,
-                  taskLibrary: current.settings.taskLibrary
-                    .filter((taskType) => taskType.id !== taskTypeId)
-                    .map((taskType, order) => ({ ...taskType, order })),
-                },
-              }))
-            }
-            showToast={showToast}
-          />
+          <div className="settings-stack">
+            <TaskLibraryEditor
+              settings={state.settings}
+              portfolios={state.portfolios}
+              onTaskTypeChange={(updater) =>
+                onStateChange((current) => ({
+                  ...current,
+                  settings: {
+                    ...current.settings,
+                    taskLibrary: updater(current.settings.taskLibrary)
+                      .slice()
+                      .sort((left, right) => left.order - right.order)
+                      .map((taskType, order) => ({ ...taskType, order })),
+                  },
+                }))
+              }
+              onDeleteTaskType={(taskTypeId) =>
+                onStateChange((current) => ({
+                  ...current,
+                  portfolios: current.portfolios.map((portfolio) => ({
+                    ...portfolio,
+                    cards: portfolio.cards.map((card) =>
+                      card.taskTypeId === taskTypeId ? { ...card, taskTypeId: 'custom' } : card,
+                    ),
+                  })),
+                  settings: {
+                    ...current.settings,
+                    taskLibrary: current.settings.taskLibrary
+                      .filter((taskType) => taskType.id !== taskTypeId)
+                      .map((taskType, order) => ({ ...taskType, order })),
+                  },
+                }))
+              }
+              showToast={showToast}
+            />
+
+            <RevisionReasonLibraryEditor
+              settings={state.settings}
+              onRevisionReasonChange={(updater) =>
+                onStateChange((current) => ({
+                  ...current,
+                  settings: {
+                    ...current.settings,
+                    revisionReasons: updater(current.settings.revisionReasons)
+                      .slice()
+                      .sort((left, right) => left.order - right.order)
+                      .map((reason, order) => ({ ...reason, order })),
+                  },
+                }))
+              }
+              onDeleteRevisionReason={(revisionReasonId) =>
+                onStateChange((current) => ({
+                  ...current,
+                  settings: {
+                    ...current.settings,
+                    revisionReasons: current.settings.revisionReasons
+                      .filter((reason) => reason.id !== revisionReasonId)
+                      .map((reason, order) => ({ ...reason, order })),
+                  },
+                }))
+              }
+              showToast={showToast}
+            />
+          </div>
         ) : null}
 
         {settingsTab === 'capacity' ? (
@@ -3128,10 +3396,9 @@ function App() {
   const [expandedStages, setExpandedStages] = useState<StageId[]>([])
   const [pendingBackwardMove, setPendingBackwardMove] = useState<PendingBackwardMove | null>(null)
   const [pendingDeleteCard, setPendingDeleteCard] = useState<PendingDeleteCard | null>(null)
-  const [backwardMoveForm, setBackwardMoveForm] = useState<BackwardMoveFormState>({
-    reason: '',
-    otherReason: '',
-  })
+  const [backwardMoveForm, setBackwardMoveForm] = useState<BackwardMoveFormState>(() =>
+    getDefaultBackwardMoveForm(loadAppState().settings),
+  )
   const [creatingDriveCardId, setCreatingDriveCardId] = useState<string | null>(null)
   const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null)
 
@@ -3762,6 +4029,7 @@ function App() {
       }
 
       const targetStage = targetLane.stage as StageId
+      const isBackwardMove = STAGES.indexOf(targetStage) < STAGES.indexOf(card.stage)
       if (!canEditorDragStage(card.stage)) {
         return {
           valid: false,
@@ -3798,7 +4066,14 @@ function App() {
         }
       }
 
-      const isBackwardMove = STAGES.indexOf(targetStage) < STAGES.indexOf(card.stage)
+      if (card.stage === 'Review' && targetStage === 'Briefed') {
+        return {
+          valid: false,
+          message: 'Revisions from Review return to In Production.',
+          tone: 'blue' as ToastTone,
+        }
+      }
+
       if (!isBackwardMove) {
         const nextStage = getNextStageForEditor(card.stage)
         if (!nextStage || targetStage !== nextStage) {
@@ -3819,7 +4094,12 @@ function App() {
             currentCard.stage === 'In Production' &&
             !currentCard.archivedAt,
         ).length
-        if (member?.wipCap !== null && member?.wipCap !== undefined && projectedWip >= member.wipCap) {
+        if (
+          !isBackwardMove &&
+          member?.wipCap !== null &&
+          member?.wipCap !== undefined &&
+          projectedWip >= member.wipCap
+        ) {
           return {
             valid: false,
             message: `${targetLane.owner} is at capacity (${member.wipCap}/${member.wipCap})`,
@@ -3843,6 +4123,17 @@ function App() {
       }
     }
 
+    const targetStage = targetLane.stage as StageId
+    const isBackwardMove = STAGES.indexOf(targetStage) < STAGES.indexOf(card.stage)
+
+    if (card.stage === 'Review' && targetStage === 'Briefed') {
+      return {
+        valid: false,
+        message: 'Revisions from Review return to In Production.',
+        tone: 'blue' as ToastTone,
+      }
+    }
+
     if (targetLane.stage === 'In Production' && targetLane.owner) {
       const member = getTeamMemberByName(activePortfolio, targetLane.owner)
       const projectedWip = activePortfolio.cards.filter(
@@ -3852,7 +4143,12 @@ function App() {
           currentCard.stage === 'In Production' &&
           !currentCard.archivedAt,
       ).length
-      if (member?.wipCap !== null && member?.wipCap !== undefined && projectedWip >= member.wipCap) {
+      if (
+        !isBackwardMove &&
+        member?.wipCap !== null &&
+        member?.wipCap !== undefined &&
+        projectedWip >= member.wipCap
+      ) {
         return {
           valid: false,
           message: `${targetLane.owner} is at capacity (${member.wipCap}/${member.wipCap})`,
@@ -3897,6 +4193,7 @@ function App() {
     destinationIndex: number,
     movedAt: string,
     revisionReason?: string,
+    revisionEstimatedHours?: number | null,
   ) {
     const portfolio = state.portfolios.find((item) => item.id === portfolioId)
     if (!portfolio) {
@@ -3917,6 +4214,7 @@ function App() {
         movedAt,
         actor,
         revisionReason,
+        revisionEstimatedHours,
       ),
     )
 
@@ -3984,10 +4282,7 @@ function App() {
         destinationIndex,
         movedAt,
       })
-      setBackwardMoveForm({
-        reason: '',
-        otherReason: '',
-      })
+      setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings))
       return
     }
 
@@ -4034,11 +4329,13 @@ function App() {
     if (!pendingBackwardMove) {
       return
     }
+    const selectedReason = getRevisionReasonById(state.settings, backwardMoveForm.reasonId)
     const reason =
-      backwardMoveForm.reason === 'Other'
+      selectedReason?.id === 'revision-other'
         ? backwardMoveForm.otherReason.trim()
-        : backwardMoveForm.reason
-    if (!reason) {
+        : selectedReason?.name ?? ''
+    const revisionEstimatedHours = Number(backwardMoveForm.estimatedHours) || 0
+    if (!reason || revisionEstimatedHours <= 0) {
       return
     }
     applyMove(
@@ -4049,6 +4346,7 @@ function App() {
       pendingBackwardMove.destinationIndex,
       pendingBackwardMove.movedAt,
       reason,
+      revisionEstimatedHours,
     )
     setPendingBackwardMove(null)
   }
@@ -4557,6 +4855,7 @@ function App() {
         <BackwardMoveModal
           card={pendingBackwardCard}
           destinationStage={pendingBackwardMove.destinationStage}
+          settings={state.settings}
           formState={backwardMoveForm}
           onChange={(updates) =>
             setBackwardMoveForm((current) => ({

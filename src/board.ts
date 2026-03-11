@@ -57,14 +57,6 @@ export const SETTING_TABS = [
   'integrations',
   'data',
 ] as const
-export const REVISION_REASON_OPTIONS = [
-  'Needs creative fixes',
-  'Brief was unclear',
-  'Wrong format/specs',
-  'Assets missing',
-  'Client/stakeholder feedback',
-  'Other',
-] as const
 
 export type StageId = (typeof STAGES)[number]
 export type GroupedStageId = (typeof GROUPED_STAGES)[number]
@@ -78,7 +70,6 @@ export type Platform = (typeof PLATFORMS)[number]
 export type CardFieldKey = (typeof CARD_FIELDS)[number]
 export type TaskTypeCategory = (typeof TASK_TYPE_CATEGORIES)[number]
 export type SettingTab = (typeof SETTING_TABS)[number]
-export type RevisionReasonOption = (typeof REVISION_REASON_OPTIONS)[number]
 export type AgeTone = 'fresh' | 'aging' | 'stuck'
 export type UtilizationTone = 'green' | 'yellow' | 'red'
 
@@ -121,6 +112,7 @@ export interface StageHistoryEntry {
   durationDays: number | null
   movedBack?: boolean
   revisionReason?: string
+  revisionEstimatedHours?: number
 }
 
 export interface BlockedState {
@@ -157,6 +149,7 @@ export interface Card {
   dateCreated: string
   positionInSection: number
   estimatedHours: number
+  revisionEstimatedHours: number | null
   dueDate: string | null
   blocked: BlockedState | null
   archivedAt: string | null
@@ -212,6 +205,14 @@ export interface TaskType {
   order: number
 }
 
+export interface RevisionReason {
+  id: string
+  name: string
+  estimatedHours: number
+  locked?: boolean
+  order: number
+}
+
 export interface GeneralSettings {
   appName: string
   theme: 'light'
@@ -241,6 +242,7 @@ export interface GlobalSettings {
   general: GeneralSettings
   capacity: CapacitySettings
   taskLibrary: TaskType[]
+  revisionReasons: RevisionReason[]
   integrations: IntegrationsSettings
 }
 
@@ -792,6 +794,10 @@ export function formatDurationShort(durationMs: number) {
   return `${Math.max(1, Math.round(durationMs / DAY_MS))}d`
 }
 
+export function getCardScheduledHours(card: Card) {
+  return Math.max(1, card.revisionEstimatedHours ?? card.estimatedHours)
+}
+
 export function getCardAgeMs(card: Card, nowMs = Date.now()) {
   return nowMs - new Date(card.stageEnteredAt).getTime()
 }
@@ -928,7 +934,7 @@ export function getCardCompletionForecast(
   const queuedHours = roundToTenths(
     queueCards
       .slice(0, cardIndex + 1)
-      .reduce((sum, queueCard) => sum + Math.max(1, queueCard.estimatedHours), 0),
+      .reduce((sum, queueCard) => sum + getCardScheduledHours(queueCard), 0),
   )
 
   return {
@@ -1001,6 +1007,21 @@ export function getTaskTypeById(settings: GlobalSettings, taskTypeId: string) {
     settings.taskLibrary.find((taskType) => taskType.id === taskTypeId) ??
     settings.taskLibrary.find((taskType) => taskType.id === 'custom') ??
     settings.taskLibrary[0]
+  )
+}
+
+export function getRevisionReasonById(settings: GlobalSettings, revisionReasonId: string | null) {
+  if (!revisionReasonId) {
+    return (
+      settings.revisionReasons.slice().sort((left, right) => left.order - right.order)[0] ?? null
+    )
+  }
+
+  return (
+    settings.revisionReasons.find((reason) => reason.id === revisionReasonId) ??
+    settings.revisionReasons.find((reason) => reason.id === 'revision-other') ??
+    settings.revisionReasons[0] ??
+    null
   )
 }
 
@@ -1093,6 +1114,7 @@ function createStageHistoryEntry(
   exitedAtMs: number | null,
   movedBack = false,
   revisionReason?: string,
+  revisionEstimatedHours?: number,
 ): StageHistoryEntry {
   return {
     stage,
@@ -1102,6 +1124,7 @@ function createStageHistoryEntry(
       exitedAtMs === null ? null : roundToTenths((exitedAtMs - enteredAtMs) / DAY_MS),
     movedBack,
     revisionReason,
+    revisionEstimatedHours,
   }
 }
 
@@ -1290,6 +1313,47 @@ function createSeedTaskLibrary(): TaskType[] {
   }))
 }
 
+function createSeedRevisionReasons(): RevisionReason[] {
+  const definitions: Array<Omit<RevisionReason, 'order'>> = [
+    {
+      id: 'revision-needs-creative-fixes',
+      name: 'Needs creative fixes',
+      estimatedHours: 4,
+    },
+    {
+      id: 'revision-brief-unclear',
+      name: 'Brief was unclear',
+      estimatedHours: 8,
+    },
+    {
+      id: 'revision-wrong-format',
+      name: 'Wrong format/specs',
+      estimatedHours: 6,
+    },
+    {
+      id: 'revision-assets-missing',
+      name: 'Assets missing',
+      estimatedHours: 2,
+    },
+    {
+      id: 'revision-client-feedback',
+      name: 'Client/stakeholder feedback',
+      estimatedHours: 4,
+    },
+    {
+      id: 'revision-other',
+      name: 'Other',
+      estimatedHours: 4,
+      locked: true,
+    },
+  ]
+
+  return definitions.map((definition, index) => ({
+    ...definition,
+    order: index,
+  }))
+}
+
 function createBrand(
   name: string,
   prefix: string,
@@ -1420,6 +1484,7 @@ function inflateSeedCard(
     dateCreated,
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
+    revisionEstimatedHours: null,
     dueDate: seed.dueDate ?? null,
     blocked: null,
     archivedAt: null,
@@ -1581,6 +1646,7 @@ function buildCustomHistory(entries: Array<{
   exitedAt: string | null
   movedBack?: boolean
   revisionReason?: string
+  revisionEstimatedHours?: number
 }>) {
   return entries.map((entry) =>
     createStageHistoryEntry(
@@ -1589,6 +1655,7 @@ function buildCustomHistory(entries: Array<{
       entry.exitedAt ? new Date(entry.exitedAt).getTime() : null,
       entry.movedBack ?? false,
       entry.revisionReason,
+      entry.revisionEstimatedHours,
     ),
   )
 }
@@ -1628,6 +1695,7 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
 
 export function createSeedState(): AppState {
   const taskLibrary = createSeedTaskLibrary()
+  const revisionReasons = createSeedRevisionReasons()
   const portfolios = createSeedPortfolios(taskLibrary)
 
   return {
@@ -1653,6 +1721,7 @@ export function createSeedState(): AppState {
         },
       },
       taskLibrary,
+      revisionReasons,
       integrations: {
         globalDriveWebhookUrl: '',
       },
@@ -1697,6 +1766,29 @@ function normalizeTaskLibrary(raw: TaskType[] | undefined) {
   }
 
   return taskLibrary
+}
+
+function normalizeRevisionReasons(raw: RevisionReason[] | undefined) {
+  const seed = createSeedRevisionReasons()
+  const source = Array.isArray(raw) && raw.length > 0 ? raw : seed
+
+  const revisionReasons = source.map((reason, index) => ({
+    ...reason,
+    estimatedHours:
+      typeof reason.estimatedHours === 'number' && reason.estimatedHours > 0
+        ? reason.estimatedHours
+        : 4,
+    order: typeof reason.order === 'number' ? reason.order : index,
+  }))
+
+  if (!revisionReasons.some((reason) => reason.id === 'revision-other')) {
+    revisionReasons.push({
+      ...seed.find((reason) => reason.id === 'revision-other')!,
+      order: revisionReasons.length,
+    })
+  }
+
+  return revisionReasons
 }
 
 function normalizePortfolio(
@@ -1772,6 +1864,10 @@ function normalizePortfolio(
             : typeof (rawCard as unknown as { effortPoints?: number }).effortPoints === 'number'
               ? (rawCard as unknown as { effortPoints: number }).effortPoints
               : taskType.estimatedHours,
+        revisionEstimatedHours:
+          typeof (rawCard as Card).revisionEstimatedHours === 'number'
+            ? (rawCard as Card).revisionEstimatedHours
+            : null,
         dueDate: rawCard.dueDate ?? null,
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
@@ -1798,6 +1894,7 @@ function normalizePortfolio(
 function normalizeSettings(raw: Partial<GlobalSettings> | undefined, fallbackPortfolioId: string) {
   const seed = createSeedState().settings
   const taskLibrary = normalizeTaskLibrary(raw?.taskLibrary)
+  const revisionReasons = normalizeRevisionReasons(raw?.revisionReasons)
 
   return {
     general: {
@@ -1819,6 +1916,7 @@ function normalizeSettings(raw: Partial<GlobalSettings> | undefined, fallbackPor
       },
     },
     taskLibrary,
+    revisionReasons,
     integrations: {
       ...seed.integrations,
       ...(raw?.integrations ?? {}),
@@ -1997,6 +2095,7 @@ export function createCardFromQuickInput(
     dateCreated: dateOnly,
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
+    revisionEstimatedHours: null,
     dueDate: null,
     blocked: null,
     archivedAt: null,
@@ -2128,7 +2227,7 @@ export function getCurrentUtilization(
     (card) => !isArchivedCard(card) && card.owner === ownerName && isActiveWorkStage(card.stage),
   )
   const usedHours = roundToTenths(
-    activeCards.reduce((sum, card) => sum + card.estimatedHours, 0),
+    activeCards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),
   )
   const totalHours = member ? getWeeklyCapacityHours(member) : 0
   const utilizationPct =
@@ -2212,11 +2311,13 @@ export function getVisibleColumns(
       return [
         owner,
         {
-          totalHours: roundToTenths(cards.reduce((sum, card) => sum + card.estimatedHours, 0)),
+          totalHours: roundToTenths(
+            cards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),
+          ),
           totalDays:
             hoursPerDay > 0
               ? roundToTenths(
-                  cards.reduce((sum, card) => sum + card.estimatedHours, 0) / hoursPerDay,
+                  cards.reduce((sum, card) => sum + getCardScheduledHours(card), 0) / hoursPerDay,
                 )
               : 0,
           preferredStage,
@@ -2243,7 +2344,9 @@ export function getVisibleColumns(
             cards,
             allCardIds: getOrderedLaneCards(portfolio.cards, stage, null).map((card) => card.id),
             activeCount: cards.length,
-            queuedHours: roundToTenths(cards.reduce((sum, card) => sum + card.estimatedHours, 0)),
+            queuedHours: roundToTenths(
+              cards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),
+            ),
             totalWorkDays: null,
             showTotalWorkload: false,
             utilizationPct: 0,
@@ -2285,7 +2388,9 @@ export function getVisibleColumns(
           cards,
           allCardIds: getOrderedLaneCards(portfolio.cards, stage, owner).map((card) => card.id),
           activeCount: cards.length,
-          queuedHours: roundToTenths(cards.reduce((sum, card) => sum + card.estimatedHours, 0)),
+          queuedHours: roundToTenths(
+            cards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),
+          ),
           totalWorkDays:
             workload.preferredStage === stage ? workload.totalDays : null,
           showTotalWorkload: workload.preferredStage === stage,
@@ -2327,7 +2432,7 @@ export function getVisibleColumns(
           allCardIds: archivedCards.map((card) => card.id),
           activeCount: archivedCards.length,
           queuedHours: roundToTenths(
-            archivedCards.reduce((sum, card) => sum + card.estimatedHours, 0),
+            archivedCards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),
           ),
           totalWorkDays: null,
           showTotalWorkload: false,
@@ -2399,7 +2504,7 @@ export function getEditorSummary(
     roundToTenths(
       cards
         .filter((card) => card.stage === stage)
-        .reduce((sum, card) => sum + card.estimatedHours, 0),
+        .reduce((sum, card) => sum + getCardScheduledHours(card), 0),
     )
 
   return {
@@ -2524,7 +2629,7 @@ function scheduleMemberLoad(
   }
 
   for (const card of activeCards) {
-    let remainingHours = Math.max(1, card.estimatedHours)
+    let remainingHours = getCardScheduledHours(card)
     while (remainingHours > 0) {
       advanceToNextWorkingSlot()
       if ((member.hoursPerDay ?? 0) === 0) {
@@ -2613,7 +2718,7 @@ export function getWorkloadData(
         taskTypeId: card.taskTypeId,
         taskTypeName: taskType.name,
         icon: taskType.icon,
-        hours: card.estimatedHours,
+        hours: getCardScheduledHours(card),
         daysWaiting: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
       } satisfies WorkloadQueueRow
     })
@@ -2699,6 +2804,7 @@ export function moveCardInPortfolio(
   movedAt: string,
   actor: string,
   revisionReason?: string,
+  revisionEstimatedHours?: number | null,
 ) {
   const existingCard = portfolio.cards.find((card) => card.id === cardId)
   if (!existingCard) {
@@ -2737,6 +2843,7 @@ export function moveCardInPortfolio(
           durationDays: null,
           movedBack: isBackwardMove || undefined,
           revisionReason: isBackwardMove ? revisionReason : undefined,
+          revisionEstimatedHours: isBackwardMove ? revisionEstimatedHours ?? undefined : undefined,
         },
       ]
     : [...existingCard.stageHistory]
@@ -2752,6 +2859,9 @@ export function moveCardInPortfolio(
         ? movedAt.slice(0, 10)
         : existingCard.dateAssigned,
     positionInSection: positionMap.get(cardId) ?? existingCard.positionInSection,
+    revisionEstimatedHours: isBackwardMove
+      ? revisionEstimatedHours ?? existingCard.revisionEstimatedHours
+      : existingCard.revisionEstimatedHours,
   }
 
   if (ownerChanged && nextOwner) {
@@ -2767,7 +2877,9 @@ export function moveCardInPortfolio(
       createActivityEntry(
         actor,
         isBackwardMove
-          ? `moved back to ${destinationStage}${revisionReason ? ` — Reason: ${revisionReason}` : ''}`
+          ? `moved back to ${destinationStage}${revisionReason ? ` — Reason: ${revisionReason}` : ''}${
+              revisionEstimatedHours ? ` — Revision estimate: ${formatHours(revisionEstimatedHours)}` : ''
+            }`
           : `moved to ${destinationStage}`,
         isBackwardMove ? 'moved-back' : 'moved-forward',
         movedAt,
@@ -2827,6 +2939,22 @@ export function applyCardUpdates(
             'effort',
             timestamp,
           ),
+        )
+      }
+
+      if (
+        updates.revisionEstimatedHours !== undefined &&
+        updates.revisionEstimatedHours !== previous.revisionEstimatedHours
+      ) {
+        const message =
+          updates.revisionEstimatedHours === null
+            ? 'cleared the revision estimate'
+            : previous.revisionEstimatedHours === null
+              ? `set revision estimate to ${updates.revisionEstimatedHours}h`
+              : `changed revision estimate from ${previous.revisionEstimatedHours}h to ${updates.revisionEstimatedHours}h`
+        nextCard = appendActivity(
+          nextCard,
+          createActivityEntry(actor, message, 'effort', timestamp),
         )
       }
 
@@ -2946,7 +3074,7 @@ export function getCycleTimeDays(card: Card) {
 }
 
 function getCurrentWorkloadDays(card: Card) {
-  return roundToTenths(card.estimatedHours / 4)
+  return roundToTenths(getCardScheduledHours(card) / 4)
 }
 
 function getCardsEnteredLiveWithin(portfolio: Portfolio, startMs: number, endMs: number) {

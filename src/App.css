@@ -2220,6 +2220,15 @@ button {
     120px;
 }
 
+.revision-reason-head,
+.revision-reason-row {
+  grid-template-columns:
+    minmax(220px, 1.4fr)
+    120px
+    50px
+    120px;
+}
+
 .task-type-color-inputs {
   display: grid;
   grid-template-columns: 52px 1fr;
@@ -2261,6 +2270,22 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   padding: 12px 0 16px;
+}
+
+.inline-hours-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inline-hours-field .clear-link {
+  white-space: nowrap;
+}
+
+.backward-move-estimate {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .portfolio-tab-strip {
@@ -2543,6 +2568,8 @@ button {
 
   .task-library-head,
   .task-library-row,
+  .revision-reason-head,
+  .revision-reason-row,
   .team-head,
   .team-row,
   .brand-head,
