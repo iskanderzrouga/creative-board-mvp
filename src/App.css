@@ -1678,6 +1678,59 @@ button {
   flex-wrap: wrap;
 }
 
+.session-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.session-email {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sync-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sync-status-pill.is-local,
+.sync-status-pill.is-loading {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.sync-status-pill.is-syncing {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.sync-status-pill.is-synced {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.sync-status-pill.is-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .search-shell {
   display: flex;
   align-items: center;
@@ -1723,6 +1776,84 @@ button {
   color: #fff;
   font-size: 11px;
   white-space: nowrap;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.76), transparent 28%),
+    linear-gradient(180deg, #f7f8fb 0%, #eef1f5 100%);
+}
+
+.auth-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 22px;
+  padding: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
+}
+
+.auth-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #2563eb;
+}
+
+.auth-copy h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.auth-copy p,
+.auth-helper,
+.auth-error,
+.auth-status-card span {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.auth-status-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 18px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.auth-helper {
+  color: #1d4ed8;
+}
+
+.auth-error {
+  color: #b91c1c;
 }
 
 .manager-filter-bar,

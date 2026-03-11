@@ -30,10 +30,17 @@ import { CSS } from '@dnd-kit/utilities'
 import './App.css'
 import { RichTextEditor } from './components/RichTextEditor'
 import {
-  isRemotePersistenceConfigured,
-  loadRemoteAppState,
+  loadOrCreateRemoteAppState,
   saveRemoteAppState,
 } from './remoteAppState'
+import {
+  getAuthSession,
+  isSupabaseConfigured,
+  onAuthStateChange,
+  signInWithMagicLink,
+  signOutOfSupabase,
+  type AuthSessionState,
+} from './supabase'
 import {
   CARD_FIELDS,
   GROUPED_STAGES,
@@ -118,6 +125,9 @@ interface ToastState {
   message: string
   tone: ToastTone
 }
+
+type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
+type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
 
 interface CopyState {
   key: string
@@ -252,6 +262,7 @@ interface SettingsPageProps {
   settingsPortfolioId: string
   importInputRef: React.RefObject<HTMLInputElement | null>
   testingWebhookId: string | null
+  headerUtilityContent?: ReactNode
   onTabChange: (tab: SettingTab) => void
   onSettingsPortfolioChange: (portfolioId: string) => void
   onBackToBoard: () => void
@@ -267,6 +278,7 @@ interface SettingsPageProps {
 interface AnalyticsPageProps {
   state: AppState
   nowMs: number
+  headerUtilityContent?: ReactNode
   onOpenCard: (portfolioId: string, cardId: string) => void
   onOpenPortfolioBoard: (portfolioId: string) => void
   onOpenEditorBoard: (portfolioId: string, ownerName: string) => void
@@ -279,6 +291,7 @@ interface WorkloadPageProps {
   nowMs: number
   canAssign: boolean
   activeDragCardId: string | null
+  headerUtilityContent?: ReactNode
   onTimeframeChange: (timeframe: Timeframe) => void
   onOpenEditorBoard: (ownerName: string) => void
   onOpenCard: (portfolioId: string, cardId: string) => void
@@ -874,6 +887,109 @@ function PageHeader({
           </div>
         ) : null}
         {rightContent}
+      </div>
+    </div>
+  )
+}
+
+function getSyncStatusLabel(syncStatus: SyncStatus, lastSyncedAt: string | null) {
+  switch (syncStatus) {
+    case 'local':
+      return 'Local mode'
+    case 'loading':
+      return 'Syncing workspace...'
+    case 'syncing':
+      return 'Saving...'
+    case 'error':
+      return 'Sync issue'
+    case 'synced':
+      return lastSyncedAt ? `Synced ${formatDateTime(lastSyncedAt)}` : 'Synced'
+  }
+}
+
+function SyncStatusPill({
+  syncStatus,
+  lastSyncedAt,
+}: {
+  syncStatus: SyncStatus
+  lastSyncedAt: string | null
+}) {
+  return (
+    <span className={`sync-status-pill is-${syncStatus}`}>
+      {getSyncStatusLabel(syncStatus, lastSyncedAt)}
+    </span>
+  )
+}
+
+function AuthGate({
+  authStatus,
+  email,
+  pending,
+  errorMessage,
+  infoMessage,
+  onEmailChange,
+  onSubmit,
+}: {
+  authStatus: AuthStatus
+  email: string
+  pending: boolean
+  errorMessage: string | null
+  infoMessage: string | null
+  onEmailChange: (value: string) => void
+  onSubmit: () => void
+}) {
+  return (
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="auth-copy">
+          <span className="auth-kicker">Editors Board</span>
+          <h1>Team access</h1>
+          <p>
+            Sign in with your work email to open the shared live workspace. The board
+            stays simple, but the saved state now lives in Supabase instead of only in
+            this browser.
+          </p>
+        </div>
+
+        {authStatus === 'checking' ? (
+          <div className="auth-status-card">
+            <strong>Checking your session...</strong>
+            <span>If you already used a magic link, we are restoring your workspace.</span>
+          </div>
+        ) : (
+          <div className="auth-form">
+            <label className="quick-create-field full-width">
+              <span>Work email</span>
+              <input
+                autoFocus
+                type="email"
+                value={email}
+                placeholder="team@company.com"
+                onChange={(event) => onEmailChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !pending) {
+                    event.preventDefault()
+                    onSubmit()
+                  }
+                }}
+              />
+            </label>
+
+            <div className="auth-actions">
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!email.trim() || pending}
+                onClick={onSubmit}
+              >
+                {pending ? 'Sending...' : 'Send Magic Link'}
+              </button>
+            </div>
+
+            {infoMessage ? <p className="auth-helper">{infoMessage}</p> : null}
+            {errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -2138,6 +2254,7 @@ function SettingsPage({
   settingsPortfolioId,
   importInputRef,
   testingWebhookId,
+  headerUtilityContent,
   onTabChange,
   onSettingsPortfolioChange,
   onBackToBoard,
@@ -2224,7 +2341,7 @@ function SettingsPage({
       </div>
 
       <div className="settings-page-content">
-        <PageHeader title="Settings" />
+        <PageHeader title="Settings" rightContent={headerUtilityContent} />
 
         {settingsTab === 'general' ? (
           <div className="settings-block">
@@ -3035,6 +3152,7 @@ function SettingsPage({
 function AnalyticsPage({
   state,
   nowMs,
+  headerUtilityContent,
   onOpenCard,
   onOpenPortfolioBoard,
   onOpenEditorBoard,
@@ -3045,7 +3163,7 @@ function AnalyticsPage({
 
   return (
     <div className="page-shell">
-      <PageHeader title="Analytics" />
+      <PageHeader title="Analytics" rightContent={headerUtilityContent} />
 
       <section>
         <h2 className="dashboard-section-title">Portfolio Overview</h2>
@@ -3281,6 +3399,7 @@ function WorkloadPage({
   nowMs,
   canAssign,
   activeDragCardId,
+  headerUtilityContent,
   onTimeframeChange,
   onOpenEditorBoard,
   onOpenCard,
@@ -3292,11 +3411,18 @@ function WorkloadPage({
       <PageHeader
         title="Workload"
         rightContent={
-          <select className="inline-select" value={timeframe} onChange={(event) => onTimeframeChange(event.target.value as Timeframe)}>
-            <option value="this-week">This Week</option>
-            <option value="next-week">Next Week</option>
-            <option value="this-month">This Month</option>
-          </select>
+          <>
+            {headerUtilityContent}
+            <select
+              className="inline-select"
+              value={timeframe}
+              onChange={(event) => onTimeframeChange(event.target.value as Timeframe)}
+            >
+              <option value="this-week">This Week</option>
+              <option value="next-week">Next Week</option>
+              <option value="this-month">This Month</option>
+            </select>
+          </>
         }
       />
 
@@ -3377,7 +3503,7 @@ function WorkloadPage({
 }
 
 function App() {
-  const remotePersistenceEnabled = isRemotePersistenceConfigured()
+  const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [boardFilters, setBoardFilters] = useState<BoardFilters>(() =>
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
@@ -3408,11 +3534,20 @@ function App() {
   )
   const [creatingDriveCardId, setCreatingDriveCardId] = useState<string | null>(null)
   const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null)
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(authEnabled ? 'checking' : 'disabled')
+  const [authSession, setAuthSession] = useState<AuthSessionState | null>(null)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPending, setLoginPending] = useState(false)
+  const [loginInfoMessage, setLoginInfoMessage] = useState<string | null>(null)
+  const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(authEnabled ? 'loading' : 'local')
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
 
   const searchRef = useRef<HTMLInputElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
-  const remoteHydratedRef = useRef(!remotePersistenceEnabled)
+  const localFallbackStateRef = useRef(state)
+  const remoteHydratedRef = useRef(!authEnabled)
   const remoteSaveTimerRef = useRef<number | null>(null)
 
   const activePortfolio = getActivePortfolio(state)
@@ -3508,6 +3643,16 @@ function App() {
     activePortfolio && dragCardId
       ? activePortfolio.cards.find((card) => card.id === dragCardId) ?? null
       : null
+  const headerUtilityContent =
+    authStatus === 'signed-in' && authSession ? (
+      <div className="session-toolbar">
+        <SyncStatusPill syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} />
+        <span className="session-email">{authSession.email}</span>
+        <button type="button" className="ghost-button" onClick={handleSignOut}>
+          Sign out
+        </button>
+      </div>
+    ) : null
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -3544,23 +3689,88 @@ function App() {
   }, [state])
 
   useEffect(() => {
-    if (!remotePersistenceEnabled) {
+    localFallbackStateRef.current = state
+  }, [state])
+
+  useEffect(() => {
+    if (!authEnabled) {
       return
     }
 
     let cancelled = false
 
-    void loadRemoteAppState()
-      .then((remoteState) => {
+    void getAuthSession()
+      .then((session) => {
         if (cancelled) {
           return
         }
 
-        if (remoteState) {
-          replaceState(remoteState)
+        setAuthSession(session)
+        setAuthStatus(session ? 'signed-in' : 'signed-out')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
         }
 
+        setAuthSession(null)
+        setAuthStatus('signed-out')
+      })
+
+    const unsubscribe = onAuthStateChange((session) => {
+      if (cancelled) {
+        return
+      }
+
+      setAuthSession(session)
+      setAuthStatus(session ? 'signed-in' : 'signed-out')
+
+      if (session) {
+        setLoginPending(false)
+        setLoginInfoMessage(null)
+        setLoginErrorMessage(null)
+      } else {
+        remoteHydratedRef.current = false
+        setSyncStatus('loading')
+        setLastSyncedAt(null)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [authEnabled])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in') {
+      if (!authEnabled) {
+        setSyncStatus('local')
+      }
+      return
+    }
+
+    let cancelled = false
+    setSyncStatus('loading')
+
+    void loadOrCreateRemoteAppState(localFallbackStateRef.current)
+      .then((result) => {
+        if (cancelled) {
+          return
+        }
+
+        replaceState(result.state)
         remoteHydratedRef.current = true
+        setLastSyncedAt(result.lastSyncedAt)
+        setSyncStatus(result.lastSyncedAt ? 'synced' : 'local')
+        setRemoteSyncErrorShown(false)
+
+        if (result.seeded) {
+          setToast({
+            message: 'Shared workspace is ready.',
+            tone: 'green',
+          })
+        }
       })
       .catch(() => {
         if (cancelled) {
@@ -3568,6 +3778,7 @@ function App() {
         }
 
         remoteHydratedRef.current = true
+        setSyncStatus('error')
         if (!remoteSyncErrorShown) {
           setRemoteSyncErrorShown(true)
           setToast({
@@ -3581,10 +3792,10 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [remotePersistenceEnabled, remoteSyncErrorShown])
+  }, [authEnabled, authStatus, remoteSyncErrorShown])
 
   useEffect(() => {
-    if (!remotePersistenceEnabled || !remoteHydratedRef.current) {
+    if (!authEnabled || authStatus !== 'signed-in' || !remoteHydratedRef.current) {
       return
     }
 
@@ -3592,17 +3803,25 @@ function App() {
       window.clearTimeout(remoteSaveTimerRef.current)
     }
 
+    setSyncStatus('syncing')
     remoteSaveTimerRef.current = window.setTimeout(() => {
-      void saveRemoteAppState(state).catch(() => {
-        if (!remoteSyncErrorShown) {
-          setRemoteSyncErrorShown(true)
-          setToast({
-            message:
-              'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
-            tone: 'amber',
-          })
-        }
-      })
+      void saveRemoteAppState(state)
+        .then((updatedAt) => {
+          setLastSyncedAt(updatedAt)
+          setSyncStatus(updatedAt ? 'synced' : 'local')
+          setRemoteSyncErrorShown(false)
+        })
+        .catch(() => {
+          setSyncStatus('error')
+          if (!remoteSyncErrorShown) {
+            setRemoteSyncErrorShown(true)
+            setToast({
+              message:
+                'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
+              tone: 'amber',
+            })
+          }
+        })
     }, 800)
 
     return () => {
@@ -3610,7 +3829,7 @@ function App() {
         window.clearTimeout(remoteSaveTimerRef.current)
       }
     }
-  }, [remotePersistenceEnabled, remoteSyncErrorShown, state])
+  }, [authEnabled, authStatus, remoteSyncErrorShown, state])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -3720,6 +3939,54 @@ function App() {
 
   function showToast(message: string, tone: ToastTone) {
     setToast({ message, tone })
+  }
+
+  async function handleSendMagicLink() {
+    if (!loginEmail.trim()) {
+      return
+    }
+
+    setLoginPending(true)
+    setLoginErrorMessage(null)
+    setLoginInfoMessage(null)
+
+    try {
+      const result = await signInWithMagicLink(loginEmail)
+      const session = await getAuthSession()
+
+      if (session) {
+        setAuthSession(session)
+        setAuthStatus('signed-in')
+        setLoginPending(false)
+        return
+      }
+
+      setLoginInfoMessage(
+        result.deliveredInstantly
+          ? 'Signed in. Loading the shared workspace...'
+          : 'Magic link sent. Open it from your inbox to enter the shared workspace.',
+      )
+    } catch (error) {
+      setLoginErrorMessage(
+        error instanceof Error ? error.message : 'Could not send the magic link.',
+      )
+    } finally {
+      setLoginPending(false)
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await signOutOfSupabase()
+      setAuthSession(null)
+      setAuthStatus('signed-out')
+      setLoginInfoMessage(null)
+      setLoginErrorMessage(null)
+      setSelectedCard(null)
+      showToast('Signed out', 'blue')
+    } catch {
+      showToast('Could not sign out right now.', 'red')
+    }
   }
 
   function replaceState(nextState: AppState) {
@@ -4486,6 +4753,23 @@ function App() {
 
   const sidebarExpanded = sidebarPinned || sidebarHovered
 
+  if (authEnabled && authStatus !== 'signed-in') {
+    return (
+      <>
+        <AuthGate
+          authStatus={authStatus}
+          email={loginEmail}
+          pending={loginPending}
+          errorMessage={loginErrorMessage}
+          infoMessage={loginInfoMessage}
+          onEmailChange={setLoginEmail}
+          onSubmit={handleSendMagicLink}
+        />
+        {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+      </>
+    )
+  }
+
   return (
     <div className="app-frame">
       <div
@@ -4534,6 +4818,7 @@ function App() {
                 }))
               }
               searchRef={searchRef}
+              rightContent={headerUtilityContent}
             />
 
             {stats ? (
@@ -4854,6 +5139,7 @@ function App() {
           <AnalyticsPage
             state={state}
             nowMs={nowMs}
+            headerUtilityContent={headerUtilityContent}
             onOpenCard={(portfolioId, cardId) => openCard(portfolioId, cardId)}
             onOpenPortfolioBoard={(portfolioId) => {
               switchToPortfolio(portfolioId)
@@ -4885,6 +5171,7 @@ function App() {
               nowMs={nowMs}
               canAssign={state.activeRole.mode === 'manager'}
               activeDragCardId={dragCardId}
+              headerUtilityContent={headerUtilityContent}
               onTimeframeChange={setTimeframe}
               onOpenEditorBoard={(ownerName) => {
                 setPage('board')
@@ -4905,6 +5192,7 @@ function App() {
             settingsPortfolioId={settingsPortfolioId}
             importInputRef={importInputRef}
             testingWebhookId={testingWebhookId}
+            headerUtilityContent={headerUtilityContent}
             onTabChange={setSettingsTab}
             onSettingsPortfolioChange={setSettingsPortfolioId}
             onBackToBoard={() => setPage('board')}

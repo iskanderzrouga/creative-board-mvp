@@ -83,30 +83,46 @@ Next step:
 
 - Continue the phase by auditing drag-and-drop transitions, backward-move revision handling, blocked-card behavior, and auto-archive edge cases.
 
-### Supabase Readiness Pass
+### Supabase Production Rollout
 
-Status: Foundation added, external credentials/network still blocking full activation
+Status: Implementation complete, production deployment retry in progress
+
+What I learned:
+
+- The Supabase shared pooler is the workable connection path from this machine; the direct and dedicated endpoints were not reachable here, but the shared pooler accepted the migration push cleanly.
+- The app needed a true auth boundary before switching remote sync on by default, otherwise browser state would still behave like a demo instead of a shared workspace.
+- Vercel production deployment is also gated by git author identity. The CLI rejected the first production deploy attempt because the latest commit email did not match an account authorized on the linked Vercel project.
 
 What changed:
 
-- Added a secure Supabase data layer scaffold with [`.env.example`](/Users/iskanderzrouga/Desktop/Editors Board/.env.example), [`src/supabase.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/supabase.ts), and [`src/remoteAppState.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/remoteAppState.ts).
-- Wired the app so remote sync is optional and only turns on when valid public client env vars are present. Local storage remains the safe fallback.
-- Added a migration at [`supabase/migrations/20260311200500_create_workspace_state.sql`](/Users/iskanderzrouga/Desktop/Editors Board/supabase/migrations/20260311200500_create_workspace_state.sql) for a `workspace_state` table with row-level security restricted to authenticated users.
-- Installed `@supabase/supabase-js` and kept the existing browser regression suite green after the integration scaffolding.
+- Promoted Supabase from optional scaffold to the intended production path when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are present.
+- Added a lightweight email magic-link login gate so unauthenticated visitors see sign-in first instead of the board.
+- Added authenticated session bootstrap, sign-out support, and shared-workspace loading through [`src/supabase.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/supabase.ts) and [`src/remoteAppState.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/remoteAppState.ts).
+- Added first-load remote seeding for workspace `primary`, local-cache fallback, last-write-wins save behavior, and a visible sync-status pill with last successful sync time.
+- Extended the board, analytics, workload, and settings surfaces so the session toolbar stays visible across the product instead of only on the main board.
+- Added an end-to-end authenticated sync regression in [`e2e/auth-sync.spec.ts`](/Users/iskanderzrouga/Desktop/Editors Board/e2e/auth-sync.spec.ts) and captured [`artifacts/phase-2/authenticated-sync.png`](/Users/iskanderzrouga/Desktop/Editors Board/artifacts/phase-2/authenticated-sync.png).
+- Rewrote [`README.md`](/Users/iskanderzrouga/Desktop/Editors Board/README.md) into a deployment-focused guide covering environment variables, Supabase auth setup, migration commands, release checklist, recovery path, and architecture limits.
+- Ignored Supabase CLI temp artifacts in [`.gitignore`](/Users/iskanderzrouga/Desktop/Editors Board/.gitignore).
+- Applied the existing migration to the live Supabase project with the shared pooler, creating `public.workspace_state` with authenticated RLS policies.
+- Added `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_REMOTE_WORKSPACE_ID` to the linked Vercel project for production and development environments.
 
-What I verified:
+What failed along the way:
 
+- The first authenticated browser-sync test exposed a logic gap where the initial post-login state change could be skipped by the remote-save guard, preventing the first real edit from reaching the shared store.
+- The first production deploy attempt on Vercel failed even after uploading the build because the latest git author email on this branch was not recognized as an authorized Vercel project user.
+
+How those failures were resolved:
+
+- Removed the over-aggressive post-hydration skip guard so the first authenticated edit now syncs correctly.
+- Prepared a release commit with the Vercel-account email so the next production deployment can satisfy the author-access check without rewriting earlier history.
+
+Verification:
+
+- `npx supabase db push --db-url 'postgresql://postgres.zytmxgtrpwlnogtrmmgt:***@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require' --include-all --workdir .` finished successfully and applied `20260311200500_create_workspace_state.sql`.
 - `npm run lint` passed.
-- `npm run test:unit` passed.
-- `npm run test:e2e` passed.
+- `npm run test` passed.
 - `npm run build` passed.
-
-External blocker:
-
-- A Supabase migration dry run against the provided `db.zytmxgtrpwlnogtrmmgt.supabase.co` host failed from this machine with `no route to host` on both ports `5432` and `6543`.
-- The current Supabase docs say the shared pooler is the IPv4-friendly fallback when direct or dedicated connections require IPv6. Source: [Connect to your database](https://supabase.com/docs/reference/postgres/connection-strings).
-- The browser-facing integration still needs the project’s publishable/anon key to switch from “backend-ready” to “live and authenticated” safely.
 
 Next step:
 
-- Get either the shared pooler connection string or a Supabase access token for the project, plus the publishable/anon key, then apply the migration remotely and turn on authenticated remote sync in the deployed app.
+- Commit the rollout with the authorized Vercel email and rerun `npx vercel --prod --yes`, then record the live production URL and any remaining manual dashboard setup such as final auth redirect URL confirmation.
