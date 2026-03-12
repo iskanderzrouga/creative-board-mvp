@@ -3228,6 +3228,193 @@ button {
   }
 }
 
+@media (max-width: 768px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-hover-zone,
+  .sidebar-hover-zone.is-expanded {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: auto;
+    z-index: 30;
+  }
+
+  .app-sidebar,
+  .app-sidebar.is-expanded {
+    width: 100%;
+    height: auto;
+    padding: 12px 14px;
+    border-right: none;
+    border-bottom: 1px solid var(--line-shell);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    overflow: visible;
+  }
+
+  .sidebar-top {
+    display: none;
+  }
+
+  .app-sidebar:not(.is-expanded) .sidebar-section {
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+    pointer-events: auto;
+  }
+
+  .sidebar-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .sidebar-nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-height: 54px;
+    padding: 8px 6px;
+    font-size: 11px;
+  }
+
+  .sidebar-nav-icon {
+    width: auto;
+    min-width: 0;
+  }
+
+  .sidebar-role-stack {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .sidebar-role-stack .role-segment {
+    min-height: 40px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .sidebar-editor-menu {
+    left: 0;
+    right: auto;
+    min-width: 180px;
+  }
+
+  .stats-bar,
+  .manager-filter-bar,
+  .manager-filter-group,
+  .manager-editor-pills,
+  .manager-flag-pills {
+    flex-wrap: wrap;
+  }
+
+  .manager-filter-bar {
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .board-grid,
+  .remote-loading-columns,
+  .revision-grid,
+  .task-type-expanded {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-column {
+    width: 100%;
+    height: auto;
+    min-height: 280px;
+  }
+
+  .stage-column-content {
+    max-height: none;
+  }
+
+  .quick-create-modal,
+  .backward-move-modal,
+  .delete-card-modal,
+  .shortcut-modal {
+    width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+    overflow-y: auto;
+    border-radius: 18px;
+  }
+
+  .slide-panel {
+    inset: 0;
+    width: 100vw;
+    max-width: 100vw;
+    border-radius: 0;
+  }
+
+  .slide-panel-header,
+  .panel-section-nav,
+  .panel-section {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .settings-head,
+  .brand-head,
+  .team-head,
+  .workspace-access-head,
+  .task-library-head,
+  .revision-reason-head {
+    display: none;
+  }
+
+  .settings-table {
+    gap: 12px;
+  }
+
+  .settings-row,
+  .brand-row,
+  .team-row,
+  .workspace-access-row,
+  .task-library-row,
+  .revision-reason-row,
+  .analytics-team-grid,
+  .brand-health-grid,
+  .queue-card,
+  .dashboard-card-row,
+  .stuck-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row,
+  .brand-row,
+  .team-row,
+  .workspace-access-row,
+  .task-library-row,
+  .revision-reason-row {
+    padding: 12px;
+    border: 1px solid var(--line-shell);
+    border-radius: 14px;
+    background: var(--surface);
+  }
+
+  .settings-row,
+  .full-table .settings-row,
+  .task-type-entry {
+    border-bottom: none;
+  }
+
+  .task-type-actions {
+    justify-content: flex-start;
+  }
+
+  .workload-section,
+  .revision-card {
+    padding: 16px;
+  }
+
+  .toast-stack {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+  }
+}
+
 @media print {
   body {
     background: #ffffff;

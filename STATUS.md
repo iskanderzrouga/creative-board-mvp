@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Tablet Responsive Layout Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added a dedicated tablet-width layout mode so the app now treats `768px` and below as a compact shell instead of relying on hover-expansion desktop behavior.
+- Forced the sidebar into an always-expanded top rail on compact widths, which keeps board, analytics, workload, and settings navigation readable on tablets.
+- Stacked the board into a single-column stage layout at tablet width and widened the card-detail slide panel to a full-screen mobile/tablet surface.
+- Reworked the most crowded tables and cards for compact screens so settings rows, analytics tables, workload queue cards, and related surfaces collapse into one-column layouts instead of overflowing horizontally.
+- Added a new Playwright spec at `e2e/responsive.spec.ts` that verifies the board stacks into one column on a tablet viewport and that card detail plus settings remain usable there.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another core phase 6 item from `CODEX-PLAN.md` is now covered: the app has a real tablet-ready layout rather than a desktop shell that only shrinks.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` items around sync hardening and the final production rollout/regression checklist.
+
 ### CODEX-PLAN Execution: Toast Stack And Dismiss UX Pass
 
 Status: In progress

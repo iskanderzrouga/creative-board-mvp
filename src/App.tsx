@@ -141,6 +141,9 @@ function App() {
   })
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [sidebarHovered, setSidebarHovered] = useState(false)
+  const [compactLayout, setCompactLayout] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
+  )
   const [editorMenuOpen, setEditorMenuOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingTab>('general')
   const [settingsPortfolioId, setSettingsPortfolioId] = useState(() => loadAppState().activePortfolioId)
@@ -426,6 +429,22 @@ function App() {
     setQuickCreateValue,
     importInputRef,
   })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 768px)')
+    const updateCompactLayout = (matches: boolean) => setCompactLayout(matches)
+
+    updateCompactLayout(mediaQuery.matches)
+
+    const handleChange = (event: MediaQueryListEvent) => updateCompactLayout(event.matches)
+    mediaQuery.addEventListener('change', handleChange)
+
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1081,7 +1100,7 @@ function App() {
     showToast('All data cleared', 'amber')
   }
 
-  const sidebarExpanded = sidebarPinned || sidebarHovered
+  const sidebarExpanded = compactLayout || sidebarPinned || sidebarHovered
   const toastView = <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
   function resetBoardFilters() {
