@@ -1,0 +1,2 @@
+[functions.request-magic-link]
+verify_jwt = false

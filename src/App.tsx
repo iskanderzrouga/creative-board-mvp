@@ -339,8 +339,12 @@ function getRoleActorName(role: ActiveRole, portfolio: Portfolio | null) {
   return portfolio ? getTeamMemberById(portfolio, role.editorId)?.name ?? 'Editor' : 'Editor'
 }
 
+function isLikelyEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
 function getAllowedPageForRole(page: AppPage, roleMode: RoleMode) {
-  if (page === 'analytics' && roleMode !== 'observer') {
+  if (page === 'analytics' && roleMode === 'editor') {
     return 'board' as AppPage
   }
   if (page === 'settings' && roleMode !== 'manager') {
@@ -788,8 +792,8 @@ function Sidebar({
     { page: 'board', disabled: false },
     {
       page: 'analytics',
-      disabled: role.mode !== 'observer',
-      tooltip: role.mode !== 'observer' ? 'Observer only' : undefined,
+      disabled: role.mode === 'editor',
+      tooltip: role.mode === 'editor' ? 'Manager and Observer only' : undefined,
     },
     {
       page: 'workload',
@@ -1006,6 +1010,8 @@ function AuthGate({
   onEmailChange: (value: string) => void
   onSubmit: () => void
 }) {
+  const canSubmit = isLikelyEmail(email)
+
   return (
     <div className="auth-shell">
       <div className="auth-card">
@@ -1047,7 +1053,7 @@ function AuthGate({
               <button
                 type="button"
                 className="primary-button"
-                disabled={!email.trim() || pending}
+                disabled={!canSubmit || pending}
                 onClick={onSubmit}
               >
                 {pending ? 'Sending...' : 'Send Magic Link'}
@@ -3515,7 +3521,10 @@ function AnalyticsPage({
   onOpenPortfolioBoard,
   onOpenEditorBoard,
 }: AnalyticsPageProps) {
-  const dashboard = buildDashboardData(state.portfolios, state.settings, nowMs)
+  const dashboard = useMemo(
+    () => buildDashboardData(state.portfolios, state.settings, nowMs),
+    [nowMs, state.portfolios, state.settings],
+  )
   const [expandedStage, setExpandedStage] = useState<StageId | null>(null)
   const maxThroughput = Math.max(...dashboard.throughput.map((week) => week.total), 0)
 
@@ -3762,7 +3771,10 @@ function WorkloadPage({
   onOpenEditorBoard,
   onOpenCard,
 }: WorkloadPageProps) {
-  const workload = getWorkloadData(portfolio, settings, timeframe, nowMs)
+  const workload = useMemo(
+    () => getWorkloadData(portfolio, settings, timeframe, nowMs),
+    [nowMs, portfolio, settings, timeframe],
+  )
 
   return (
     <div className="page-shell">
@@ -4282,7 +4294,9 @@ function App() {
           return
         }
 
-        replaceState(result.state)
+        localFallbackStateRef.current = result.state
+        setState(() => result.state)
+        syncStateControls(result.state)
         remoteHydratedRef.current = true
         setLastSyncedAt(result.lastSyncedAt)
         setSyncStatus(result.lastSyncedAt ? 'synced' : 'local')
@@ -4388,11 +4402,25 @@ function App() {
       const hasModifier = event.metaKey || event.ctrlKey
 
       if (event.key === 'Escape') {
-        setSelectedCard(null)
-        setQuickCreateOpen(false)
-        setPendingBackwardMove(null)
-        setPendingDeleteCard(null)
-        setEditorMenuOpen(false)
+        if (pendingDeleteCard) {
+          setPendingDeleteCard(null)
+          return
+        }
+        if (pendingBackwardMove) {
+          setPendingBackwardMove(null)
+          return
+        }
+        if (quickCreateOpen) {
+          setQuickCreateOpen(false)
+          return
+        }
+        if (selectedCard) {
+          setSelectedCard(null)
+          return
+        }
+        if (editorMenuOpen) {
+          setEditorMenuOpen(false)
+        }
       }
 
       if (hasModifier && event.key.toLowerCase() === 'k' && currentPage === 'board') {
@@ -4415,7 +4443,17 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activePortfolio, currentPage, state.activeRole.mode, state.settings])
+  }, [
+    activePortfolio,
+    currentPage,
+    editorMenuOpen,
+    pendingBackwardMove,
+    pendingDeleteCard,
+    quickCreateOpen,
+    selectedCard,
+    state.activeRole.mode,
+    state.settings,
+  ])
 
   useEffect(() => {
     const input = importInputRef.current
@@ -4542,7 +4580,15 @@ function App() {
   }
 
   async function handleSendMagicLink() {
-    if (!loginEmail.trim()) {
+    const normalizedEmail = loginEmail.trim()
+
+    if (!normalizedEmail) {
+      setLoginErrorMessage('Enter your work email to continue.')
+      return
+    }
+
+    if (!isLikelyEmail(normalizedEmail)) {
+      setLoginErrorMessage('Enter a valid work email to continue.')
       return
     }
 
@@ -4565,7 +4611,7 @@ function App() {
     setLoginInfoMessage(null)
 
     try {
-      const result = await signInWithMagicLink(loginEmail)
+      const result = await signInWithMagicLink(normalizedEmail)
       const session = await getAuthSession()
 
       if (session) {
@@ -4594,10 +4640,12 @@ function App() {
       setLoginErrorMessage(
         normalizedMessage.includes('rate limit')
           ? 'Email rate limit exceeded. Check your inbox and wait about a minute before trying again.'
+          : normalizedMessage.includes('not approved')
+          ? 'This email is not on the approved access list. Contact your workspace manager to get access.'
           : normalizedMessage.includes('user not found') ||
               normalizedMessage.includes('signup') ||
               normalizedMessage.includes('sign up')
-          ? 'This email is not invited yet. Add it in Supabase Auth and workspace_access before sending a magic link.'
+          ? 'This email is not on the approved access list. Contact your workspace manager to get access.'
           : message,
       )
     } finally {
@@ -4619,12 +4667,12 @@ function App() {
     }
   }
 
-  function replaceState(nextState: AppState) {
+  function syncStateControls(nextState: AppState) {
     const nextPortfolio =
       nextState.portfolios.find((portfolio) => portfolio.id === nextState.activePortfolioId) ??
       nextState.portfolios[0] ??
       null
-    setState(nextState)
+
     if (nextPortfolio) {
       setBoardFilters((current) => ({
         ...current,
@@ -4645,8 +4693,14 @@ function App() {
     }
   }
 
+  function replaceState(nextState: AppState) {
+    localFallbackStateRef.current = nextState
+    setState(() => nextState)
+    syncStateControls(nextState)
+  }
+
   function updateState(updater: (state: AppState) => AppState) {
-    replaceState(updater(state))
+    replaceState(updater(localFallbackStateRef.current))
   }
 
   function updatePortfolio(
@@ -4683,7 +4737,7 @@ function App() {
   }
 
   function setPage(page: AppPage) {
-    if (page === 'analytics' && state.activeRole.mode !== 'observer') {
+    if (page === 'analytics' && state.activeRole.mode === 'editor') {
       return
     }
     if (page === 'settings' && state.activeRole.mode !== 'manager') {

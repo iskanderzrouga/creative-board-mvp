@@ -1630,6 +1630,8 @@ function reindexCards(cards: Card[]) {
     grouped.set(laneId, laneCards)
   }
 
+  const nextPositions = new Map<string, number>()
+
   for (const laneCards of grouped.values()) {
     laneCards
       .sort((left, right) => {
@@ -1642,11 +1644,14 @@ function reindexCards(cards: Card[]) {
         return left.id.localeCompare(right.id)
       })
       .forEach((card, index) => {
-        card.positionInSection = index
+        nextPositions.set(card.id, index)
       })
   }
 
-  return cards
+  return cards.map((card) => ({
+    ...card,
+    positionInSection: nextPositions.get(card.id) ?? card.positionInSection,
+  }))
 }
 
 function getLastIdPerPrefix(brands: Brand[], cards: Card[]) {

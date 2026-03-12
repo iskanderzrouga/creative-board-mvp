@@ -11,6 +11,7 @@ const magicLinkRedirectUrl = import.meta.env.VITE_MAGIC_LINK_REDIRECT_URL?.trim(
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const E2E_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
 export const E2E_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
+const MAGIC_LINK_FUNCTION_NAME = 'request-magic-link'
 
 export const REMOTE_WORKSPACE_ID =
   import.meta.env.VITE_REMOTE_WORKSPACE_ID?.trim() || 'primary'
@@ -168,23 +169,12 @@ export async function signInWithMagicLink(email: string) {
     throw new Error('Supabase is not configured.')
   }
 
-  const { data: allowed, error: allowError } = await supabase.rpc('is_workspace_email_allowed', {
-    candidate_email: normalizedEmail,
-  })
-
-  if (allowError) {
-    throw allowError
-  }
-
-  if (!allowed) {
-    throw new Error('This email is not approved for the workspace yet.')
-  }
-
-  const { error } = await supabase.auth.signInWithOtp({
-    email: normalizedEmail,
-    options: {
-      emailRedirectTo: getMagicLinkRedirectUrl(),
-      shouldCreateUser: true,
+  const { data, error } = await supabase.functions.invoke<{
+    deliveredInstantly?: boolean
+  }>(MAGIC_LINK_FUNCTION_NAME, {
+    body: {
+      email: normalizedEmail,
+      redirectTo: getMagicLinkRedirectUrl(),
     },
   })
 
@@ -192,7 +182,7 @@ export async function signInWithMagicLink(email: string) {
     throw error
   }
 
-  return { deliveredInstantly: false }
+  return { deliveredInstantly: data?.deliveredInstantly ?? false }
 }
 
 function mapWorkspaceAccessEntry(row: {

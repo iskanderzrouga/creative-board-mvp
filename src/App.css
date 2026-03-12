@@ -15,10 +15,6 @@
   --shadow-panel: -4px 0 24px rgba(0, 0, 0, 0.12);
 }
 
-* {
-  transition: all 0.15s ease;
-}
-
 button,
 input,
 select,
@@ -28,6 +24,11 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .app-shell {
@@ -263,6 +264,7 @@ button {
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .filter-pill.is-active.is-all,
@@ -287,6 +289,7 @@ button {
 .danger-link,
 .danger-outline {
   color: var(--red);
+  transition: color 0.12s ease, background-color 0.12s ease;
 }
 
 .editor-summary-bar {
@@ -367,6 +370,7 @@ button {
   background: transparent;
   color: var(--muted);
   font-size: 12px;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .column-ghost-button:hover,
@@ -386,6 +390,7 @@ button {
   color: #fff;
   font-size: 12px;
   font-weight: 600;
+  transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
 }
 
 .primary-button:disabled {
@@ -494,10 +499,26 @@ button {
   box-shadow: var(--shadow-card);
   color: var(--text);
   text-align: left;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .board-card:hover {
   box-shadow: var(--shadow-card-hover);
+}
+
+.app-sidebar {
+  transition: width 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .board-card.tone-fresh {

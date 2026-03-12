@@ -1,5 +1,41 @@
 # Status Log
 
+## March 12, 2026
+
+### CODEX-PLAN Execution: Phase 1 Hardening + Verification Scaffolding
+
+Status: In progress
+
+What I changed in this pass:
+
+- Sanitized `RichTextEditor` HTML with DOMPurify and blocked non-HTTP(S) links before insertion.
+- Made `reindexCards` return fresh card objects so lane reindexing no longer mutates existing state in place.
+- Fixed the stale `updateState` path by routing updates through the latest local state ref before replacing app state.
+- Added a React error boundary around the app root with a recovery UI and reload action.
+- Added Supabase migrations for manager-only `workspace_state` writes, revoking `anon` access to `is_workspace_email_allowed`, and preventing removal or demotion of the last manager at the database layer.
+- Added a new Supabase Edge Function at `supabase/functions/request-magic-link` and changed the client login flow to use it instead of the public RPC preflight.
+- Removed the global `transition: all`, added `:focus-visible` treatment, added reduced-motion handling, and replaced the most visible controls with targeted transitions.
+- Opened analytics to managers as well as observers, changed Escape handling to close only the topmost modal or panel, and added basic email-format validation to the login gate.
+- Memoized analytics and workload derived data, added unit-test coverage for the reindex immutability fix, added Vitest coverage support, added GitHub Actions CI, and updated the app title/favicon.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test:e2e` passed.
+- `npm run build` passed.
+- `npm run test:unit:coverage` passed.
+
+What remains from the literal plan:
+
+- The large `App.tsx` extraction and component/hook split in phase 2 is still outstanding.
+- Most of phases 4 through 8 and 10 through 11 still need implementation beyond the targeted fixes already landed here.
+- The live Supabase migration/function deployment and final production regression pass have not been run yet in this pass.
+
+Next step:
+
+- Continue with the major phase 2 extraction so the remaining UX, accessibility, sync, and testing work can land on smaller, safer modules instead of the current monolith.
+
 ## March 11, 2026
 
 ### Phase 1: Baseline And Safety Net

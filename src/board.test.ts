@@ -361,4 +361,45 @@ describe('board integrity helpers', () => {
       archivedState.portfolios[0]?.cards.find((card) => card.id === sourceCard!.id)?.archivedAt,
     ).toBeNull()
   })
+
+  it('does not mutate the original card positions when a lane is reindexed', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const lanes = new Map<string, typeof portfolio.cards>()
+
+    for (const card of portfolio.cards) {
+      const laneKey = `${card.stage}::${card.owner ?? 'unassigned'}`
+      const laneCards = lanes.get(laneKey) ?? []
+      laneCards.push(card)
+      lanes.set(laneKey, laneCards)
+    }
+
+    const laneCards = Array.from(lanes.values()).find((cards) => cards.length > 1)
+
+    expect(laneCards).toBeTruthy()
+
+    const sortedLaneCards = [...laneCards!].sort(
+      (left, right) => left.positionInSection - right.positionInSection,
+    )
+    const sourceCard = sortedLaneCards[sortedLaneCards.length - 1]
+    const originalPositions = new Map(
+      sortedLaneCards.map((card) => [card.id, card.positionInSection]),
+    )
+
+    const movedPortfolio = moveCardInPortfolio(
+      portfolio,
+      sourceCard!.id,
+      sourceCard!.stage,
+      sourceCard!.owner,
+      0,
+      '2026-03-12T13:00:00Z',
+      'Naomi',
+    )
+
+    expect(movedPortfolio).not.toBe(portfolio)
+    expect(movedPortfolio.cards.find((card) => card.id === sourceCard!.id)?.positionInSection).toBe(0)
+
+    for (const card of sortedLaneCards) {
+      expect(card.positionInSection).toBe(originalPositions.get(card.id))
+    }
+  })
 })

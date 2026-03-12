@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify'
 import { useEffect, useRef, type ClipboardEvent } from 'react'
 
 interface RichTextEditorProps {
@@ -28,7 +29,7 @@ export function RichTextEditor({
     }
 
     if (editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value
+      editorRef.current.innerHTML = DOMPurify.sanitize(value)
     }
   }, [value])
 
@@ -41,8 +42,12 @@ export function RichTextEditor({
   }
 
   function handleLinkInsert() {
-    const url = window.prompt('Paste a URL')
+    const url = window.prompt('Paste a URL')?.trim()
     if (!url) {
+      return
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
       return
     }
 
