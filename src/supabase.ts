@@ -8,8 +8,13 @@ const supabasePublishableKey =
   ''
 const magicLinkRedirectUrl = import.meta.env.VITE_MAGIC_LINK_REDIRECT_URL?.trim() ?? ''
 
+export const AUTH_STORAGE_KEY = 'editors-board-auth'
+const AUTH_CODE_VERIFIER_STORAGE_KEY = `${AUTH_STORAGE_KEY}-code-verifier`
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const E2E_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const E2E_ACCESS_STATE_KEY = 'editors-board-e2e-access-state'
+const E2E_ACCESS_DELAY_KEY = 'editors-board-e2e-access-delay-ms'
+const E2E_ACCESS_TIMEOUT_KEY = 'editors-board-e2e-access-timeout-ms'
 export const E2E_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 const MAGIC_LINK_FUNCTION_NAME = 'request-magic-link'
 
@@ -43,12 +48,33 @@ function hasRealSupabaseConfig() {
   return Boolean(supabaseUrl && supabasePublishableKey)
 }
 
+function getPositiveStorageNumber(key: string) {
+  if (!hasBrowser()) {
+    return 0
+  }
+
+  const parsed = Number(window.localStorage.getItem(key))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
 function isE2ESupabaseMode() {
   if (!hasBrowser()) {
     return false
   }
 
   return window.localStorage.getItem(E2E_AUTH_MODE_KEY) === 'enabled'
+}
+
+function getE2EAccessState() {
+  if (!hasBrowser()) {
+    return 'granted'
+  }
+
+  return window.localStorage.getItem(E2E_ACCESS_STATE_KEY) ?? 'granted'
+}
+
+function getE2EAccessDelayMs() {
+  return getPositiveStorageNumber(E2E_ACCESS_DELAY_KEY)
 }
 
 function toAuthSession(session: Session | null): AuthSessionState | null {
@@ -77,6 +103,24 @@ export function isSupabaseConfigured() {
   return hasRealSupabaseConfig() || isE2ESupabaseMode()
 }
 
+export function getWorkspaceAccessCheckTimeoutMs() {
+  if (!isE2ESupabaseMode()) {
+    return 10_000
+  }
+
+  return getPositiveStorageNumber(E2E_ACCESS_TIMEOUT_KEY) || 10_000
+}
+
+export function clearStoredAuthSession() {
+  if (!hasBrowser()) {
+    return
+  }
+
+  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  window.localStorage.removeItem(AUTH_CODE_VERIFIER_STORAGE_KEY)
+  window.localStorage.removeItem(E2E_AUTH_EMAIL_KEY)
+}
+
 export function getSupabaseClient() {
   if (isE2ESupabaseMode()) {
     return null
@@ -96,7 +140,7 @@ export function getSupabaseClient() {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storageKey: 'editors-board-auth',
+      storageKey: AUTH_STORAGE_KEY,
     },
   })
 
@@ -202,7 +246,22 @@ function mapWorkspaceAccessEntry(row: {
 export async function getWorkspaceAccess() {
   if (isE2ESupabaseMode()) {
     const session = getE2EAuthSession()
+    const delayMs = getE2EAccessDelayMs()
+    const accessState = getE2EAccessState()
+
+    if (delayMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs))
+    }
+
+    if (accessState === 'error') {
+      throw new Error('Workspace access could not be verified right now.')
+    }
+
     if (!session) {
+      return null
+    }
+
+    if (accessState === 'denied') {
       return null
     }
 
@@ -344,12 +403,13 @@ export async function deleteWorkspaceAccessEntry(email: string) {
 
 export async function signOutOfSupabase() {
   if (isE2ESupabaseMode()) {
-    window.localStorage.removeItem(E2E_AUTH_EMAIL_KEY)
+    clearStoredAuthSession()
     return
   }
 
   const supabase = getSupabaseClient()
   if (!supabase) {
+    clearStoredAuthSession()
     return
   }
 
@@ -357,4 +417,6 @@ export async function signOutOfSupabase() {
   if (error) {
     throw error
   }
+
+  clearStoredAuthSession()
 }

@@ -190,6 +190,7 @@ function App() {
     handleDeleteWorkspaceAccessEntry,
     handleSendMagicLink,
     handleSignOut,
+    handleTryDifferentEmail,
   } = useWorkspaceSession({
     authEnabled,
     state,
@@ -1101,6 +1102,7 @@ function App() {
           timedOut={accessCheckTimedOut}
           signOutPending={signOutPending}
           onRetry={handleRetryAccessCheck}
+          onUseDifferentEmail={handleTryDifferentEmail}
           onSignOut={handleSignOut}
         />
         {toastView}
@@ -1125,10 +1127,11 @@ function App() {
           title={accessStatus === 'error' ? 'We could not confirm access' : undefined}
           description={
             accessStatus === 'error'
-              ? 'Your sign-in worked, but the workspace access check needs another try before the shared board can open.'
+              ? 'Your sign-in worked, but the workspace access check needs another try before the shared board can open. Contact your workspace manager if the approved access list should already include this account.'
               : undefined
           }
           onRetry={accessStatus === 'error' ? handleRetryAccessCheck : undefined}
+          onUseDifferentEmail={handleTryDifferentEmail}
           signOutPending={signOutPending}
           onSignOut={handleSignOut}
         />

@@ -2,6 +2,33 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Access Recovery And Sign-Out Cleanup Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added the remaining `CODEX-PLAN.md` access-recovery path so signed-in users can now choose `Try a different email` from both the denied-access gate and the timed-out access-verification gate.
+- Tightened the access-verification timeout to the plan’s 10-second target and updated the recovery copy so it points people toward retrying, switching emails, or contacting their workspace manager.
+- Added local auth-storage cleanup helpers in `src/supabase.ts` so sign-out and email-switch flows clear the stored session state even if the remote revoke call fails.
+- Changed sign-out failure behavior to fall back cleanly: the app now returns to `Team access` with a local sign-out instead of trapping the user behind a failed remote logout.
+- Expanded E2E-only auth/access test controls so browser coverage can simulate denied access and verification timeouts without changing production behavior.
+- Added a new Playwright spec at `e2e/access-recovery.spec.ts` covering denied access recovery, timed-out verification recovery, and the new `Try a different email` flow end to end.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- The remaining auth polish in `CODEX-PLAN.md` is now much closer to a production login flow: users have a direct recovery path when the wrong approved email is used, and timeout states no longer dead-end into sign-out-only recovery.
+
+Next step:
+
+- Continue the next unfinished `CODEX-PLAN.md` items around final release polish, workflow regression breadth, and the production rollout checklist.
+
 ### CODEX-PLAN Execution: Validation And Detail Form Pass
 
 Status: In progress

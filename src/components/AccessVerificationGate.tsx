@@ -3,6 +3,7 @@ interface AccessVerificationGateProps {
   timedOut: boolean
   signOutPending?: boolean
   onRetry: () => void
+  onUseDifferentEmail?: () => void
   onSignOut: () => void
 }
 
@@ -11,6 +12,7 @@ export function AccessVerificationGate({
   timedOut,
   signOutPending = false,
   onRetry,
+  onUseDifferentEmail,
   onSignOut,
 }: AccessVerificationGateProps) {
   return (
@@ -29,7 +31,7 @@ export function AccessVerificationGate({
           <strong>{email}</strong>
           <span>
             {timedOut
-              ? 'This is taking longer than expected. You can retry the check or sign out and try again.'
+              ? 'This is taking longer than expected. Retry the check, try a different email, or contact your workspace manager if this account should already be approved.'
               : 'Confirming your role and workspace access...'}
           </span>
         </div>
@@ -39,6 +41,16 @@ export function AccessVerificationGate({
             <button type="button" className="primary-button" onClick={onRetry}>
               Retry check
             </button>
+            {onUseDifferentEmail ? (
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={signOutPending}
+                onClick={onUseDifferentEmail}
+              >
+                Try a different email
+              </button>
+            ) : null}
             <button
               type="button"
               className="ghost-button"

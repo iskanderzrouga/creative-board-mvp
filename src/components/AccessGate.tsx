@@ -4,6 +4,7 @@ interface AccessGateProps {
   title?: string
   description?: string
   onRetry?: () => void
+  onUseDifferentEmail?: () => void
   signOutPending?: boolean
   onSignOut: () => void
 }
@@ -14,6 +15,7 @@ export function AccessGate({
   title = 'Access needed',
   description = 'Your sign-in worked, but this account still needs workspace access from a manager before the shared board can open.',
   onRetry,
+  onUseDifferentEmail,
   signOutPending = false,
   onSignOut,
 }: AccessGateProps) {
@@ -35,6 +37,16 @@ export function AccessGate({
           {onRetry ? (
             <button type="button" className="primary-button" onClick={onRetry}>
               Retry
+            </button>
+          ) : null}
+          {onUseDifferentEmail ? (
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={signOutPending}
+              onClick={onUseDifferentEmail}
+            >
+              Try a different email
             </button>
           ) : null}
           <button

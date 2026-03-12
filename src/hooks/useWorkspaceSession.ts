@@ -6,8 +6,10 @@ import {
   type SetStateAction,
 } from 'react'
 import {
+  clearStoredAuthSession,
   deleteWorkspaceAccessEntry,
   getAuthSession,
+  getWorkspaceAccessCheckTimeoutMs,
   getWorkspaceAccess,
   listWorkspaceAccessEntries,
   onAuthStateChange,
@@ -26,7 +28,6 @@ import {
 } from '../board'
 
 const EMAIL_RATE_LIMIT_COOLDOWN_MS = 60_000
-const ACCESS_CHECK_TIMEOUT_MS = 12_000
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
@@ -171,6 +172,7 @@ export function useWorkspaceSession({
 
     let cancelled = false
     let timedOut = false
+    const accessCheckTimeoutMs = getWorkspaceAccessCheckTimeoutMs()
     setAccessStatus('checking')
     setAccessErrorMessage(null)
     setAccessCheckTimedOut(false)
@@ -185,9 +187,9 @@ export function useWorkspaceSession({
       setAccessCheckTimedOut(true)
       setAccessStatus('error')
       setAccessErrorMessage(
-        'We could not confirm workspace access yet. Retry in a moment or sign out and try again.',
+        'We could not confirm workspace access yet. Retry, try a different email, or contact your workspace manager.',
       )
-    }, ACCESS_CHECK_TIMEOUT_MS)
+    }, accessCheckTimeoutMs)
 
     void getWorkspaceAccess()
       .then((access) => {
@@ -201,7 +203,9 @@ export function useWorkspaceSession({
 
         if (!access) {
           setAccessStatus('denied')
-          setAccessErrorMessage('This account does not have workspace access yet.')
+          setAccessErrorMessage(
+            'This email is not on the approved access list yet. Contact your workspace manager.',
+          )
           return
         }
 
@@ -225,7 +229,7 @@ export function useWorkspaceSession({
         setAccessCheckTimedOut(false)
         setAccessStatus('error')
         setAccessErrorMessage(
-          'Workspace access could not be verified right now. Retry in a moment or sign out and try again.',
+          'Workspace access could not be verified right now. Retry, try a different email, or contact your workspace manager.',
         )
       })
 
@@ -485,7 +489,7 @@ export function useWorkspaceSession({
               normalizedMessage.includes('user not found') ||
               normalizedMessage.includes('signup') ||
               normalizedMessage.includes('sign up')
-          ? 'This email does not have workspace access yet. Ask a workspace manager to add it.'
+          ? 'This email is not on the approved access list. Contact your workspace manager to get access.'
           : message,
       )
     } finally {
@@ -493,22 +497,46 @@ export function useWorkspaceSession({
     }
   }
 
+  function resetSignedOutUi(nextLoginInfoMessage: string | null = null) {
+    clearStoredAuthSession()
+    setAuthSession(null)
+    setAuthStatus('signed-out')
+    setWorkspaceAccess(null)
+    setAccessStatus('checking')
+    setAccessErrorMessage(null)
+    setAccessCheckTimedOut(false)
+    setWorkspaceAccessEntries([])
+    setWorkspaceAccessStatus('idle')
+    setWorkspaceAccessErrorMessage(null)
+    setWorkspaceAccessPendingEmail(null)
+    setLoginEmail('')
+    setLoginPending(false)
+    setLoginCooldownUntil(null)
+    setLoginInfoMessage(nextLoginInfoMessage)
+    setLoginErrorMessage(null)
+    setAccessCheckAttempt(0)
+    clearSelectedCard()
+    closeEditorMenuRef.current()
+    resetRemoteSessionRef.current()
+  }
+
   async function handleSignOut() {
     setSignOutPending(true)
 
     try {
       await signOutOfSupabase()
-      setAuthSession(null)
-      setAuthStatus('signed-out')
-      setLoginInfoMessage(null)
-      setLoginErrorMessage(null)
-      clearSelectedCard()
+      resetSignedOutUi()
       showToast('Signed out', 'blue')
     } catch {
-      showToast('Could not sign out right now.', 'red')
+      resetSignedOutUi()
+      showToast('Signed out locally. The shared session could not be revoked right now.', 'amber')
     } finally {
       setSignOutPending(false)
     }
+  }
+
+  function handleTryDifferentEmail() {
+    resetSignedOutUi('Use a different approved work email to continue.')
   }
 
   function handleRetryAccessCheck() {
@@ -545,5 +573,6 @@ export function useWorkspaceSession({
     handleDeleteWorkspaceAccessEntry,
     handleSendMagicLink,
     handleSignOut,
+    handleTryDifferentEmail,
   }
 }
