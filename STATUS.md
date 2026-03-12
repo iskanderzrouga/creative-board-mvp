@@ -76,6 +76,9 @@ What changed so far:
 - Blocked brand deletion when it would remove the last brand or orphan linked cards, which previously could make cards disappear from the default board filters.
 - Blocked team-member deletion when cards are still assigned or when the action would remove the last manager, closing a settings path that could create broken ownership or leave the workspace without manager coverage.
 - Synced card products when brand product lists change in settings so cards do not quietly retain invalid product values after admin edits.
+- Hardened `moveCardInPortfolio` so grouped-stage moves without an owner are rejected at the state layer, blocked cards cannot advance forward, backward moves require both a revision reason and estimate even if a UI path bypasses the modal, and revision estimates clear once a card moves forward again.
+- Updated auto-archive logic so blocked `Live` cards do not get silently archived by the background timer while they still have unresolved issues.
+- Expanded unit coverage around ownerless grouped moves, backward-move metadata requirements, revision-estimate cleanup, blocked forward moves, and blocked-card archival behavior.
 
 Verification:
 
@@ -102,6 +105,7 @@ What changed:
 - Added a new migration at [`supabase/migrations/20260312033000_add_workspace_access_controls.sql`](/Users/iskanderzrouga/Desktop/Editors Board/supabase/migrations/20260312033000_add_workspace_access_controls.sql) that creates `public.workspace_access`, seeds `iskander@bluebrands.co` as a manager, and replaces the old `workspace_state` authenticated-only policies with allowlist-backed RLS.
 - Changed the Supabase login flow in [`src/supabase.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/supabase.ts) to use `shouldCreateUser: false`, fetch the signed-in user’s `workspace_access` record, and support an explicit `VITE_MAGIC_LINK_REDIRECT_URL`.
 - Bound the app’s visible role to the authenticated access record in [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx), added verification and access-denied gates, and disabled sidebar role switching outside the account’s approved role.
+- Added a login cooldown message for Supabase passwordless rate limits so repeated sign-in attempts stop feeling like a broken form and clearly tell the operator to wait and check the inbox.
 - Updated [`.env.example`](/Users/iskanderzrouga/Desktop/Editors Board/.env.example) and [`README.md`](/Users/iskanderzrouga/Desktop/Editors Board/README.md) with the new redirect env var, invited-user login model, `workspace_access` setup, and the exact production redirect URL requirements.
 - Added the new `VITE_MAGIC_LINK_REDIRECT_URL` env var to the linked Vercel project and redeployed production.
 
@@ -114,6 +118,7 @@ How those failures were resolved:
 
 - Re-ran the Vercel environment update sequentially, which added the production and development env vars cleanly.
 - Repeated the production browser interception and captured the full OTP request URL, which confirmed the deployed app now sends `redirect_to=https://creative-board-lake.vercel.app` and `create_user=false`.
+- Added a local cooldown guard after successful sends and rate-limit errors so the browser does not keep hitting Supabase while the default passwordless cooldown is still active.
 
 Verification:
 
@@ -126,6 +131,7 @@ Verification:
 - `npx vercel env add VITE_MAGIC_LINK_REDIRECT_URL development --value 'https://creative-board-lake.vercel.app' --yes` passed.
 - `npx vercel --prod --yes` passed and re-aliased production to [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app).
 - A live browser interception against production confirmed the auth request now targets `https://zytmxgtrpwlnogtrmmgt.supabase.co/auth/v1/otp?redirect_to=https%3A%2F%2Fcreative-board-lake.vercel.app` with `create_user=false`.
+- A separate live browser check mocked a `429` response from Supabase Auth and confirmed production now shows the friendlier rate-limit message instead of a generic failure, captured in `artifacts/phase-2/production-rate-limit.png`.
 
 Next step:
 

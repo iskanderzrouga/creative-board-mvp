@@ -106,6 +106,8 @@ set role_mode = excluded.role_mode, editor_name = excluded.editor_name;
 
 Random authenticated users are no longer enough on their own. `workspace_state` now requires a matching `workspace_access` record through row-level security, and the app binds the visible role to that access record instead of letting the browser choose any role locally.
 
+Supabase also rate-limits passwordless email sends. The app now surfaces a cooldown message when that happens, but the actual limit still lives in Supabase Auth settings and SMTP configuration.
+
 ## Vercel deployment
 
 This repo is already linked to a Vercel project. Typical release flow:

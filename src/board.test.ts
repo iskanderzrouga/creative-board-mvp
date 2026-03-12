@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyCardUpdates,
+  archiveEligibleCards,
   createEmptyPortfolio,
   createSeedState,
   getBrandRemovalBlocker,
   getTeamMemberRemovalBlocker,
+  moveCardInPortfolio,
   removeBrandFromPortfolio,
   removePortfolioFromAppState,
   removeTeamMemberFromPortfolio,
@@ -148,5 +150,215 @@ describe('board integrity helpers', () => {
     expect(managerIndex).toBeGreaterThanOrEqual(0)
     expect(getTeamMemberRemovalBlocker(portfolio, managerIndex)).toBe('At least one manager is required.')
     expect(removeTeamMemberFromPortfolio(portfolio, managerIndex)).toBe(portfolio)
+  })
+
+  it('rejects grouped-stage moves without a valid owner lane', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const sourceCard = portfolio.cards[0]
+    const backlogPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) =>
+        card.id !== sourceCard?.id
+          ? card
+          : {
+              ...card,
+              owner: null,
+              stage: 'Backlog' as const,
+              stageEnteredAt: '2026-03-12T09:45:00Z',
+              stageHistory: [
+                {
+                  stage: 'Backlog' as const,
+                  enteredAt: '2026-03-12T09:45:00Z',
+                  exitedAt: null,
+                  durationDays: null,
+                },
+              ],
+            },
+      ),
+    }
+
+    expect(sourceCard).toBeTruthy()
+    expect(
+      moveCardInPortfolio(
+        backlogPortfolio,
+        sourceCard!.id,
+        'Briefed',
+        null,
+        0,
+        '2026-03-12T10:00:00Z',
+        'Naomi',
+      ),
+    ).toBe(backlogPortfolio)
+  })
+
+  it('requires a revision reason and estimate for backward moves', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const sourceCard = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
+    const reviewPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) =>
+        card.id !== sourceCard?.id
+          ? card
+          : {
+              ...card,
+              stage: 'Review' as const,
+              stageEnteredAt: '2026-03-12T10:00:00Z',
+              stageHistory: [
+                ...card.stageHistory,
+                {
+                  stage: 'Review' as const,
+                  enteredAt: '2026-03-12T10:00:00Z',
+                  exitedAt: null,
+                  durationDays: null,
+                },
+              ],
+            },
+      ),
+    }
+
+    expect(sourceCard).toBeTruthy()
+    expect(
+      moveCardInPortfolio(
+        reviewPortfolio,
+        sourceCard!.id,
+        'In Production',
+        sourceCard!.owner,
+        0,
+        '2026-03-12T10:15:00Z',
+        'Naomi',
+      ),
+    ).toBe(reviewPortfolio)
+  })
+
+  it('clears the revision estimate once the card moves forward again', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const sourceCard = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
+    const reviewPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) =>
+        card.id !== sourceCard?.id
+          ? card
+          : {
+              ...card,
+              stage: 'Review' as const,
+              stageEnteredAt: '2026-03-12T10:00:00Z',
+              stageHistory: [
+                ...card.stageHistory,
+                {
+                  stage: 'Review' as const,
+                  enteredAt: '2026-03-12T10:00:00Z',
+                  exitedAt: null,
+                  durationDays: null,
+                },
+              ],
+            },
+      ),
+    }
+
+    expect(sourceCard).toBeTruthy()
+
+    const movedBack = moveCardInPortfolio(
+      reviewPortfolio,
+      sourceCard!.id,
+      'In Production',
+      sourceCard!.owner,
+      0,
+      '2026-03-12T10:30:00Z',
+      'Naomi',
+      'Client feedback',
+      4,
+    )
+    const movedForward = moveCardInPortfolio(
+      movedBack,
+      sourceCard!.id,
+      'Review',
+      sourceCard!.owner,
+      0,
+      '2026-03-12T11:00:00Z',
+      'Naomi',
+    )
+
+    expect(movedBack.cards.find((card) => card.id === sourceCard!.id)?.revisionEstimatedHours).toBe(4)
+    expect(movedForward.cards.find((card) => card.id === sourceCard!.id)?.revisionEstimatedHours).toBeNull()
+  })
+
+  it('blocks forward stage moves while a card is marked blocked', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const briefedCard = portfolio.cards.find((card) => card.stage === 'Briefed' && card.owner)
+
+    expect(briefedCard).toBeTruthy()
+
+    const blockedPortfolio = applyCardUpdates(
+      portfolio,
+      state.settings,
+      briefedCard!.id,
+      {
+        blocked: {
+          reason: 'Waiting for footage',
+          at: '2026-03-12T11:05:00Z',
+        },
+      },
+      'Naomi',
+      '2026-03-12T11:05:00Z',
+    )
+
+    expect(
+      moveCardInPortfolio(
+        blockedPortfolio,
+        briefedCard!.id,
+        'In Production',
+        briefedCard!.owner,
+        0,
+        '2026-03-12T11:10:00Z',
+        'Naomi',
+      ),
+    ).toBe(blockedPortfolio)
+  })
+
+  it('does not auto-archive blocked live cards', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const sourceCard = portfolio.cards[0]
+
+    expect(sourceCard).toBeTruthy()
+
+    const adjustedState = {
+      ...state,
+      settings: {
+        ...state.settings,
+        general: {
+          ...state.settings.general,
+          autoArchiveEnabled: true,
+          autoArchiveDays: 7,
+        },
+      },
+      portfolios: state.portfolios.map((item) =>
+        item.id !== portfolio.id
+          ? item
+          : {
+              ...item,
+              cards: item.cards.map((card) =>
+                card.id !== sourceCard!.id
+                  ? card
+                  : {
+                      ...card,
+                      stage: 'Live' as const,
+                      stageEnteredAt: '2026-02-20T09:00:00Z',
+                      blocked: {
+                        reason: 'Launch issue',
+                        at: '2026-02-21T09:00:00Z',
+                      },
+                    },
+              ),
+            },
+      ),
+    }
+
+    const archivedState = archiveEligibleCards(adjustedState, new Date('2026-03-12T12:00:00Z').getTime())
+
+    expect(
+      archivedState.portfolios[0]?.cards.find((card) => card.id === sourceCard!.id)?.archivedAt,
+    ).toBeNull()
   })
 })

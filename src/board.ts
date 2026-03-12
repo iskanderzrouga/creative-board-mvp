@@ -2978,6 +2978,27 @@ export function moveCardInPortfolio(
   }
 
   const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? existingCard.owner
+  const normalizedRevisionReason = revisionReason?.trim()
+  const stageChanged = existingCard.stage !== destinationStage
+  const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(existingCard.stage)
+  const isForwardMove = STAGES.indexOf(destinationStage) > STAGES.indexOf(existingCard.stage)
+
+  if (isGroupedStage(destinationStage) && !nextOwner) {
+    return portfolio
+  }
+
+  if (
+    stageChanged &&
+    isBackwardMove &&
+    (!normalizedRevisionReason || typeof revisionEstimatedHours !== 'number' || revisionEstimatedHours <= 0)
+  ) {
+    return portfolio
+  }
+
+  if (stageChanged && isForwardMove && existingCard.blocked) {
+    return portfolio
+  }
+
   const otherCards = portfolio.cards.filter((card) => card.id !== cardId)
   const sourceLaneCards = getOrderedLaneCards(
     otherCards,
@@ -2996,9 +3017,7 @@ export function moveCardInPortfolio(
   sourceLaneCards.forEach((id, index) => positionMap.set(id, index))
   nextTargetLane.forEach((id, index) => positionMap.set(id, index))
 
-  const stageChanged = existingCard.stage !== destinationStage
   const ownerChanged = existingCard.owner !== nextOwner
-  const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(existingCard.stage)
   const nextHistory = stageChanged
     ? [
         ...closeCurrentStageEntry(existingCard.stageHistory, movedAt),
@@ -3008,7 +3027,7 @@ export function moveCardInPortfolio(
           exitedAt: null,
           durationDays: null,
           movedBack: isBackwardMove || undefined,
-          revisionReason: isBackwardMove ? revisionReason : undefined,
+          revisionReason: isBackwardMove ? normalizedRevisionReason : undefined,
           revisionEstimatedHours: isBackwardMove ? revisionEstimatedHours ?? undefined : undefined,
         },
       ]
@@ -3027,7 +3046,9 @@ export function moveCardInPortfolio(
     positionInSection: positionMap.get(cardId) ?? existingCard.positionInSection,
     revisionEstimatedHours: isBackwardMove
       ? revisionEstimatedHours ?? existingCard.revisionEstimatedHours
-      : existingCard.revisionEstimatedHours,
+      : isForwardMove
+        ? null
+        : existingCard.revisionEstimatedHours,
   }
 
   if (ownerChanged && nextOwner) {
@@ -3043,7 +3064,7 @@ export function moveCardInPortfolio(
       createActivityEntry(
         actor,
         isBackwardMove
-          ? `moved back to ${destinationStage}${revisionReason ? ` — Reason: ${revisionReason}` : ''}${
+          ? `moved back to ${destinationStage}${normalizedRevisionReason ? ` — Reason: ${normalizedRevisionReason}` : ''}${
               revisionEstimatedHours ? ` — Revision estimate: ${formatHours(revisionEstimatedHours)}` : ''
             }`
           : `moved to ${destinationStage}`,
@@ -3212,6 +3233,7 @@ export function archiveEligibleCards(state: AppState, nowMs = Date.now()) {
       if (
         card.archivedAt === null &&
         card.stage === 'Live' &&
+        card.blocked === null &&
         getCardAgeMs(card, nowMs) >= state.settings.general.autoArchiveDays * DAY_MS
       ) {
         changed = true

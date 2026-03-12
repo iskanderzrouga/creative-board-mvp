@@ -127,6 +127,7 @@ import {
 } from './board'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
+const EMAIL_RATE_LIMIT_COOLDOWN_MS = 60_000
 
 interface ToastState {
   message: string
@@ -3644,6 +3645,7 @@ function App() {
   const [loginPending, setLoginPending] = useState(false)
   const [loginInfoMessage, setLoginInfoMessage] = useState<string | null>(null)
   const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null)
+  const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(authEnabled ? 'loading' : 'local')
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
@@ -4168,6 +4170,20 @@ function App() {
       return
     }
 
+    const remainingCooldownMs =
+      loginCooldownUntil && loginCooldownUntil > Date.now()
+        ? loginCooldownUntil - Date.now()
+        : 0
+    if (remainingCooldownMs > 0) {
+      setLoginErrorMessage(null)
+      setLoginInfoMessage(
+        `Email links are limited to about once per minute. Check your inbox or wait ${Math.ceil(
+          remainingCooldownMs / 1000,
+        )}s before trying again.`,
+      )
+      return
+    }
+
     setLoginPending(true)
     setLoginErrorMessage(null)
     setLoginInfoMessage(null)
@@ -4180,7 +4196,12 @@ function App() {
         setAuthSession(session)
         setAuthStatus('signed-in')
         setLoginPending(false)
+        setLoginCooldownUntil(null)
         return
+      }
+
+      if (!result.deliveredInstantly) {
+        setLoginCooldownUntil(Date.now() + EMAIL_RATE_LIMIT_COOLDOWN_MS)
       }
 
       setLoginInfoMessage(
@@ -4191,10 +4212,15 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not send the magic link.'
       const normalizedMessage = message.toLowerCase()
+      if (normalizedMessage.includes('rate limit')) {
+        setLoginCooldownUntil(Date.now() + EMAIL_RATE_LIMIT_COOLDOWN_MS)
+      }
       setLoginErrorMessage(
-        normalizedMessage.includes('user not found') ||
-          normalizedMessage.includes('signup') ||
-          normalizedMessage.includes('sign up')
+        normalizedMessage.includes('rate limit')
+          ? 'Email rate limit exceeded. Check your inbox and wait about a minute before trying again.'
+          : normalizedMessage.includes('user not found') ||
+              normalizedMessage.includes('signup') ||
+              normalizedMessage.includes('sign up')
           ? 'This email is not invited yet. Add it in Supabase Auth and workspace_access before sending a magic link.'
           : message,
       )
