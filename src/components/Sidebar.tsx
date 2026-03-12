@@ -92,7 +92,12 @@ function SidebarComponent({
   return (
     <aside className={`app-sidebar ${expanded ? 'is-expanded' : ''}`}>
       <div className="sidebar-top">
-        <button type="button" className="sidebar-pin" onClick={onTogglePinned}>
+        <button
+          type="button"
+          className="sidebar-pin"
+          aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          onClick={onTogglePinned}
+        >
           {expanded ? '←' : '→'}
         </button>
       </div>
@@ -110,6 +115,7 @@ function SidebarComponent({
             }}
             disabled={item.disabled}
             title={item.tooltip}
+            aria-label={getPageLabel(item.page)}
           >
             <span className="sidebar-nav-icon">
               {item.page === 'board' && attention.hasAttention ? (
@@ -146,6 +152,7 @@ function SidebarComponent({
             onClick={() => onRoleChange({ mode: 'manager', editorId: role.editorId })}
             disabled={!canChooseManager}
             title={!canChooseManager ? 'Your account access is fixed by the workspace admin.' : undefined}
+            aria-label="Manager role"
           >
             {expanded ? 'Manager' : 'M'}
           </button>
@@ -165,6 +172,11 @@ function SidebarComponent({
                   : lockedEditorId
                     ? 'Your editor lane is assigned by the workspace admin.'
                     : undefined
+              }
+              aria-label={
+                role.mode === 'editor'
+                  ? `Editor role, ${editorOptions.find((member) => member.id === role.editorId)?.name ?? 'Select editor'}`
+                  : 'Editor role'
               }
             >
               {expanded
@@ -197,6 +209,7 @@ function SidebarComponent({
             onClick={() => onRoleChange({ mode: 'observer', editorId: role.editorId })}
             disabled={!canChooseObserver}
             title={!canChooseObserver ? 'Your account access is fixed by the workspace admin.' : undefined}
+            aria-label="Observer role"
           >
             {expanded ? 'Observer' : 'O'}
           </button>

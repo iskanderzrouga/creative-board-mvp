@@ -31,11 +31,17 @@ export function PageHeader({
               ref={searchRef}
               className="search-input"
               value={searchValue}
+              aria-label="Search cards"
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Search cards..."
             />
             {searchValue ? (
-              <button type="button" className="search-clear" onClick={onSearchClear}>
+              <button
+                type="button"
+                className="search-clear"
+                aria-label="Clear card search"
+                onClick={onSearchClear}
+              >
                 ×
               </button>
             ) : null}

@@ -467,3 +467,29 @@ Verification:
 Next step:
 
 - Continue into the remaining phase 6 responsiveness and accessibility polish from `CODEX-PLAN.md`, then move into the later sync-hardening and structural cleanup phases.
+
+### CODEX-PLAN Execution: Phase 6 Accessibility Follow-up
+
+Status: In progress
+
+What I learned:
+
+- After the modal and confirm-dialog work, the remaining accessibility gaps were smaller but still important: icon-only controls needed better labels, transient sync/toast messages needed explicit announcement behavior, and the slide-out detail panel still behaved more like a visual drawer than a fully managed dialog.
+- These fixes were low-risk because they were mostly metadata and focus-management improvements layered onto already extracted components, rather than structural UI rewrites.
+
+What changed:
+
+- Added explicit labels for icon-only and collapsed controls in [`src/components/Sidebar.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/Sidebar.tsx), including the sidebar pin, page navigation items, and compact role selectors.
+- Improved board search accessibility in [`src/components/PageHeader.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/PageHeader.tsx) by labeling the search field and the clear-search control.
+- Marked transient sync and toast messages as live status regions in [`src/components/SyncStatusPill.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/SyncStatusPill.tsx) and [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx), so state changes are announced more reliably to assistive tech.
+- Extended the reusable modal accessibility behavior to the slide-out detail surface in [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx), giving it managed focus, scroll locking, and keyboard-safe dialog behavior instead of just dialog semantics.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Move out of the remaining accessibility polish and into the later `CODEX-PLAN.md` hardening phases, especially sync resilience and state/version safety.

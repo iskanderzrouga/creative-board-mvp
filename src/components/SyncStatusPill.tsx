@@ -24,7 +24,7 @@ function getSyncStatusLabel(syncStatus: SyncStatus, lastSyncedAt: string | null)
 
 export function SyncStatusPill({ syncStatus, lastSyncedAt }: SyncStatusPillProps) {
   return (
-    <span className={`sync-status-pill is-${syncStatus}`}>
+    <span className={`sync-status-pill is-${syncStatus}`} role="status" aria-live="polite">
       {getSyncStatusLabel(syncStatus, lastSyncedAt)}
     </span>
   )

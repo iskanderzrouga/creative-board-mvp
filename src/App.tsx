@@ -1178,6 +1178,11 @@ function App() {
   }
 
   const sidebarExpanded = sidebarPinned || sidebarHovered
+  const toastView = toast ? (
+    <div className={`toast tone-${toast.tone}`} role="status" aria-live="polite">
+      {toast.message}
+    </div>
+  ) : null
 
   function resetBoardFilters() {
     setBoardFilters(getDefaultBoardFilters(activePortfolio))
@@ -1202,7 +1207,7 @@ function App() {
           onEmailChange={setLoginEmail}
           onSubmit={handleSendMagicLink}
         />
-        {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+        {toastView}
       </>
     )
   }
@@ -1221,7 +1226,7 @@ function App() {
           onRetry={handleRetryAccessCheck}
           onSignOut={handleSignOut}
         />
-        {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+        {toastView}
       </>
     )
   }
@@ -1249,7 +1254,7 @@ function App() {
           onRetry={accessStatus === 'error' ? handleRetryAccessCheck : undefined}
           onSignOut={handleSignOut}
         />
-        {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+        {toastView}
       </>
     )
   }
@@ -1485,7 +1490,7 @@ function App() {
         />
       ) : null}
 
-      {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+      {toastView}
     </div>
   )
 }

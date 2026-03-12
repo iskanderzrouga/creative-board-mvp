@@ -1,5 +1,6 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
+import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
   STAGES,
   formatDateLong,
@@ -126,6 +127,7 @@ export function CardDetailPanel({
   onRequestDelete,
 }: CardDetailPanelProps) {
   const titleId = useId()
+  const panelRef = useRef<HTMLElement | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -142,6 +144,8 @@ export function CardDetailPanel({
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
   const daysSinceBriefed = getDaysSinceBriefed(card, nowMs)
+
+  useModalAccessibility(panelRef, true)
 
   function handleTaskTypeChange(taskTypeId: string) {
     const nextTaskType = getTaskTypeById(settings, taskTypeId)
@@ -171,10 +175,12 @@ export function CardDetailPanel({
     <>
       <div className="panel-overlay" aria-hidden="true" onClick={onClose} />
       <aside
+        ref={panelRef}
         className="slide-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
       >
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
