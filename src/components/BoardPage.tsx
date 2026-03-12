@@ -1,0 +1,420 @@
+import type {
+  ComponentProps,
+  Dispatch,
+  ReactNode,
+  RefObject,
+  SetStateAction,
+} from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  STAGES,
+  formatHours,
+  getEditorOptions,
+  type BoardFilters,
+  type BoardStats,
+  type Card,
+  type ColumnModel,
+  type EditorSummary,
+  type GlobalSettings,
+  type Portfolio,
+  type StageId,
+} from '../board'
+import { BoardCardSurface } from './BoardCardSurface'
+import { LaneDropZone } from './LaneDropZone'
+import { PageHeader } from './PageHeader'
+import { SortableBoardCard } from './SortableBoardCard'
+
+type BoardSensors = ComponentProps<typeof DndContext>['sensors']
+
+interface BoardPageProps {
+  title: string
+  portfolio: Portfolio
+  settings: GlobalSettings
+  boardFilters: BoardFilters
+  setBoardFilters: Dispatch<SetStateAction<BoardFilters>>
+  stats: BoardStats | null
+  summary: EditorSummary | null
+  columns: ColumnModel[]
+  expandedStages: StageId[]
+  setExpandedStages: Dispatch<SetStateAction<StageId[]>>
+  searchCountLabel?: string
+  searchRef: RefObject<HTMLInputElement | null>
+  headerUtilityContent?: ReactNode
+  activeRoleMode: 'manager' | 'editor' | 'observer'
+  dragCardId: string | null
+  dragOverLaneId: string | null
+  blockedLaneId: string | null
+  activeDragCard: Card | null
+  nowMs: number
+  sensors: BoardSensors
+  canDragCard: (card: Card) => boolean
+  onOpenCard: (portfolioId: string, cardId: string) => void
+  onQuickCreateOpen: () => void
+  onDragStart: (event: DragStartEvent) => void
+  onDragOver: (event: DragOverEvent) => void
+  onDragCancel: () => void
+  onDragEnd: (event: DragEndEvent) => void
+}
+
+export function BoardPage({
+  title,
+  portfolio,
+  settings,
+  boardFilters,
+  setBoardFilters,
+  stats,
+  summary,
+  columns,
+  expandedStages,
+  setExpandedStages,
+  searchCountLabel,
+  searchRef,
+  headerUtilityContent,
+  activeRoleMode,
+  dragCardId,
+  dragOverLaneId,
+  blockedLaneId,
+  activeDragCard,
+  nowMs,
+  sensors,
+  canDragCard,
+  onOpenCard,
+  onQuickCreateOpen,
+  onDragStart,
+  onDragOver,
+  onDragCancel,
+  onDragEnd,
+}: BoardPageProps) {
+  return (
+    <div className="page-shell">
+      <PageHeader
+        title={title}
+        searchValue={boardFilters.searchQuery}
+        searchCountLabel={searchCountLabel}
+        onSearchChange={(value) =>
+          setBoardFilters((current) => ({
+            ...current,
+            searchQuery: value,
+          }))
+        }
+        onSearchClear={() =>
+          setBoardFilters((current) => ({
+            ...current,
+            searchQuery: '',
+          }))
+        }
+        searchRef={searchRef}
+        rightContent={headerUtilityContent}
+      />
+
+      {stats ? (
+        <section className="stats-bar" aria-label="Board statistics">
+          <div className="stat-inline-item">
+            <span className="stat-inline-label">Total</span>
+            <strong>{stats.total}</strong>
+            <span className="stat-divider">·</span>
+          </div>
+          {STAGES.map((stage) => (
+            <div key={stage} className="stat-inline-item">
+              <span className="stat-inline-label">{stage}</span>
+              <strong>{stats.byStage[stage]}</strong>
+              <span className="stat-divider">·</span>
+            </div>
+          ))}
+          <div className="stat-inline-item">
+            <span className="stat-inline-label">Stuck 5+d</span>
+            <strong className={stats.stuck > 0 ? 'is-highlight' : ''}>{stats.stuck}</strong>
+            <span className="stat-divider">·</span>
+          </div>
+          <div className="stat-inline-item">
+            <span className="stat-inline-label">Overdue</span>
+            <strong className={stats.overdue > 0 ? 'is-highlight' : ''}>{stats.overdue}</strong>
+          </div>
+        </section>
+      ) : null}
+
+      {activeRoleMode !== 'editor' ? (
+        <section className="manager-filter-bar">
+          <div className="manager-filter-group">
+            <button
+              type="button"
+              className={`filter-pill ${
+                boardFilters.brandNames.length === portfolio.brands.length ? 'is-active is-all' : ''
+              }`}
+              onClick={() =>
+                setBoardFilters((current) => ({
+                  ...current,
+                  brandNames: portfolio.brands.map((brand) => brand.name),
+                }))
+              }
+            >
+              All
+            </button>
+            {portfolio.brands.map((brand) => (
+              <button
+                key={brand.name}
+                type="button"
+                className={`filter-pill ${
+                  boardFilters.brandNames.length === 1 && boardFilters.brandNames[0] === brand.name
+                    ? 'is-active'
+                    : ''
+                }`}
+                style={
+                  boardFilters.brandNames.length === 1 && boardFilters.brandNames[0] === brand.name
+                    ? {
+                        background: brand.color,
+                        borderColor: brand.color,
+                        color: '#fff',
+                      }
+                    : undefined
+                }
+                onClick={() =>
+                  setBoardFilters((current) => ({
+                    ...current,
+                    brandNames: [brand.name],
+                  }))
+                }
+              >
+                {brand.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="manager-editor-pills">
+            {getEditorOptions(portfolio).map((member) => (
+              <button
+                key={member.id}
+                type="button"
+                className={`editor-pill ${
+                  boardFilters.ownerNames.includes(member.name) ? 'is-active' : ''
+                }`}
+                onClick={() =>
+                  setBoardFilters((current) => ({
+                    ...current,
+                    ownerNames: current.ownerNames.includes(member.name)
+                      ? current.ownerNames.filter((item) => item !== member.name)
+                      : [...current.ownerNames, member.name],
+                  }))
+                }
+              >
+                {member.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="manager-flag-pills">
+            <button
+              type="button"
+              className={`filter-pill ${boardFilters.overdueOnly ? 'is-active is-all' : ''}`}
+              onClick={() =>
+                setBoardFilters((current) => ({
+                  ...current,
+                  overdueOnly: !current.overdueOnly,
+                }))
+              }
+            >
+              Overdue
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${boardFilters.stuckOnly ? 'is-active is-all' : ''}`}
+              onClick={() =>
+                setBoardFilters((current) => ({
+                  ...current,
+                  stuckOnly: !current.stuckOnly,
+                }))
+              }
+            >
+              Stuck
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${boardFilters.blockedOnly ? 'is-active is-all' : ''}`}
+              onClick={() =>
+                setBoardFilters((current) => ({
+                  ...current,
+                  blockedOnly: !current.blockedOnly,
+                }))
+              }
+            >
+              Blocked
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ${boardFilters.showArchived ? 'is-active is-all' : ''}`}
+              onClick={() =>
+                setBoardFilters((current) => ({
+                  ...current,
+                  showArchived: !current.showArchived,
+                }))
+              }
+            >
+              Show archived
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {summary ? (
+        <section className="editor-summary-bar">
+          <div className="editor-summary-name">
+            {summary.owner} · {formatHours(
+              summary.briefedHours +
+                summary.inProductionHours +
+                summary.reviewHours +
+                summary.readyHours,
+            )}{' '}
+            scheduled · {formatHours(summary.availableHours)} available
+          </div>
+          <div className="editor-summary-stages">
+            <span>{`Briefed: ${summary.briefedCount} (${formatHours(summary.briefedHours)})`}</span>
+            <span>
+              {`In Production: ${summary.inProductionCount} (${formatHours(summary.inProductionHours)})`}
+            </span>
+            <span>{`Review: ${summary.reviewCount} (${formatHours(summary.reviewHours)})`}</span>
+            <span>{`Ready: ${summary.readyCount} (${formatHours(summary.readyHours)})`}</span>
+          </div>
+        </section>
+      ) : null}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragCancel={onDragCancel}
+        onDragEnd={onDragEnd}
+      >
+        <main className="board-scroll">
+          <div className="board-grid">
+            {columns.map((column) => (
+              <section
+                key={column.id}
+                className={`stage-column ${column.id === 'Archived' ? 'is-archived-column' : ''}`}
+              >
+                <div className="stage-column-header">
+                  <h2>
+                    {column.label} <span>· {column.count}</span>
+                  </h2>
+                  {column.id === 'Backlog' && activeRoleMode === 'manager' ? (
+                    <button
+                      type="button"
+                      className="column-ghost-button"
+                      onClick={onQuickCreateOpen}
+                    >
+                      + Add card
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="stage-column-content">
+                  {column.lanes.map((lane) => {
+                    const hovered = dragOverLaneId === lane.id
+                    const isBlocked = blockedLaneId === lane.id
+                    const isWipFull =
+                      lane.wipCap !== null && lane.wipCount !== null && lane.wipCount >= lane.wipCap
+
+                    return (
+                      <div key={lane.id} className={`lane-shell ${isWipFull ? 'is-hot' : ''}`}>
+                        {column.grouped ? (
+                          <div className="lane-header rich">
+                            <div className="lane-header-left">
+                              <span>{lane.label}</span>
+                              <span className="queue-inline">
+                                {column.id === 'In Production'
+                                  ? `${lane.activeCount} active`
+                                  : `${lane.activeCount} queued`}
+                                {lane.showTotalWorkload && lane.totalWorkDays !== null
+                                  ? ` · ~${lane.totalWorkDays} days total`
+                                  : ''}
+                              </span>
+                            </div>
+                            {lane.wipCap !== null ? (
+                              <span className={`wip-badge ${isWipFull ? 'is-full' : ''}`}>
+                                {lane.wipCount}/{lane.wipCap}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <LaneDropZone
+                          lane={lane}
+                          isHovered={hovered}
+                          isBlocked={isBlocked}
+                          dragActive={dragCardId !== null}
+                          allowEmptyHint={activeRoleMode === 'manager'}
+                        >
+                          <SortableContext
+                            items={lane.cards.map((card) => card.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {lane.cards.map((card) => (
+                              <SortableBoardCard
+                                key={card.id}
+                                card={card}
+                                portfolio={portfolio}
+                                settings={settings}
+                                nowMs={nowMs}
+                                canDrag={canDragCard(card)}
+                                cursorMode={canDragCard(card) ? 'drag' : 'pointer'}
+                                isInvalid={isBlocked}
+                                onOpen={() => onOpenCard(portfolio.id, card.id)}
+                              />
+                            ))}
+                          </SortableContext>
+                        </LaneDropZone>
+                      </div>
+                    )
+                  })}
+
+                  {column.grouped && column.hiddenEditorCount > 0 ? (
+                    <button
+                      type="button"
+                      className="clear-link hidden-editors-toggle"
+                      onClick={() =>
+                        setExpandedStages((current) =>
+                          current.includes(column.id as StageId)
+                            ? current.filter((item) => item !== column.id)
+                            : [...current, column.id as StageId],
+                        )
+                      }
+                    >
+                      {expandedStages.includes(column.id as StageId)
+                        ? 'Hide empty editors'
+                        : `+${column.hiddenEditorCount} editors`}
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+            ))}
+          </div>
+        </main>
+
+        <DragOverlay>
+          {activeDragCard ? (
+            <BoardCardSurface
+              card={activeDragCard}
+              portfolio={portfolio}
+              settings={settings}
+              nowMs={nowMs}
+              onOpen={() => undefined}
+              cursorMode="drag"
+              isOverlay
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  )
+}

@@ -289,3 +289,36 @@ Verification:
 Next step:
 
 - Perform one real magic-link login from a team inbox and confirm Supabase Auth redirect URLs include the final production origin, then continue the broader deploy-readiness roadmap with deeper workflow hardening and scale guardrails.
+
+### CODEX-PLAN Execution: Phase 2 Extraction Pass 2
+
+Status: In progress
+
+What I learned:
+
+- `App.tsx` was still carrying two of the biggest remaining phase 2 burdens at once: the full board render tree and the entire workspace session/auth orchestration.
+- The settings extraction only really pays off once the same pattern is applied to the board page and the shared session logic, otherwise `App.tsx` stays a monolith with fewer inline editors but the same architectural weight.
+- The refactor is safest when each new component or hook is wired in fully and the old in-file implementation is deleted immediately, so there is only one source of truth at a time.
+
+What changed:
+
+- Extracted the full board surface into [`src/components/BoardPage.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/BoardPage.tsx), including search, stats, manager filters, editor summary, drag shell, and board-card rendering.
+- Added [`src/hooks/useWorkspaceSession.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useWorkspaceSession.ts) to own Supabase auth bootstrap, workspace access verification, manager directory loading, approved-email login flow, sign-out handling, and workspace-access mutations.
+- Finished wiring the previously extracted settings surface through [`src/components/SettingsPage.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/SettingsPage.tsx), and removed the duplicate inline `SettingsPage` implementation from [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx).
+- Kept the already extracted settings/detail modules in place and connected through the app shell:
+  - [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx)
+  - [`src/components/TaskLibraryEditor.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/TaskLibraryEditor.tsx)
+  - [`src/components/RevisionReasonLibraryEditor.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/RevisionReasonLibraryEditor.tsx)
+  - [`src/components/WorkspaceAccessManager.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/WorkspaceAccessManager.tsx)
+- Reduced [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) from 3348 lines at the start of this pass to 1711 lines after the board and session extractions.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run build` passed.
+- `npm run test:e2e` passed.
+
+Next step:
+
+- Continue phase 2 by extracting one more orchestration chunk from [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) so the file drops under the 1500-line target in `CODEX-PLAN.md`, then proceed into the remaining UX/accessibility plan items.
