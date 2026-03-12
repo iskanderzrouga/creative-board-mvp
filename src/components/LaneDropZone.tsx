@@ -29,6 +29,8 @@ function LaneDropZoneComponent({
   return (
     <div
       ref={setNodeRef}
+      role="group"
+      aria-label={lane.owner ? `${lane.stage} lane for ${lane.owner}` : `${lane.stage} lane`}
       className={`lane-body ${isHovered ? 'is-over' : ''} ${
         isBlocked ? 'is-capacity-blocked' : ''
       } ${lane.cards.length === 0 ? 'is-empty' : ''}`}

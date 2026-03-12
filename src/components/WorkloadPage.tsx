@@ -71,10 +71,12 @@ function WorkloadQueueCard({
 
 function WorkloadDropRow({
   memberId,
+  memberName,
   children,
   dragActive,
 }: {
   memberId: string
+  memberName: string
   children: ReactNode
   dragActive: boolean
 }) {
@@ -85,6 +87,8 @@ function WorkloadDropRow({
   return (
     <div
       ref={setNodeRef}
+      role="group"
+      aria-label={`Assign to ${memberName}`}
       className={`workload-row ${dragActive ? 'is-drag-surface' : ''} ${isOver ? 'is-over' : ''}`}
     >
       {children}
@@ -141,6 +145,7 @@ export function WorkloadPage({
               <WorkloadDropRow
                 key={row.member.id}
                 memberId={row.member.id}
+                memberName={row.member.name}
                 dragActive={activeDragCardId !== null}
               >
                 <button

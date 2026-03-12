@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Drag Workflow Regression Coverage Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added stable accessible labels to board lane drop zones and workload assignment rows so drag targets are easier to identify in both browser tests and assistive tooling.
+- Added a dedicated Playwright spec at `e2e/drag-drop.spec.ts` to cover the missing `CODEX-PLAN.md` workflow regressions around drag-and-drop.
+- Verified that managers can drag a backlog card into a Briefed editor lane, move it forward into In Production, and then drag it backward to trigger the revision-reason modal before confirming the move.
+- Verified that dragging a card into a full `In Production` lane now surfaces the seeded capacity warning in the browser test instead of silently regressing.
+- Tightened the shared drag helper in the new spec to use visible pointer coordinates and a short post-drop settle wait, which made the drag coverage stable instead of flaky.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another clear phase 9 gap from `CODEX-PLAN.md` is now closed: drag/drop move rules are covered end to end instead of being guarded only by unit logic.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` release and rollout work, especially any last workflow edges plus the final production deployment and regression checklist.
+
 ### CODEX-PLAN Execution: Server-Owned Sync Timestamp Pass
 
 Status: In progress
