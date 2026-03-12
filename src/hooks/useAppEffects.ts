@@ -92,6 +92,8 @@ interface UseAppEffectsOptions {
   setQuickCreateOpen: Dispatch<SetStateAction<boolean>>
   selectedCard: SelectedCardState | null
   setSelectedCard: Dispatch<SetStateAction<SelectedCardState | null>>
+  keyboardShortcutsOpen: boolean
+  setKeyboardShortcutsOpen: Dispatch<SetStateAction<boolean>>
   editorMenuOpen: boolean
   setEditorMenuOpen: Dispatch<SetStateAction<boolean>>
   currentPage: AppPage
@@ -133,6 +135,8 @@ export function useAppEffects({
   setQuickCreateOpen,
   selectedCard,
   setSelectedCard,
+  keyboardShortcutsOpen,
+  setKeyboardShortcutsOpen,
   editorMenuOpen,
   setEditorMenuOpen,
   currentPage,
@@ -440,6 +444,10 @@ export function useAppEffects({
       const hasModifier = event.metaKey || event.ctrlKey
 
       if (event.key === 'Escape') {
+        if (keyboardShortcutsOpen) {
+          setKeyboardShortcutsOpen(false)
+          return
+        }
         if (pendingDeleteCard) {
           setPendingDeleteCard(null)
           return
@@ -485,6 +493,7 @@ export function useAppEffects({
     activePortfolio,
     currentPage,
     editorMenuOpen,
+    keyboardShortcutsOpen,
     pendingBackwardMove,
     pendingDeleteCard,
     quickCreateOpen,
@@ -492,6 +501,7 @@ export function useAppEffects({
     searchRef,
     selectedCard,
     setEditorMenuOpen,
+    setKeyboardShortcutsOpen,
     setPendingBackwardMove,
     setPendingDeleteCard,
     setQuickCreateOpen,

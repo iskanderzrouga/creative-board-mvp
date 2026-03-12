@@ -24,6 +24,7 @@ function LaneDropZoneComponent({
   })
 
   const showDropHint = allowEmptyHint && dragActive && isHovered && lane.cards.length === 0
+  const showEmptyState = !dragActive && lane.cards.length === 0
 
   return (
     <div
@@ -33,6 +34,7 @@ function LaneDropZoneComponent({
       } ${lane.cards.length === 0 ? 'is-empty' : ''}`}
     >
       {children}
+      {showEmptyState ? <div className="lane-empty-state">No cards in this stage</div> : null}
       {showDropHint ? (
         <div className={`lane-drop-hint ${isBlocked ? 'is-danger' : ''}`}>
           {isBlocked ? 'At capacity — finish or move a task first' : 'Drop here'}

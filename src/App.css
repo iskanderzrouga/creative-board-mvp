@@ -560,6 +560,19 @@ button {
   min-height: 6px;
 }
 
+.lane-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px dashed var(--line-control);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
 .lane-body.is-blocked {
   padding: 2px;
   border: 2px solid var(--red);
@@ -1885,6 +1898,13 @@ button {
   flex-wrap: wrap;
 }
 
+.shortcut-button {
+  min-width: 32px;
+  padding: 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
 .session-email {
   display: inline-flex;
   align-items: center;
@@ -2450,6 +2470,54 @@ button {
   transform: translate(-50%, -50%);
   display: grid;
   gap: 16px;
+}
+
+.shortcut-modal {
+  width: min(460px, calc(100vw - 24px));
+}
+
+.shortcut-modal-copy {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.shortcut-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--line-shell);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.shortcut-row kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-control);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--text-strong);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.shortcut-row span {
+  color: var(--muted-strong);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .quick-create-head {
@@ -3121,6 +3189,10 @@ button {
   .quick-create-actions .primary-button,
   .quick-create-actions .ghost-button {
     width: 100%;
+  }
+
+  .shortcut-row {
+    grid-template-columns: 1fr;
   }
 }
 

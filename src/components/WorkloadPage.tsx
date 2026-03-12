@@ -133,66 +133,74 @@ export function WorkloadPage({
         <div className="workload-section-head">
           <h2>Team Utilization</h2>
         </div>
-        <div className="workload-grid">
-          {workload.rows.map((row) => (
-            <WorkloadDropRow
-              key={row.member.id}
-              memberId={row.member.id}
-              dragActive={activeDragCardId !== null}
-            >
-              <button
-                type="button"
-                className="workload-row-name"
-                onClick={() => onOpenEditorBoard(row.member.name)}
+        {workload.rows.length === 0 ? (
+          <div className="dashboard-placeholder">Add team members in Settings to see workload</div>
+        ) : (
+          <div className="workload-grid">
+            {workload.rows.map((row) => (
+              <WorkloadDropRow
+                key={row.member.id}
+                memberId={row.member.id}
+                dragActive={activeDragCardId !== null}
               >
-                {row.member.name}
-              </button>
-              <div className="workload-row-bar">
-                <div className="util-bar large">
-                  <span
-                    className={`util-bar-fill is-${row.utilizationTone}`}
-                    style={{ width: getUtilBarWidth(row.utilizationPct) }}
-                  />
+                <button
+                  type="button"
+                  className="workload-row-name"
+                  onClick={() => onOpenEditorBoard(row.member.name)}
+                >
+                  {row.member.name}
+                </button>
+                <div className="workload-row-bar">
+                  <div className="util-bar large">
+                    <span
+                      className={`util-bar-fill is-${row.utilizationTone}`}
+                      style={{ width: getUtilBarWidth(row.utilizationPct) }}
+                    />
+                  </div>
+                  <div className="workload-row-meta">
+                    <span className={`util-inline is-${row.utilizationTone}`}>
+                      {row.utilizationPct}% · {`${formatHours(row.capacityUsed)}/${formatHours(row.capacityTotal)}`}
+                    </span>
+                    {row.utilizationPct > 100 ? <span className="overload-label">OVER</span> : null}
+                    {row.partTimeLabel ? <span className="muted-copy">{row.partTimeLabel}</span> : null}
+                  </div>
+                  <div className="workload-breakdown-line">
+                    {row.breakdown.length > 0
+                      ? row.breakdown.map((item) => `${item.taskTypeName}(${formatHours(item.hours)})`).join(' + ')
+                      : 'No active cards'}
+                  </div>
                 </div>
-                <div className="workload-row-meta">
-                  <span className={`util-inline is-${row.utilizationTone}`}>
-                    {row.utilizationPct}% · {`${formatHours(row.capacityUsed)}/${formatHours(row.capacityTotal)}`}
-                  </span>
-                  {row.utilizationPct > 100 ? <span className="overload-label">OVER</span> : null}
-                  {row.partTimeLabel ? <span className="muted-copy">{row.partTimeLabel}</span> : null}
-                </div>
-                <div className="workload-breakdown-line">
-                  {row.breakdown.length > 0
-                    ? row.breakdown.map((item) => `${item.taskTypeName}(${formatHours(item.hours)})`).join(' + ')
-                    : 'No active cards'}
-                </div>
-              </div>
-            </WorkloadDropRow>
-          ))}
-        </div>
+              </WorkloadDropRow>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="workload-section">
         <div className="workload-section-head">
           <h2>{`Unassigned Work · ${workload.queue.length} cards · ~${formatHours(workload.queueHours)} total`}</h2>
         </div>
-        <div className="workload-queue">
-          {workload.queue.map((item) => {
-            const card = portfolio.cards.find((currentCard) => currentCard.id === item.cardId)
-            if (!card) {
-              return null
-            }
-            return (
-              <WorkloadQueueCard
-                key={item.cardId}
-                card={card}
-                settings={settings}
-                onOpen={() => onOpenCard(portfolio.id, item.cardId)}
-                canDrag={canAssign}
-              />
-            )
-          })}
-        </div>
+        {workload.queue.length === 0 ? (
+          <div className="dashboard-placeholder">All cards are assigned</div>
+        ) : (
+          <div className="workload-queue">
+            {workload.queue.map((item) => {
+              const card = portfolio.cards.find((currentCard) => currentCard.id === item.cardId)
+              if (!card) {
+                return null
+              }
+              return (
+                <WorkloadQueueCard
+                  key={item.cardId}
+                  card={card}
+                  settings={settings}
+                  onOpen={() => onOpenCard(portfolio.id, item.cardId)}
+                  canDrag={canAssign}
+                />
+              )
+            })}
+          </div>
+        )}
       </section>
     </div>
   )

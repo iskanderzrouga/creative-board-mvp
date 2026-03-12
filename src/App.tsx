@@ -35,6 +35,8 @@ import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
+import { PageHeader } from './components/PageHeader'
 import { QuickCreateModal } from './components/QuickCreateModal'
 import { RemoteLoadingShell } from './components/RemoteLoadingShell'
 import { SettingsPage } from './components/SettingsPage'
@@ -154,6 +156,7 @@ function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
   const [pendingAppConfirm, setPendingAppConfirm] = useState<PendingAppConfirm | null>(null)
+  const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false)
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     if (typeof window === 'undefined') {
       return false
@@ -331,6 +334,14 @@ function App() {
         <span className="session-email">{authSession.email}</span>
         <button
           type="button"
+          className="ghost-button shortcut-button"
+          aria-label="Open keyboard shortcuts"
+          onClick={() => setKeyboardShortcutsOpen(true)}
+        >
+          ?
+        </button>
+        <button
+          type="button"
           className="ghost-button"
           disabled={signOutPending}
           onClick={handleSignOut}
@@ -400,6 +411,8 @@ function App() {
     setQuickCreateOpen,
     selectedCard,
     setSelectedCard,
+    keyboardShortcutsOpen,
+    setKeyboardShortcutsOpen,
     editorMenuOpen,
     setEditorMenuOpen,
     currentPage,
@@ -1166,6 +1179,26 @@ function App() {
       </div>
 
       <div className="main-shell">
+        {currentPage === 'board' && !activePortfolio ? (
+          <div className="page-shell">
+            <PageHeader title={state.settings.general.appName} rightContent={headerUtilityContent} />
+            <section className="board-empty-state" aria-live="polite">
+              <strong>Create a portfolio in Settings to get started</strong>
+              <p>
+                The board needs at least one portfolio before cards, analytics, and workload can
+                be managed in the shared workspace.
+              </p>
+              {state.activeRole.mode === 'manager' ? (
+                <div className="board-empty-actions">
+                  <button type="button" className="primary-button" onClick={() => setPage('settings')}>
+                    Open settings
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          </div>
+        ) : null}
+
         {currentPage === 'board' && activePortfolio ? (
           <BoardPage
             title={state.settings.general.appName}
@@ -1367,6 +1400,10 @@ function App() {
           onCancel={() => setPendingAppConfirm(null)}
           onConfirm={pendingAppConfirm === 'reset-seed' ? confirmResetToSeed : confirmClearAllData}
         />
+      ) : null}
+
+      {keyboardShortcutsOpen ? (
+        <KeyboardShortcutsModal onClose={() => setKeyboardShortcutsOpen(false)} />
       ) : null}
 
       {toastView}

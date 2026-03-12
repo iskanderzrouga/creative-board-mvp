@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Empty States And Shortcut Discoverability Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added the `CODEX-PLAN.md` keyboard shortcut reference as a real in-app modal with a `?` trigger in the signed-in header and Escape-key dismissal.
+- Added the missing board, lane, analytics, and workload empty states called out in the plan so blank sections now explain what to do next instead of rendering as silent gaps.
+- Added a board-level fallback for the no-portfolio case so managers now see `Create a portfolio in Settings to get started` with a direct path into Settings.
+- Added a new Playwright spec at `e2e/shortcuts.spec.ts` to verify the shortcuts modal opens from the header and closes with Escape.
+- Tightened `e2e/loading-signout.spec.ts` so its mocked remote delay still proves the loading shell without sitting right on Playwright’s default visibility timeout edge.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another visible `CODEX-PLAN.md` polish slice is now in place: the app explains empty screens more clearly, and keyboard commands are discoverable without needing prior team knowledge.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` polish and rollout items, especially the unfinished accessibility/toast work and the production regression checklist.
+
 ### CODEX-PLAN Execution: Access Recovery And Sign-Out Cleanup Pass
 
 Status: In progress

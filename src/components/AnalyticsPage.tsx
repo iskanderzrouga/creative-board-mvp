@@ -160,29 +160,33 @@ export function AnalyticsPage({
 
       <section>
         <h2 className="dashboard-section-title">Stuck Cards Alert</h2>
-        <div className="stuck-list">
-          {dashboard.stuckCards.map((card) => (
-            <button
-              key={`${card.portfolioId}-${card.cardId}`}
-              type="button"
-              className="stuck-row"
-              onClick={() => onOpenCard(card.portfolioId, card.cardId)}
-            >
-              <span
-                className={`stuck-dot ${
-                  card.daysInStage >= state.settings.general.timeInStageThresholds.redStart
-                    ? 'is-red'
-                    : 'is-amber'
-                }`}
-              />
-              <span>{card.cardId}</span>
-              <span>{card.isBlocked && card.blockedReason ? `Blocked: ${card.blockedReason}` : card.title}</span>
-              <span>{card.stage}</span>
-              <span>{card.owner ?? 'Unassigned'}</span>
-              <span>{card.daysInStage}d</span>
-            </button>
-          ))}
-        </div>
+        {dashboard.stuckCards.length === 0 ? (
+          <div className="dashboard-placeholder">No stuck cards right now</div>
+        ) : (
+          <div className="stuck-list">
+            {dashboard.stuckCards.map((card) => (
+              <button
+                key={`${card.portfolioId}-${card.cardId}`}
+                type="button"
+                className="stuck-row"
+                onClick={() => onOpenCard(card.portfolioId, card.cardId)}
+              >
+                <span
+                  className={`stuck-dot ${
+                    card.daysInStage >= state.settings.general.timeInStageThresholds.redStart
+                      ? 'is-red'
+                      : 'is-amber'
+                  }`}
+                />
+                <span>{card.cardId}</span>
+                <span>{card.isBlocked && card.blockedReason ? `Blocked: ${card.blockedReason}` : card.title}</span>
+                <span>{card.stage}</span>
+                <span>{card.owner ?? 'Unassigned'}</span>
+                <span>{card.daysInStage}d</span>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
@@ -245,28 +249,40 @@ export function AnalyticsPage({
 
       <section>
         <h2 className="dashboard-section-title">Revision Patterns</h2>
-        <div className="revision-grid">
-          <div className="revision-card">
-            <strong>Top reasons cards are sent back (last 30 days)</strong>
-            <div className="revision-list">
-              {dashboard.revisionReasons.map((reason, index) => (
-                <span key={reason.reason}>
-                  {index + 1}. {reason.reason} — {reason.count} cards ({reason.percent}%)
-                </span>
-              ))}
+        {dashboard.revisionReasons.length === 0 && dashboard.editorRevisionRates.length === 0 ? (
+          <div className="dashboard-placeholder">No revision data yet</div>
+        ) : (
+          <div className="revision-grid">
+            <div className="revision-card">
+              <strong>Top reasons cards are sent back (last 30 days)</strong>
+              <div className="revision-list">
+                {dashboard.revisionReasons.length > 0 ? (
+                  dashboard.revisionReasons.map((reason, index) => (
+                    <span key={reason.reason}>
+                      {index + 1}. {reason.reason} — {reason.count} cards ({reason.percent}%)
+                    </span>
+                  ))
+                ) : (
+                  <span className="muted-copy">No revision data yet</span>
+                )}
+              </div>
+            </div>
+            <div className="revision-card">
+              <strong>Editors with highest revision rates (last 30 days)</strong>
+              <div className="revision-list">
+                {dashboard.editorRevisionRates.length > 0 ? (
+                  dashboard.editorRevisionRates.map((item, index) => (
+                    <span key={item.editorName}>
+                      {index + 1}. {item.editorName} — {item.avgRevisionsPerCard} revisions/card avg
+                    </span>
+                  ))
+                ) : (
+                  <span className="muted-copy">No revision data yet</span>
+                )}
+              </div>
             </div>
           </div>
-          <div className="revision-card">
-            <strong>Editors with highest revision rates (last 30 days)</strong>
-            <div className="revision-list">
-              {dashboard.editorRevisionRates.map((item, index) => (
-                <span key={item.editorName}>
-                  {index + 1}. {item.editorName} — {item.avgRevisionsPerCard} revisions/card avg
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
+        )}
       </section>
     </div>
   )

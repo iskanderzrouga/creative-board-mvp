@@ -15,7 +15,7 @@ test('authenticated loading shell appears before the shared board and sign out r
       window.localStorage.setItem(authEmailKey, 'team@example.com')
       window.localStorage.removeItem(storageKey)
       window.localStorage.removeItem(remoteStateKey)
-      window.localStorage.setItem(remoteDelayKey, '5000')
+      window.localStorage.setItem(remoteDelayKey, '3500')
     },
     {
       storageKey: STORAGE_KEY,
