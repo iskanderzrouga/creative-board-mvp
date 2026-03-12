@@ -116,3 +116,27 @@ test('manager gets a capacity warning when dragging into a full in-production la
   await expect(page.locator('.toast').filter({ hasText: 'Ezequiel is at capacity (3/3)' })).toHaveCount(1)
   await expect(briefedLane.getByRole('button', { name: new RegExp(title) })).toBeVisible()
 })
+
+test('blocked cards cannot be dragged forward', async ({ page }) => {
+  await openFreshApp(page)
+
+  const title = 'Phase 11 blocked drag card'
+  await createCardAndCloseDetail(page, title)
+
+  const briefedLane = page.getByRole('group', { name: 'Briefed lane for Daniel T' })
+  await dragLocatorToTarget(page, getCardButton(page, title), briefedLane.getByRole('button').first())
+  await expect(page.locator('.toast').filter({ hasText: /assigned to Daniel T/ })).toHaveCount(1)
+
+  const cardInBriefed = briefedLane.getByRole('button', { name: new RegExp(title) })
+  await cardInBriefed.click()
+  await page.getByPlaceholder('Waiting for raw footage...').fill('Blocked for missing footage')
+  await page.getByRole('button', { name: 'Save Blocked' }).click()
+  await page.getByRole('button', { name: 'Close card detail panel' }).click()
+
+  const inProductionLane = page.getByRole('group', { name: 'In Production lane for Daniel T' })
+  await dragLocatorToTarget(page, cardInBriefed, inProductionLane.getByRole('button').first())
+
+  await expect(page.locator('.toast').filter({ hasText: 'That move is not allowed.' })).toHaveCount(1)
+  await expect(briefedLane.getByRole('button', { name: new RegExp(title) })).toBeVisible()
+  await expect(inProductionLane.getByRole('button', { name: new RegExp(title) })).toHaveCount(0)
+})

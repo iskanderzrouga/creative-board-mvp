@@ -12,6 +12,7 @@ What I changed in this pass:
 - Added a dedicated Playwright spec at `e2e/drag-drop.spec.ts` to cover the missing `CODEX-PLAN.md` workflow regressions around drag-and-drop.
 - Verified that managers can drag a backlog card into a Briefed editor lane, move it forward into In Production, and then drag it backward to trigger the revision-reason modal before confirming the move.
 - Verified that dragging a card into a full `In Production` lane now surfaces the seeded capacity warning in the browser test instead of silently regressing.
+- Verified that blocked cards cannot be dragged forward, which closes the last explicit drag/drop case listed in the plan.
 - Tightened the shared drag helper in the new spec to use visible pointer coordinates and a short post-drop settle wait, which made the drag coverage stable instead of flaky.
 
 Verification:
