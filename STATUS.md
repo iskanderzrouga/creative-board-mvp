@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Toast Stack And Dismiss UX Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Replaced the single-toast implementation with a stacked notification system so new messages no longer overwrite earlier ones before they can be seen.
+- Added dismiss buttons to each toast and wired individual removal, which closes one notification without clearing the rest of the stack.
+- Increased error-toast display time to 5 seconds while keeping the faster cadence for non-error confirmations.
+- Moved the shared toast rendering into a dedicated `ToastStack` component and updated the app shell plus effect hooks to push notifications through the new stack safely.
+- Added a new Playwright spec at `e2e/toasts.spec.ts` that verifies multiple toasts can appear together and be dismissed independently.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another remaining phase 6 polish item from `CODEX-PLAN.md` is now done, and the app’s feedback layer behaves much more like a production tool during quick successive actions.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` accessibility and release items, especially the unfinished responsive polish and the final production rollout/regression checklist.
+
 ### CODEX-PLAN Execution: Empty States And Shortcut Discoverability Pass
 
 Status: In progress

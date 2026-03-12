@@ -1589,19 +1589,51 @@ button {
   border-radius: 999px;
 }
 
-.toast {
+.toast-stack {
   position: fixed;
-  left: 50%;
+  right: 20px;
   bottom: 20px;
   z-index: 90;
-  transform: translateX(-50%);
-  min-width: 220px;
-  padding: 8px 16px;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 24px));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  position: relative;
+  inset: auto;
+  transform: none;
+  min-width: 0;
+  padding: 10px 12px 10px 14px;
   border-left: 3px solid currentColor;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   font-size: 12px;
+  line-height: 1.5;
+}
+
+.toast span {
+  flex: 1;
+}
+
+.toast-dismiss {
+  border: none;
+  background: transparent;
+  color: currentColor;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.8;
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
 }
 
 .toast.tone-green {

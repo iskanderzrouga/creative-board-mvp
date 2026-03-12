@@ -34,11 +34,6 @@ const LOCAL_PERSIST_DEBOUNCE_MS = 200
 const REMOTE_SAVE_DEBOUNCE_MS = 800
 const REMOTE_SAVE_RETRY_DELAYS_MS = [0, 1200, 3000]
 
-interface ToastState {
-  message: string
-  tone: ToastTone
-}
-
 interface CopyState {
   key: string
 }
@@ -79,8 +74,6 @@ interface UseAppEffectsOptions {
   setLastSyncedAt: Dispatch<SetStateAction<string | null>>
   replaceState: (nextState: AppState) => void
   showToast: (message: string, tone: ToastTone) => void
-  toast: ToastState | null
-  setToast: Dispatch<SetStateAction<ToastState | null>>
   copyState: CopyState | null
   setCopyState: Dispatch<SetStateAction<CopyState | null>>
   setNowMs: Dispatch<SetStateAction<number>>
@@ -122,8 +115,6 @@ export function useAppEffects({
   setLastSyncedAt,
   replaceState,
   showToast,
-  toast,
-  setToast,
   copyState,
   setCopyState,
   setNowMs,
@@ -222,10 +213,7 @@ export function useAppEffects({
         setRemoteSyncErrorShown(false)
 
         if (result.seeded) {
-          setToast({
-            message: 'Shared workspace is ready.',
-            tone: 'green',
-          })
+          showToastRef.current('Shared workspace is ready.', 'green')
         }
       })
       .catch(() => {
@@ -237,11 +225,10 @@ export function useAppEffects({
         setSyncStatus('error')
         if (!remoteSyncErrorShown) {
           setRemoteSyncErrorShown(true)
-          setToast({
-            message:
-              'Supabase sync is configured but unavailable right now. The board is using the local saved copy.',
-            tone: 'amber',
-          })
+          showToastRef.current(
+            'Supabase sync is configured but unavailable right now. The board is using the local saved copy.',
+            'amber',
+          )
         }
       })
 
@@ -258,7 +245,6 @@ export function useAppEffects({
     setLastSyncedAt,
     setRemoteSyncErrorShown,
     setSyncStatus,
-    setToast,
   ])
 
   useEffect(() => {
@@ -298,11 +284,10 @@ export function useAppEffects({
               setLastSyncedAt(error.latestUpdatedAt)
               setSyncStatus('synced')
               setRemoteSyncErrorShown(false)
-              setToast({
-                message:
-                  'Another session saved newer workspace changes. The latest shared version has been loaded.',
-                tone: 'amber',
-              })
+              showToastRef.current(
+                'Another session saved newer workspace changes. The latest shared version has been loaded.',
+                'amber',
+              )
               return
             }
 
@@ -317,11 +302,10 @@ export function useAppEffects({
             setSyncStatus('error')
             if (!remoteSyncErrorShown) {
               setRemoteSyncErrorShown(true)
-              setToast({
-                message:
-                  'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
-                tone: 'amber',
-              })
+              showToastRef.current(
+                'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
+                'amber',
+              )
             }
           })
       }
@@ -350,19 +334,8 @@ export function useAppEffects({
     setLastSyncedAt,
     setRemoteSyncErrorShown,
     setSyncStatus,
-    setToast,
     state,
   ])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (toast) {
-        setToast(null)
-      }
-    }, 3000)
-
-    return () => window.clearTimeout(timer)
-  }, [setToast, toast])
 
   useEffect(() => {
     if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !remoteHydratedRef.current) {

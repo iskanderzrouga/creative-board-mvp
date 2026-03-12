@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -42,6 +43,7 @@ import { RemoteLoadingShell } from './components/RemoteLoadingShell'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { SyncStatusPill } from './components/SyncStatusPill'
+import { ToastStack } from './components/ToastStack'
 import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
@@ -88,6 +90,7 @@ import {
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
 interface ToastState {
+  id: number
   message: string
   tone: ToastTone
 }
@@ -128,7 +131,7 @@ function App() {
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
   const [selectedCard, setSelectedCard] = useState<SelectedCardState | null>(null)
-  const [toast, setToast] = useState<ToastState | null>(null)
+  const [toasts, setToasts] = useState<ToastState[]>([])
   const [copyState, setCopyState] = useState<CopyState | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [quickCreateOpen, setQuickCreateOpen] = useState(false)
@@ -170,6 +173,8 @@ function App() {
   const localFallbackStateRef = useRef(state)
   const remoteHydratedRef = useRef(!authEnabled)
   const remoteSaveTimerRef = useRef<number | null>(null)
+  const nextToastIdRef = useRef(0)
+  const toastTimerIdsRef = useRef<Record<number, number>>({})
 
   const {
     authStatus,
@@ -398,8 +403,6 @@ function App() {
     setLastSyncedAt,
     replaceState,
     showToast,
-    toast,
-    setToast,
     copyState,
     setCopyState,
     setNowMs,
@@ -424,8 +427,41 @@ function App() {
     importInputRef,
   })
 
+  useEffect(() => {
+    return () => {
+      Object.values(toastTimerIdsRef.current).forEach((timerId) => {
+        window.clearTimeout(timerId)
+      })
+      toastTimerIdsRef.current = {}
+    }
+  }, [])
+
+  function dismissToast(id: number) {
+    const timerId = toastTimerIdsRef.current[id]
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId)
+      delete toastTimerIdsRef.current[id]
+    }
+
+    setToasts((current) => current.filter((toast) => toast.id !== id))
+  }
+
   function showToast(message: string, tone: ToastTone) {
-    setToast({ message, tone })
+    const id = nextToastIdRef.current + 1
+    nextToastIdRef.current = id
+
+    setToasts((current) => [
+      ...current,
+      {
+        id,
+        message,
+        tone,
+      },
+    ])
+
+    toastTimerIdsRef.current[id] = window.setTimeout(() => {
+      dismissToast(id)
+    }, tone === 'red' ? 5000 : 3000)
   }
 
   function syncStateControls(nextState: AppState) {
@@ -1024,10 +1060,7 @@ function App() {
     replaceState(nextState)
     setSelectedCard(null)
     setPendingAppConfirm(null)
-    setToast({
-      message: 'Board reset to seed data',
-      tone: 'amber',
-    })
+    showToast('Board reset to seed data', 'amber')
   }
 
   function clearAllData() {
@@ -1049,11 +1082,7 @@ function App() {
   }
 
   const sidebarExpanded = sidebarPinned || sidebarHovered
-  const toastView = toast ? (
-    <div className={`toast tone-${toast.tone}`} role="status" aria-live="polite">
-      {toast.message}
-    </div>
-  ) : null
+  const toastView = <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
   function resetBoardFilters() {
     setBoardFilters(getDefaultBoardFilters(activePortfolio))
