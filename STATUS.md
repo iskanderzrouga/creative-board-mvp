@@ -385,3 +385,32 @@ Verification:
 Next step:
 
 - Continue into the remaining phase 4 and phase 6 interaction work from `CODEX-PLAN.md`, starting with the auth/access UX edges and the modal/accessibility refinements that now have a cleaner styling base to build on.
+
+### CODEX-PLAN Execution: Phase 4 UX Fixes + Phase 5 Filter Repair Pass 1
+
+Status: In progress
+
+What I learned:
+
+- The next highest-value UX work was concentrated in the already extracted surfaces, not in `App.tsx` itself: the auth gates, the workspace-access manager, and the board filter bar each still had one or two sharp edges that lined up directly with the plan.
+- The workspace-access email editor had a real data-management bug. Saving a changed email could create the new record without cleaning up the old one, so the UI looked editable but the data model did not actually support email changes safely.
+- The board filter UX was still doing the old single-brand behavior, which meant the interface looked like a pill-based multi-filter system but behaved more like a radio group for brands.
+
+What changed:
+
+- Removed the hardcoded personal actor names from [`src/appHelpers.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/appHelpers.ts) so manager and observer activity now use generic role-based labels instead of embedded names.
+- Added a real access-check timeout and retry path in [`src/hooks/useWorkspaceSession.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useWorkspaceSession.ts), plus a dedicated verification surface in [`src/components/AccessVerificationGate.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/AccessVerificationGate.tsx), so long-running or failed workspace-access checks now have a clear recovery path.
+- Rewrote the auth and access copy in [`src/components/AuthGate.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/AuthGate.tsx) and [`src/components/AccessGate.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/AccessGate.tsx) to use more generic workspace language and to offer retry actions when access confirmation fails.
+- Repaired workspace-access email editing in [`src/hooks/useWorkspaceSession.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useWorkspaceSession.ts), [`src/components/WorkspaceAccessManager.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/WorkspaceAccessManager.tsx), and [`src/components/SettingsPage.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/SettingsPage.tsx) so existing entries can carry their original email through save and cleanly replace the previous record.
+- Updated [`src/components/BoardPage.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/BoardPage.tsx) and [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) to support true multi-select brand filters, a reset-filters action, first-run onboarding guidance for managers, and clearer board empty states.
+- Added the supporting layout and empty-state styles in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css) so the new onboarding and recovery surfaces match the refreshed shell.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Continue into the remaining phase 5 and phase 6 items in `CODEX-PLAN.md`, especially replacing browser-native confirms with custom flows and tightening modal accessibility, focus handling, and mobile behavior.

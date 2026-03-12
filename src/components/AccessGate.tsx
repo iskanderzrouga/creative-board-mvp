@@ -1,20 +1,27 @@
 interface AccessGateProps {
   email: string
   message: string
+  title?: string
+  description?: string
+  onRetry?: () => void
   onSignOut: () => void
 }
 
-export function AccessGate({ email, message, onSignOut }: AccessGateProps) {
+export function AccessGate({
+  email,
+  message,
+  title = 'Access needed',
+  description = 'Your sign-in worked, but this account still needs workspace access from a manager before the shared board can open.',
+  onRetry,
+  onSignOut,
+}: AccessGateProps) {
   return (
     <div className="auth-shell">
       <div className="auth-card">
         <div className="auth-copy">
           <span className="auth-kicker">Editors Board</span>
-          <h1>Access restricted</h1>
-          <p>
-            This workspace is limited to approved team accounts. Your sign-in worked,
-            but this email does not have permission to open the shared board yet.
-          </p>
+          <h1>{title}</h1>
+          <p>{description}</p>
         </div>
 
         <div className="auth-status-card">
@@ -23,6 +30,11 @@ export function AccessGate({ email, message, onSignOut }: AccessGateProps) {
         </div>
 
         <div className="auth-actions">
+          {onRetry ? (
+            <button type="button" className="primary-button" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
           <button type="button" className="ghost-button" onClick={onSignOut}>
             Sign out
           </button>

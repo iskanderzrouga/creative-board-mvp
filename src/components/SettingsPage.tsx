@@ -50,6 +50,7 @@ interface SettingsPageProps {
     email: string
     roleMode: RoleMode
     editorName: string | null
+    previousEmail?: string
   }) => Promise<void>
   onWorkspaceAccessDelete: (email: string) => Promise<void>
   showToast: (message: string, tone: ToastTone) => void

@@ -32,9 +32,8 @@ export function AuthGate({
           <span className="auth-kicker">Editors Board</span>
           <h1>Team access</h1>
           <p>
-            Sign in with an approved work email to open the shared live workspace. The
-            first approved sign-in creates the account automatically, and the saved
-            state now lives in Supabase instead of only in this browser.
+            Use your work email to request access to this workspace. If a manager has already
+            added that email, we will send a sign-in link and create the account automatically.
           </p>
         </div>
 

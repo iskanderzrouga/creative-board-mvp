@@ -10,7 +10,12 @@ interface WorkspaceAccessManagerProps {
   status: WorkspaceDirectoryStatus
   errorMessage: string | null
   pendingEmail: string | null
-  onSave: (entry: { email: string; roleMode: RoleMode; editorName: string | null }) => Promise<void>
+  onSave: (entry: {
+    email: string
+    roleMode: RoleMode
+    editorName: string | null
+    previousEmail?: string
+  }) => Promise<void>
   onDelete: (email: string) => Promise<void>
 }
 
@@ -121,6 +126,7 @@ export function WorkspaceAccessManager({
                         email: draft.email,
                         roleMode: draft.roleMode,
                         editorName: draft.roleMode === 'editor' ? draft.editorName : null,
+                        previousEmail: entry.email,
                       })
                     }
                   >

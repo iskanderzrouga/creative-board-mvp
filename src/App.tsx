@@ -27,6 +27,7 @@ import {
   type BackwardMoveFormState,
 } from './appHelpers'
 import { AccessGate } from './components/AccessGate'
+import { AccessVerificationGate } from './components/AccessVerificationGate'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { AuthGate } from './components/AuthGate'
 import { BackwardMoveModal } from './components/BackwardMoveModal'
@@ -113,6 +114,8 @@ interface PendingDeleteCard {
   cardId: string
 }
 
+const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
+
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
@@ -148,6 +151,13 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(authEnabled ? 'loading' : 'local')
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    return window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1'
+  })
 
   const searchRef = useRef<HTMLInputElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -161,6 +171,7 @@ function App() {
     workspaceAccess,
     accessStatus,
     accessErrorMessage,
+    accessCheckTimedOut,
     workspaceAccessEntries,
     workspaceAccessStatus,
     workspaceAccessErrorMessage,
@@ -170,6 +181,7 @@ function App() {
     loginPending,
     loginInfoMessage,
     loginErrorMessage,
+    handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
     handleSendMagicLink,
@@ -246,6 +258,15 @@ function App() {
     activePortfolio && currentPage === 'board'
       ? getBoardStats(activePortfolio, viewerContext, boardFilters, state.settings, nowMs)
       : null
+  const hasActiveBoardFilters = Boolean(
+    boardFilters.searchQuery.trim() ||
+      boardFilters.ownerNames.length > 0 ||
+      boardFilters.overdueOnly ||
+      boardFilters.stuckOnly ||
+      boardFilters.blockedOnly ||
+      boardFilters.showArchived ||
+      boardFilters.brandNames.length !== (activePortfolio?.brands.length ?? 0),
+  )
   const summaryOwner =
     state.activeRole.mode === 'editor' && !isLaunchOpsActive
       ? viewerContext.editorName
@@ -1152,6 +1173,17 @@ function App() {
 
   const sidebarExpanded = sidebarPinned || sidebarHovered
 
+  function resetBoardFilters() {
+    setBoardFilters(getDefaultBoardFilters(activePortfolio))
+  }
+
+  function dismissOnboardingBanner() {
+    setOnboardingDismissed(true)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
+    }
+  }
+
   if (authEnabled && authStatus !== 'signed-in') {
     return (
       <>
@@ -1169,22 +1201,20 @@ function App() {
     )
   }
 
-  if (authEnabled && authStatus === 'signed-in' && accessStatus === 'checking' && authSession) {
+  if (
+    authEnabled &&
+    authStatus === 'signed-in' &&
+    authSession &&
+    (accessStatus === 'checking' || accessCheckTimedOut)
+  ) {
     return (
       <>
-        <div className="auth-shell">
-          <div className="auth-card">
-            <div className="auth-copy">
-              <span className="auth-kicker">Editors Board</span>
-              <h1>Verifying access</h1>
-              <p>Checking your approved workspace permissions before loading the shared board.</p>
-            </div>
-            <div className="auth-status-card">
-              <strong>{authSession.email}</strong>
-              <span>Confirming your role and workspace access...</span>
-            </div>
-          </div>
-        </div>
+        <AccessVerificationGate
+          email={authSession.email}
+          timedOut={accessCheckTimedOut}
+          onRetry={handleRetryAccessCheck}
+          onSignOut={handleSignOut}
+        />
         {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
       </>
     )
@@ -1202,8 +1232,15 @@ function App() {
           email={authSession.email}
           message={
             accessErrorMessage ??
-            'This account is not approved for the shared workspace yet.'
+            'This account does not have workspace access yet.'
           }
+          title={accessStatus === 'error' ? 'We could not confirm access' : undefined}
+          description={
+            accessStatus === 'error'
+              ? 'Your sign-in worked, but the workspace access check needs another try before the shared board can open.'
+              : undefined
+          }
+          onRetry={accessStatus === 'error' ? handleRetryAccessCheck : undefined}
           onSignOut={handleSignOut}
         />
         {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
@@ -1244,11 +1281,13 @@ function App() {
             settings={state.settings}
             boardFilters={boardFilters}
             setBoardFilters={setBoardFilters}
+            hasActiveFilters={hasActiveBoardFilters}
             stats={stats}
             summary={summary}
             columns={columns}
             expandedStages={expandedStages}
             setExpandedStages={setExpandedStages}
+            showOnboarding={state.activeRole.mode === 'manager' && !onboardingDismissed}
             searchCountLabel={
               boardFilters.searchQuery
                 ? getSearchCountLabel(visibleBoardCards.length, searchBaseCards.length)
@@ -1275,6 +1314,9 @@ function App() {
               setQuickCreateValue(getQuickCreateDefaults(activePortfolio, state.settings))
               setQuickCreateOpen(true)
             }}
+            onOpenSettings={() => setPage('settings')}
+            onResetFilters={resetBoardFilters}
+            onDismissOnboarding={dismissOnboardingBanner}
             onDragStart={handleBoardDragStart}
             onDragOver={handleBoardDragOver}
             onDragCancel={clearBoardDragState}

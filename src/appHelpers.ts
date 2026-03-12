@@ -18,10 +18,10 @@ export interface BackwardMoveFormState {
 
 export function getRoleActorName(role: ActiveRole, portfolio: Portfolio | null) {
   if (role.mode === 'manager') {
-    return 'Naomi'
+    return 'Workspace manager'
   }
   if (role.mode === 'observer') {
-    return 'Iskander'
+    return 'Observer'
   }
 
   return portfolio ? getTeamMemberById(portfolio, role.editorId)?.name ?? 'Editor' : 'Editor'

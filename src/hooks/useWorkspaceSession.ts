@@ -26,6 +26,7 @@ import {
 } from '../board'
 
 const EMAIL_RATE_LIMIT_COOLDOWN_MS = 60_000
+const ACCESS_CHECK_TIMEOUT_MS = 12_000
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
@@ -65,6 +66,7 @@ export function useWorkspaceSession({
   const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccessState | null>(null)
   const [accessStatus, setAccessStatus] = useState<AccessStatus>(authEnabled ? 'checking' : 'disabled')
   const [accessErrorMessage, setAccessErrorMessage] = useState<string | null>(null)
+  const [accessCheckTimedOut, setAccessCheckTimedOut] = useState(false)
   const [workspaceAccessEntries, setWorkspaceAccessEntries] = useState<WorkspaceAccessEntry[]>([])
   const [workspaceAccessStatus, setWorkspaceAccessStatus] = useState<WorkspaceDirectoryStatus>('idle')
   const [workspaceAccessErrorMessage, setWorkspaceAccessErrorMessage] = useState<string | null>(null)
@@ -74,6 +76,7 @@ export function useWorkspaceSession({
   const [loginInfoMessage, setLoginInfoMessage] = useState<string | null>(null)
   const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null)
   const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(null)
+  const [accessCheckAttempt, setAccessCheckAttempt] = useState(0)
 
   const resetRemoteSessionRef = useRef(resetRemoteSession)
   const closeEditorMenuRef = useRef(closeEditorMenu)
@@ -89,6 +92,7 @@ export function useWorkspaceSession({
   useEffect(() => {
     if (!authEnabled) {
       setAccessStatus('disabled')
+      setAccessCheckTimedOut(false)
       return
     }
 
@@ -105,6 +109,7 @@ export function useWorkspaceSession({
         if (!session) {
           setWorkspaceAccess(null)
           setAccessErrorMessage(null)
+          setAccessCheckTimedOut(false)
           setAccessStatus('checking')
         }
       })
@@ -117,6 +122,7 @@ export function useWorkspaceSession({
         setAuthStatus('signed-out')
         setWorkspaceAccess(null)
         setAccessErrorMessage(null)
+        setAccessCheckTimedOut(false)
         setAccessStatus('checking')
       })
 
@@ -135,6 +141,7 @@ export function useWorkspaceSession({
       } else {
         setWorkspaceAccess(null)
         setAccessErrorMessage(null)
+        setAccessCheckTimedOut(false)
         setAccessStatus('checking')
         resetRemoteSessionRef.current()
       }
@@ -155,35 +162,52 @@ export function useWorkspaceSession({
       if (authStatus === 'signed-out') {
         setWorkspaceAccess(null)
         setAccessErrorMessage(null)
+        setAccessCheckTimedOut(false)
         setAccessStatus('checking')
       }
       return
     }
 
     let cancelled = false
+    let timedOut = false
     setAccessStatus('checking')
     setAccessErrorMessage(null)
+    setAccessCheckTimedOut(false)
+
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled) {
+        return
+      }
+
+      timedOut = true
+      setWorkspaceAccess(null)
+      setAccessCheckTimedOut(true)
+      setAccessStatus('error')
+      setAccessErrorMessage(
+        'We could not confirm workspace access yet. Retry in a moment or sign out and try again.',
+      )
+    }, ACCESS_CHECK_TIMEOUT_MS)
 
     void getWorkspaceAccess()
       .then((access) => {
-        if (cancelled) {
+        if (cancelled || timedOut) {
           return
         }
 
+        window.clearTimeout(timeoutId)
         setWorkspaceAccess(access)
+        setAccessCheckTimedOut(false)
 
         if (!access) {
           setAccessStatus('denied')
-          setAccessErrorMessage(
-            `${authSession.email} is not on the approved workspace access list yet.`,
-          )
+          setAccessErrorMessage('This account does not have workspace access yet.')
           return
         }
 
         if (access.roleMode === 'editor' && !access.editorName) {
           setAccessStatus('error')
           setAccessErrorMessage(
-            'This account is missing its editor assignment. Add an editor name in workspace_access.',
+            'This editor account is missing its linked team member. Ask a manager to reconnect it in Workspace Access.',
           )
           return
         }
@@ -191,21 +215,24 @@ export function useWorkspaceSession({
         setAccessStatus('granted')
       })
       .catch(() => {
-        if (cancelled) {
+        if (cancelled || timedOut) {
           return
         }
 
+        window.clearTimeout(timeoutId)
         setWorkspaceAccess(null)
+        setAccessCheckTimedOut(false)
         setAccessStatus('error')
         setAccessErrorMessage(
-          'Workspace access could not be verified. Check Supabase policies and your session.',
+          'Workspace access could not be verified right now. Retry in a moment or sign out and try again.',
         )
       })
 
     return () => {
       cancelled = true
+      window.clearTimeout(timeoutId)
     }
-  }, [authEnabled, authSession, authStatus])
+  }, [accessCheckAttempt, authEnabled, authSession, authStatus])
 
   useEffect(() => {
     if (!workspaceAccess) {
@@ -286,9 +313,20 @@ export function useWorkspaceSession({
     email: string
     roleMode: RoleMode
     editorName: string | null
+    previousEmail?: string
   }) {
     const normalizedEmail = entry.email.trim().toLowerCase()
+    const previousEmail = entry.previousEmail?.trim().toLowerCase() ?? normalizedEmail
+    const isExistingEntry = workspaceAccessEntries.some((item) => item.email === previousEmail)
     if (!normalizedEmail) {
+      return
+    }
+
+    if (workspaceAccess?.email === previousEmail && normalizedEmail !== previousEmail) {
+      showToast(
+        'Ask another manager to change the email on your own signed-in workspace account.',
+        'amber',
+      )
       return
     }
 
@@ -300,24 +338,41 @@ export function useWorkspaceSession({
       return
     }
 
-    setWorkspaceAccessPendingEmail(
-      workspaceAccessEntries.some((item) => item.email === normalizedEmail)
-        ? normalizedEmail
-        : '__new__',
-    )
+    setWorkspaceAccessPendingEmail(isExistingEntry ? previousEmail : '__new__')
     setWorkspaceAccessErrorMessage(null)
 
     try {
       const saved = await upsertWorkspaceAccessEntry(entry)
+
+      if (isExistingEntry && previousEmail !== normalizedEmail) {
+        try {
+          await deleteWorkspaceAccessEntry(previousEmail)
+        } catch {
+          try {
+            setWorkspaceAccessEntries(await listWorkspaceAccessEntries())
+            setWorkspaceAccessStatus('ready')
+          } catch {
+            setWorkspaceAccessStatus('error')
+          }
+          setWorkspaceAccessErrorMessage(
+            'Saved the new email, but the old access row still needs cleanup.',
+          )
+          showToast('Saved the new email, but the old access row still needs cleanup.', 'amber')
+          return
+        }
+      }
+
       setWorkspaceAccessEntries((current) =>
-        [...current.filter((item) => item.email !== normalizedEmail), saved].sort((left, right) =>
+        [...current.filter((item) => item.email !== previousEmail && item.email !== normalizedEmail), saved].sort((left, right) =>
           left.email.localeCompare(right.email),
         ),
       )
       setWorkspaceAccessStatus('ready')
       showToast(
-        workspaceAccessEntries.some((item) => item.email === normalizedEmail)
-          ? `Updated access for ${normalizedEmail}`
+        isExistingEntry
+          ? previousEmail === normalizedEmail
+            ? `Updated access for ${normalizedEmail}`
+            : `Updated workspace access email to ${normalizedEmail}`
           : `Added ${normalizedEmail} to workspace access`,
         'green',
       )
@@ -418,7 +473,7 @@ export function useWorkspaceSession({
       setLoginInfoMessage(
         result.deliveredInstantly
           ? 'Signed in. Loading the shared workspace...'
-          : 'Magic link sent to the approved account. Open it from your inbox to enter the shared workspace.',
+          : 'Magic link sent. Open it from your inbox to finish signing in.',
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not send the magic link.'
@@ -433,7 +488,7 @@ export function useWorkspaceSession({
               normalizedMessage.includes('user not found') ||
               normalizedMessage.includes('signup') ||
               normalizedMessage.includes('sign up')
-          ? 'This email is not on the approved access list. Contact your workspace manager to get access.'
+          ? 'This email does not have workspace access yet. Ask a workspace manager to add it.'
           : message,
       )
     } finally {
@@ -455,12 +510,25 @@ export function useWorkspaceSession({
     }
   }
 
+  function handleRetryAccessCheck() {
+    if (!authEnabled || authStatus !== 'signed-in' || !authSession) {
+      return
+    }
+
+    setWorkspaceAccess(null)
+    setAccessCheckTimedOut(false)
+    setAccessErrorMessage(null)
+    setAccessStatus('checking')
+    setAccessCheckAttempt((current) => current + 1)
+  }
+
   return {
     authStatus,
     authSession,
     workspaceAccess,
     accessStatus,
     accessErrorMessage,
+    accessCheckTimedOut,
     workspaceAccessEntries,
     workspaceAccessStatus,
     workspaceAccessErrorMessage,
@@ -470,6 +538,7 @@ export function useWorkspaceSession({
     loginPending,
     loginInfoMessage,
     loginErrorMessage,
+    handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
     handleSendMagicLink,

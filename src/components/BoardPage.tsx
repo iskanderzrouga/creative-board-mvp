@@ -43,11 +43,13 @@ interface BoardPageProps {
   settings: GlobalSettings
   boardFilters: BoardFilters
   setBoardFilters: Dispatch<SetStateAction<BoardFilters>>
+  hasActiveFilters: boolean
   stats: BoardStats | null
   summary: EditorSummary | null
   columns: ColumnModel[]
   expandedStages: StageId[]
   setExpandedStages: Dispatch<SetStateAction<StageId[]>>
+  showOnboarding: boolean
   searchCountLabel?: string
   searchRef: RefObject<HTMLInputElement | null>
   headerUtilityContent?: ReactNode
@@ -61,6 +63,9 @@ interface BoardPageProps {
   canDragCard: (card: Card) => boolean
   onOpenCard: (portfolioId: string, cardId: string) => void
   onQuickCreateOpen: () => void
+  onOpenSettings: () => void
+  onResetFilters: () => void
+  onDismissOnboarding: () => void
   onDragStart: (event: DragStartEvent) => void
   onDragOver: (event: DragOverEvent) => void
   onDragCancel: () => void
@@ -73,11 +78,13 @@ export function BoardPage({
   settings,
   boardFilters,
   setBoardFilters,
+  hasActiveFilters,
   stats,
   summary,
   columns,
   expandedStages,
   setExpandedStages,
+  showOnboarding,
   searchCountLabel,
   searchRef,
   headerUtilityContent,
@@ -91,11 +98,18 @@ export function BoardPage({
   canDragCard,
   onOpenCard,
   onQuickCreateOpen,
+  onOpenSettings,
+  onResetFilters,
+  onDismissOnboarding,
   onDragStart,
   onDragOver,
   onDragCancel,
   onDragEnd,
 }: BoardPageProps) {
+  const allBrandsSelected = boardFilters.brandNames.length === portfolio.brands.length
+  const hasVisibleCards = columns.some((column) => column.count > 0)
+  const hasBoardCards = portfolio.cards.some((card) => !card.archivedAt)
+
   return (
     <div className="page-shell">
       <PageHeader
@@ -117,6 +131,26 @@ export function BoardPage({
         searchRef={searchRef}
         rightContent={headerUtilityContent}
       />
+
+      {showOnboarding ? (
+        <section className="onboarding-banner" aria-label="Getting started">
+          <div className="onboarding-copy">
+            <strong>Start with the shared workspace basics</strong>
+            <p>
+              Confirm team access in Settings, then add the first backlog cards so editors,
+              analytics, and workload views stay aligned from day one.
+            </p>
+          </div>
+          <div className="onboarding-actions">
+            <button type="button" className="primary-button" onClick={onOpenSettings}>
+              Open settings
+            </button>
+            <button type="button" className="ghost-button" onClick={onDismissOnboarding}>
+              Dismiss
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {stats ? (
         <section className="stats-bar" aria-label="Board statistics">
@@ -149,9 +183,7 @@ export function BoardPage({
           <div className="manager-filter-group">
             <button
               type="button"
-              className={`filter-pill ${
-                boardFilters.brandNames.length === portfolio.brands.length ? 'is-active is-all' : ''
-              }`}
+              className={`filter-pill ${allBrandsSelected ? 'is-active is-all' : ''}`}
               onClick={() =>
                 setBoardFilters((current) => ({
                   ...current,
@@ -166,12 +198,10 @@ export function BoardPage({
                 key={brand.name}
                 type="button"
                 className={`filter-pill ${
-                  boardFilters.brandNames.length === 1 && boardFilters.brandNames[0] === brand.name
-                    ? 'is-active'
-                    : ''
+                  boardFilters.brandNames.includes(brand.name) ? 'is-active' : ''
                 }`}
                 style={
-                  boardFilters.brandNames.length === 1 && boardFilters.brandNames[0] === brand.name
+                  boardFilters.brandNames.includes(brand.name)
                     ? {
                         background: brand.color,
                         borderColor: brand.color,
@@ -182,7 +212,11 @@ export function BoardPage({
                 onClick={() =>
                   setBoardFilters((current) => ({
                     ...current,
-                    brandNames: [brand.name],
+                    brandNames: current.brandNames.includes(brand.name)
+                      ? current.brandNames.filter((item) => item !== brand.name).length > 0
+                        ? current.brandNames.filter((item) => item !== brand.name)
+                        : portfolio.brands.map((item) => item.name)
+                      : [...current.brandNames, brand.name],
                   }))
                 }
               >
@@ -262,6 +296,11 @@ export function BoardPage({
             >
               Show archived
             </button>
+            {hasActiveFilters ? (
+              <button type="button" className="clear-link filter-reset-link" onClick={onResetFilters}>
+                Reset filters
+              </button>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -297,6 +336,38 @@ export function BoardPage({
         onDragEnd={onDragEnd}
       >
         <main className="board-scroll">
+          {!hasVisibleCards ? (
+            <section className="board-empty-state" aria-live="polite">
+              <strong>
+                {hasActiveFilters
+                  ? 'No cards match the current filters'
+                  : hasBoardCards
+                    ? 'Nothing is visible in this board view yet'
+                    : 'This board is ready for its first card'}
+              </strong>
+              <p>
+                {hasActiveFilters
+                  ? 'Clear the current filters or search to bring cards back into view.'
+                  : hasBoardCards
+                    ? 'Adjust the current role or filters, or open an existing card from another view.'
+                    : activeRoleMode === 'manager'
+                      ? 'Add a first card to the backlog so the shared workflow has something to track.'
+                      : 'A manager can add the first backlog card to start the shared workflow.'}
+              </p>
+              <div className="board-empty-actions">
+                {hasActiveFilters ? (
+                  <button type="button" className="primary-button" onClick={onResetFilters}>
+                    Reset filters
+                  </button>
+                ) : activeRoleMode === 'manager' ? (
+                  <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
+                    Add first card
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
           <div className="board-grid">
             {columns.map((column) => (
               <section
