@@ -55,14 +55,13 @@ import {
   getActivePortfolio,
   getAttentionSummary,
   getBoardStats,
+  getCardMoveValidationMessage,
   getDefaultBoardFilters,
   getEditorOptions,
   getEditorSummary,
-  getNextStageForEditor,
   getRevisionReasonById,
   getQuickCreateDefaults,
   getTeamMemberById,
-  getTeamMemberByName,
   getVisibleCards,
   getVisibleColumns,
   isLaunchOpsRole,
@@ -557,13 +556,32 @@ function App() {
   }
 
   function handleQuickCreate(openDetail: boolean) {
-    if (!activePortfolio || !quickCreateValue.title.trim() || !quickCreateValue.brand) {
+    if (!activePortfolio) {
       return
     }
 
     const actor = getRoleActorName(state.activeRole, activePortfolio)
-    const card = createCardFromQuickInput(activePortfolio, state.settings, quickCreateValue, actor)
-    updatePortfolio(activePortfolio.id, (portfolio) => addCardToPortfolio(portfolio, card))
+    let card: Card
+
+    try {
+      card = createCardFromQuickInput(activePortfolio, state.settings, quickCreateValue, actor)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'That card could not be created.', 'red')
+      return
+    }
+
+    let created = false
+    updatePortfolio(activePortfolio.id, (portfolio) => {
+      const nextPortfolio = addCardToPortfolio(portfolio, card, viewerContext)
+      created = nextPortfolio !== portfolio
+      return nextPortfolio
+    })
+
+    if (!created) {
+      showToast('That card could not be created.', 'red')
+      return
+    }
+
     setQuickCreateOpen(false)
     setQuickCreateValue(getQuickCreateDefaults(activePortfolio, state.settings))
     showToast(`${card.id} created`, 'green')
@@ -593,6 +611,7 @@ function App() {
         updates,
         actor,
         new Date().toISOString(),
+        viewerContext,
       ),
     )
   }
@@ -617,18 +636,24 @@ function App() {
       return
     }
 
-    const actor = getRoleActorName(state.activeRole, portfolio)
     const targetCard =
       portfolio.cards.find((card) => card.id === pendingDeleteCard.cardId) ?? null
 
-    updatePortfolio(portfolio.id, (currentPortfolio) =>
-      removeCardFromPortfolio(
+    let deleted = false
+    updatePortfolio(portfolio.id, (currentPortfolio) => {
+      const nextPortfolio = removeCardFromPortfolio(
         currentPortfolio,
         pendingDeleteCard.cardId,
-        actor,
-        new Date().toISOString(),
-      ),
-    )
+        viewerContext,
+      )
+      deleted = nextPortfolio !== currentPortfolio
+      return nextPortfolio
+    })
+
+    if (!deleted) {
+      showToast('That card could not be deleted.', 'red')
+      return
+    }
 
     setPendingDeleteCard(null)
     setSelectedCard(null)
@@ -742,190 +767,18 @@ function App() {
       }
     }
 
-    const card = activePortfolio.cards.find((item) => item.id === cardId)
-    if (!card) {
+    const validationMessage = getCardMoveValidationMessage(
+      activePortfolio,
+      viewerContext,
+      cardId,
+      targetLane.stage as StageId,
+      targetLane.owner,
+    )
+    if (validationMessage) {
       return {
         valid: false,
-        message: 'That card could not be moved.',
-        tone: 'blue' as ToastTone,
-      }
-    }
-
-    if (state.activeRole.mode === 'observer') {
-      return {
-        valid: false,
-        message: 'Observer view is read-only.',
-        tone: 'blue' as ToastTone,
-      }
-    }
-
-    if (state.activeRole.mode === 'editor') {
-      if (isLaunchOpsActive) {
-        if (card.stage !== 'Ready') {
-          return {
-            valid: false,
-            message: 'Launch Ops can only act on cards in Ready.',
-            tone: 'blue' as ToastTone,
-          }
-        }
-
-        if (targetLane.stage !== 'Live') {
-          return {
-            valid: false,
-            message: 'Launch Ops can only move cards from Ready to Live.',
-            tone: 'blue' as ToastTone,
-          }
-        }
-
-        return {
-          valid: true,
-          message: '',
-          tone: 'green' as ToastTone,
-        }
-      }
-
-      if (!viewerContext.editorName || card.owner !== viewerContext.editorName) {
-        return {
-          valid: false,
-          message: 'Editors can only move their own cards.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      if (targetLane.owner && targetLane.owner !== viewerContext.editorName) {
-        return {
-          valid: false,
-          message: 'Editors can only move cards within their own lane.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      const targetStage = targetLane.stage as StageId
-      const isBackwardMove = STAGES.indexOf(targetStage) < STAGES.indexOf(card.stage)
-      if (!canEditorDragStage(card.stage)) {
-        return {
-          valid: false,
-          message: 'Editors can only move cards between Briefed, In Production, Review, and Ready.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      if (targetStage === 'Live') {
-        return {
-          valid: false,
-          message: 'Only managers can move cards to Live.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      if (targetStage === 'Backlog') {
-        return {
-          valid: false,
-          message: 'Editors cannot move cards back to Backlog.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      const movingWithinSameSection =
-        targetStage === card.stage &&
-        (targetLane.owner ?? card.owner) === card.owner
-
-      if (movingWithinSameSection) {
-        return {
-          valid: false,
-          message: 'Only managers can reorder priority within a section.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      if (card.stage === 'Review' && targetStage === 'Briefed') {
-        return {
-          valid: false,
-          message: 'Revisions from Review return to In Production.',
-          tone: 'blue' as ToastTone,
-        }
-      }
-
-      if (!isBackwardMove) {
-        const nextStage = getNextStageForEditor(card.stage)
-        if (!nextStage || targetStage !== nextStage) {
-          return {
-            valid: false,
-            message: 'Editors can only move cards forward one stage at a time, up to Ready.',
-            tone: 'blue' as ToastTone,
-          }
-        }
-      }
-
-      if (targetStage === 'In Production' && targetLane.owner) {
-        const member = getTeamMemberByName(activePortfolio, targetLane.owner)
-        const projectedWip = activePortfolio.cards.filter(
-          (currentCard) =>
-            currentCard.id !== card.id &&
-            currentCard.owner === targetLane.owner &&
-            currentCard.stage === 'In Production' &&
-            !currentCard.archivedAt,
-        ).length
-        if (
-          !isBackwardMove &&
-          member?.wipCap !== null &&
-          member?.wipCap !== undefined &&
-          projectedWip >= member.wipCap
-        ) {
-          return {
-            valid: false,
-            message: `${targetLane.owner} is at capacity (${member.wipCap}/${member.wipCap})`,
-            tone: 'red' as ToastTone,
-          }
-        }
-      }
-
-      return {
-        valid: true,
-        message: '',
-        tone: 'green' as ToastTone,
-      }
-    }
-
-    if ((GROUPED_STAGES as readonly StageId[]).includes(targetLane.stage as StageId) && !targetLane.owner) {
-      return {
-        valid: false,
-        message: 'Choose an editor lane to assign this card.',
-        tone: 'blue' as ToastTone,
-      }
-    }
-
-    const targetStage = targetLane.stage as StageId
-    const isBackwardMove = STAGES.indexOf(targetStage) < STAGES.indexOf(card.stage)
-
-    if (card.stage === 'Review' && targetStage === 'Briefed') {
-      return {
-        valid: false,
-        message: 'Revisions from Review return to In Production.',
-        tone: 'blue' as ToastTone,
-      }
-    }
-
-    if (targetLane.stage === 'In Production' && targetLane.owner) {
-      const member = getTeamMemberByName(activePortfolio, targetLane.owner)
-      const projectedWip = activePortfolio.cards.filter(
-        (currentCard) =>
-          currentCard.id !== card.id &&
-          currentCard.owner === targetLane.owner &&
-          currentCard.stage === 'In Production' &&
-          !currentCard.archivedAt,
-      ).length
-      if (
-        !isBackwardMove &&
-        member?.wipCap !== null &&
-        member?.wipCap !== undefined &&
-        projectedWip >= member.wipCap
-      ) {
-        return {
-          valid: false,
-          message: `${targetLane.owner} is at capacity (${member.wipCap}/${member.wipCap})`,
-          tone: 'red' as ToastTone,
-        }
+        message: validationMessage,
+        tone: validationMessage.includes('at capacity') ? ('red' as ToastTone) : ('blue' as ToastTone),
       }
     }
 
@@ -976,8 +829,9 @@ function App() {
     if (!card) {
       return
     }
-    updatePortfolio(portfolioId, (currentPortfolio) =>
-      moveCardInPortfolio(
+    let moved = false
+    updatePortfolio(portfolioId, (currentPortfolio) => {
+      const nextPortfolio = moveCardInPortfolio(
         currentPortfolio,
         cardId,
         destinationStage,
@@ -985,10 +839,18 @@ function App() {
         destinationIndex,
         movedAt,
         actor,
+        viewerContext,
         revisionReason,
         revisionEstimatedHours,
-      ),
-    )
+      )
+      moved = nextPortfolio !== currentPortfolio
+      return nextPortfolio
+    })
+
+    if (!moved) {
+      showToast('That move is not allowed.', 'red')
+      return
+    }
 
     if (revisionReason) {
       showToast(`${card.id} moved back to ${destinationStage}`, 'amber')

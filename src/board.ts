@@ -609,6 +609,10 @@ export function getNextStageForEditor(stage: StageId) {
   return index === -1 || stage === 'Ready' || index === STAGES.length - 1 ? null : STAGES[index + 1]
 }
 
+function canEditorMoveStage(stage: StageId) {
+  return stage === 'Briefed' || stage === 'In Production' || stage === 'Review' || stage === 'Ready'
+}
+
 function isManagerRole(role: string) {
   return role.toLowerCase() === 'manager'
 }
@@ -2218,6 +2222,29 @@ export function getQuickCreateDefaults(portfolio: Portfolio, settings: GlobalSet
   }
 }
 
+function getQuickCreateValidationMessage(
+  portfolio: Portfolio,
+  input: QuickCreateInput,
+) {
+  if (!input.title.trim()) {
+    return 'Enter a card title before creating it.'
+  }
+
+  if (!getBrandByName(portfolio, input.brand)) {
+    return 'Pick a valid brand before creating a card.'
+  }
+
+  return null
+}
+
+function getQuickCreateTaskType(settings: GlobalSettings, taskTypeId: string) {
+  return (
+    settings.taskLibrary.find((taskType) => taskType.id === taskTypeId) ??
+    settings.taskLibrary.find((taskType) => taskType.id === 'custom') ??
+    settings.taskLibrary[0]
+  )
+}
+
 export function createCardFromQuickInput(
   portfolio: Portfolio,
   settings: GlobalSettings,
@@ -2225,8 +2252,13 @@ export function createCardFromQuickInput(
   actor: string,
   createdAt = new Date().toISOString(),
 ) {
-  const taskType = getTaskTypeById(settings, input.taskTypeId)
-  const brand = getBrandByName(portfolio, input.brand) ?? portfolio.brands[0] ?? null
+  const validationMessage = getQuickCreateValidationMessage(portfolio, input)
+  if (validationMessage) {
+    throw new Error(validationMessage)
+  }
+
+  const taskType = getQuickCreateTaskType(settings, input.taskTypeId)
+  const brand = getBrandByName(portfolio, input.brand)
   const cardId = getNextCardId(portfolio, brand?.name ?? input.brand)
   const dateOnly = createdAt.slice(0, 10)
 
@@ -2277,6 +2309,35 @@ export function createCardFromQuickInput(
   }
 
   return syncGeneratedNames(baseCard)
+}
+
+function canManageCards(viewer: ViewerContext) {
+  return viewer.mode === 'manager'
+}
+
+function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>) {
+  if (viewer.mode === 'manager') {
+    return true
+  }
+
+  const updateKeys = Object.keys(updates) as Array<keyof Card>
+  if (updateKeys.length === 0) {
+    return true
+  }
+
+  if (viewer.mode === 'observer') {
+    return false
+  }
+
+  const allowedKeys = new Set<keyof Card>()
+  if (viewer.editorName === card.owner) {
+    allowedKeys.add('frameioLink')
+  }
+  if (isLaunchOpsRole(viewer.memberRole)) {
+    allowedKeys.add('blocked')
+  }
+
+  return updateKeys.every((key) => allowedKeys.has(key))
 }
 
 function getOrderedLaneCards(
@@ -2901,7 +2962,107 @@ export function getWorkloadData(
   } satisfies WorkloadData
 }
 
-export function addCardToPortfolio(portfolio: Portfolio, card: Card) {
+export function getCardMoveValidationMessage(
+  portfolio: Portfolio,
+  viewer: ViewerContext,
+  cardId: string,
+  destinationStage: StageId,
+  destinationOwner: string | null,
+) {
+  const card = portfolio.cards.find((item) => item.id === cardId)
+  if (!card) {
+    return 'That card could not be moved.'
+  }
+
+  const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? card.owner
+  const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(card.stage)
+  const isLaunchOpsViewer = viewer.mode === 'editor' && isLaunchOpsRole(viewer.memberRole)
+  const movingWithinSameSection = destinationStage === card.stage && nextOwner === card.owner
+
+  if (viewer.mode === 'observer') {
+    return 'Observer view is read-only.'
+  }
+
+  if (isLaunchOpsViewer) {
+    if (card.stage !== 'Ready') {
+      return 'Launch Ops can only act on cards in Ready.'
+    }
+
+    if (destinationStage !== 'Live') {
+      return 'Launch Ops can only move cards from Ready to Live.'
+    }
+
+    return null
+  }
+
+  if (viewer.mode === 'editor') {
+    if (!viewer.editorName || card.owner !== viewer.editorName) {
+      return 'Editors can only move their own cards.'
+    }
+
+    if (destinationOwner && destinationOwner !== viewer.editorName) {
+      return 'Editors can only move cards within their own lane.'
+    }
+
+    if (!canEditorMoveStage(card.stage)) {
+      return 'Editors can only move cards between Briefed, In Production, Review, and Ready.'
+    }
+
+    if (destinationStage === 'Live') {
+      return 'Only managers can move cards to Live.'
+    }
+
+    if (destinationStage === 'Backlog') {
+      return 'Editors cannot move cards back to Backlog.'
+    }
+
+    if (movingWithinSameSection) {
+      return 'Only managers can reorder priority within a section.'
+    }
+
+    if (!isBackwardMove) {
+      const nextStage = getNextStageForEditor(card.stage)
+      if (!nextStage || destinationStage !== nextStage) {
+        return 'Editors can only move cards forward one stage at a time, up to Ready.'
+      }
+    }
+  }
+
+  if (isGroupedStage(destinationStage) && !nextOwner) {
+    return 'Choose an editor lane to assign this card.'
+  }
+
+  if (card.stage === 'Review' && destinationStage === 'Briefed') {
+    return 'Revisions from Review return to In Production.'
+  }
+
+  if (destinationStage === 'In Production' && nextOwner) {
+    const member = getTeamMemberByName(portfolio, nextOwner)
+    const projectedWip = portfolio.cards.filter(
+      (currentCard) =>
+        currentCard.id !== card.id &&
+        currentCard.owner === nextOwner &&
+        currentCard.stage === 'In Production' &&
+        !currentCard.archivedAt,
+    ).length
+    if (
+      !isBackwardMove &&
+      member?.wipCap !== null &&
+      member?.wipCap !== undefined &&
+      projectedWip >= member.wipCap
+    ) {
+      return `${nextOwner} is at capacity (${member.wipCap}/${member.wipCap})`
+    }
+  }
+
+  return null
+}
+
+export function addCardToPortfolio(portfolio: Portfolio, card: Card, viewer: ViewerContext) {
+  if (!canManageCards(viewer) || portfolio.cards.some((existingCard) => existingCard.id === card.id)) {
+    return portfolio
+  }
+
   const brand = getBrandByName(portfolio, card.brand)
   const prefix = brand?.prefix ?? ''
   const backlogCards = getOrderedLaneCards(portfolio.cards, 'Backlog', null)
@@ -2927,24 +3088,17 @@ export function addCardToPortfolio(portfolio: Portfolio, card: Card) {
 export function removeCardFromPortfolio(
   portfolio: Portfolio,
   cardId: string,
-  actor: string,
-  timestamp: string,
+  viewer: ViewerContext,
 ) {
-  const targetCard = portfolio.cards.find((card) => card.id === cardId)
-  if (!targetCard) {
+  if (!canManageCards(viewer) || !portfolio.cards.some((card) => card.id === cardId)) {
     return portfolio
   }
-
-  const deletedCard = appendActivity(
-    targetCard,
-    createActivityEntry(actor, 'deleted this card', 'deleted', timestamp),
-  )
 
   const remainingCards = portfolio.cards.filter((card) => card.id !== cardId)
 
   return {
     ...portfolio,
-    cards: reindexCards([...remainingCards, deletedCard].filter((card) => card.id !== cardId)),
+    cards: reindexCards(remainingCards),
   }
 }
 
@@ -2974,6 +3128,7 @@ export function moveCardInPortfolio(
   destinationIndex: number,
   movedAt: string,
   actor: string,
+  viewer: ViewerContext,
   revisionReason?: string,
   revisionEstimatedHours?: number | null,
 ) {
@@ -2982,15 +3137,15 @@ export function moveCardInPortfolio(
     return portfolio
   }
 
+  if (getCardMoveValidationMessage(portfolio, viewer, cardId, destinationStage, destinationOwner)) {
+    return portfolio
+  }
+
   const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? existingCard.owner
   const normalizedRevisionReason = revisionReason?.trim()
   const stageChanged = existingCard.stage !== destinationStage
   const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(existingCard.stage)
   const isForwardMove = STAGES.indexOf(destinationStage) > STAGES.indexOf(existingCard.stage)
-
-  if (isGroupedStage(destinationStage) && !nextOwner) {
-    return portfolio
-  }
 
   if (
     stageChanged &&
@@ -3098,7 +3253,13 @@ export function applyCardUpdates(
   updates: Partial<Card>,
   actor: string,
   timestamp: string,
+  viewer: ViewerContext,
 ) {
+  const targetCard = portfolio.cards.find((card) => card.id === cardId)
+  if (!targetCard || !canUpdateCard(viewer, targetCard, updates)) {
+    return portfolio
+  }
+
   return {
     ...portfolio,
     cards: portfolio.cards.map((card) => {
@@ -3279,8 +3440,9 @@ export function getCycleTimeDays(card: Card) {
   )
 }
 
-function getCurrentWorkloadDays(card: Card) {
-  return roundToTenths(getCardScheduledHours(card) / 4)
+function getCurrentWorkloadDays(portfolio: Portfolio, card: Card) {
+  const hoursPerDay = Math.max(1, getTeamMemberByName(portfolio, card.owner)?.hoursPerDay ?? 8)
+  return roundToTenths(getCardScheduledHours(card) / hoursPerDay)
 }
 
 function getCardsEnteredLiveWithin(portfolio: Portfolio, startMs: number, endMs: number) {
@@ -3294,13 +3456,28 @@ function getCardsEnteredLiveWithin(portfolio: Portfolio, startMs: number, endMs:
   })
 }
 
-export function buildDashboardData(
+function buildDashboardCardRow(portfolio: Portfolio, card: Card, nowMs: number): DashboardCardRow {
+  return {
+    portfolioId: portfolio.id,
+    portfolioName: portfolio.name,
+    cardId: card.id,
+    title: card.title,
+    brand: card.brand,
+    stage: card.stage,
+    owner: card.owner,
+    daysInStage: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
+    isBlocked: Boolean(card.blocked),
+    blockedReason: card.blocked?.reason ?? null,
+    isOverdue: getDueStatus(card, nowMs) === 'overdue',
+  }
+}
+
+function buildOverviewCards(
   portfolios: Portfolio[],
   settings: GlobalSettings,
-  nowMs = Date.now(),
+  nowMs: number,
 ) {
-  const thirtyDaysAgo = nowMs - 30 * DAY_MS
-  const overviewCards = portfolios.map((portfolio) => {
+  return portfolios.map((portfolio) => {
     const activeCards = portfolio.cards.filter((card) => !isArchivedCard(card) && card.stage !== 'Live')
     const freshCount = activeCards.filter(
       (card) => getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'fresh',
@@ -3329,24 +3506,14 @@ export function buildDashboardData(
       })),
     } satisfies PortfolioOverviewCard
   })
+}
 
-  const funnel = STAGES.map((stage) => {
+function buildPipelineFunnel(portfolios: Portfolio[], nowMs: number) {
+  return STAGES.map((stage) => {
     const cards = portfolios.flatMap((portfolio) =>
       portfolio.cards
         .filter((card) => !isArchivedCard(card) && card.stage === stage)
-        .map((card) => ({
-          portfolioId: portfolio.id,
-          portfolioName: portfolio.name,
-          cardId: card.id,
-          title: card.title,
-          brand: card.brand,
-          stage: card.stage,
-          owner: card.owner,
-          daysInStage: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
-          isBlocked: Boolean(card.blocked),
-          blockedReason: card.blocked?.reason ?? null,
-          isOverdue: getDueStatus(card, nowMs) === 'overdue',
-        })),
+        .map((card) => buildDashboardCardRow(portfolio, card, nowMs)),
     )
     const segments = portfolios.flatMap((portfolio) =>
       portfolio.brands
@@ -3367,8 +3534,10 @@ export function buildDashboardData(
       cards,
     } satisfies FunnelStageBucket
   })
+}
 
-  const teamGrid = portfolios.flatMap((portfolio) =>
+function buildTeamCapacityGrid(portfolios: Portfolio[], settings: GlobalSettings) {
+  return portfolios.flatMap((portfolio) =>
     getAssignableMembers(portfolio).map((member) => {
       const utilization = getCurrentUtilization(portfolio, member.name, settings)
       const avgCycleTimeValues = portfolio.cards
@@ -3390,7 +3559,10 @@ export function buildDashboardData(
         usedHours: utilization.usedHours,
         totalHours: utilization.totalHours,
         workloadDays: roundToTenths(
-          utilization.activeCards.reduce((sum, card) => sum + getCurrentWorkloadDays(card), 0),
+          utilization.activeCards.reduce(
+            (sum, card) => sum + getCurrentWorkloadDays(portfolio, card),
+            0,
+          ),
         ),
         avgCycleTime:
           avgCycleTimeValues.length > 0
@@ -3409,29 +3581,31 @@ export function buildDashboardData(
       } satisfies TeamCapacityRow
     }),
   )
+}
 
-  const stuckCards = portfolios
+function buildStuckCardsList(
+  portfolios: Portfolio[],
+  settings: GlobalSettings,
+  nowMs: number,
+) {
+  return portfolios
     .flatMap((portfolio) =>
       portfolio.cards
-        .filter((card) => !isArchivedCard(card) && (getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck' || getDueStatus(card, nowMs) === 'overdue'))
-        .map((card) => ({
-          portfolioId: portfolio.id,
-          portfolioName: portfolio.name,
-          cardId: card.id,
-          title: card.title,
-          brand: card.brand,
-          stage: card.stage,
-          owner: card.owner,
-          daysInStage: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
-          isBlocked: Boolean(card.blocked),
-          blockedReason: card.blocked?.reason ?? null,
-          isOverdue: getDueStatus(card, nowMs) === 'overdue',
-        })),
+        .filter(
+          (card) =>
+            !isArchivedCard(card) &&
+            (getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck' ||
+              getDueStatus(card, nowMs) === 'overdue'),
+        )
+        .map((card) => buildDashboardCardRow(portfolio, card, nowMs)),
     )
     .sort((left, right) => right.daysInStage - left.daysInStage)
+}
 
+function buildThroughputData(portfolios: Portfolio[], nowMs: number) {
   const currentWeekStart = startOfWeekMs(nowMs)
-  const throughput = Array.from({ length: 8 }, (_, index) => {
+
+  return Array.from({ length: 8 }, (_, index) => {
     const startMs = currentWeekStart - (7 - index) * 7 * DAY_MS
     const endMs = startMs + 7 * DAY_MS
     const label = formatDateShort(new Date(startMs).toISOString())
@@ -3446,14 +3620,22 @@ export function buildDashboardData(
         }))
         .filter((segment) => segment.count > 0),
     )
+
     return {
       label,
       total: segments.reduce((sum, segment) => sum + segment.count, 0),
       segments,
     } satisfies ThroughputWeek
   })
+}
 
-  const brandHealth = portfolios.flatMap((portfolio) =>
+function buildBrandHealthSummary(
+  portfolios: Portfolio[],
+  settings: GlobalSettings,
+  nowMs: number,
+  thirtyDaysAgo: number,
+) {
+  return portfolios.flatMap((portfolio) =>
     portfolio.brands.map((brand) => {
       const brandCards = portfolio.cards.filter((card) => card.brand === brand.name)
       const recentCycleTimes = brandCards
@@ -3494,9 +3676,12 @@ export function buildDashboardData(
       } satisfies BrandHealthRow
     }),
   )
+}
 
+function buildRevisionPatterns(portfolios: Portfolio[], thirtyDaysAgo: number) {
   const revisionReasonCounts = new Map<string, number>()
   const editorRevisionAccumulator = new Map<string, number[]>()
+
   portfolios.forEach((portfolio) => {
     portfolio.cards.forEach((card) => {
       const recentEntries = card.stageHistory.filter(
@@ -3548,14 +3733,28 @@ export function buildDashboardData(
     .sort((left, right) => right.avgRevisionsPerCard - left.avgRevisionsPerCard)
 
   return {
-    overviewCards,
-    funnel,
-    teamGrid,
-    stuckCards,
-    throughput,
-    brandHealth,
     revisionReasons,
     editorRevisionRates,
+  }
+}
+
+export function buildDashboardData(
+  portfolios: Portfolio[],
+  settings: GlobalSettings,
+  nowMs = Date.now(),
+) {
+  const thirtyDaysAgo = nowMs - 30 * DAY_MS
+  const revisionPatterns = buildRevisionPatterns(portfolios, thirtyDaysAgo)
+
+  return {
+    overviewCards: buildOverviewCards(portfolios, settings, nowMs),
+    funnel: buildPipelineFunnel(portfolios, nowMs),
+    teamGrid: buildTeamCapacityGrid(portfolios, settings),
+    stuckCards: buildStuckCardsList(portfolios, settings, nowMs),
+    throughput: buildThroughputData(portfolios, nowMs),
+    brandHealth: buildBrandHealthSummary(portfolios, settings, nowMs, thirtyDaysAgo),
+    revisionReasons: revisionPatterns.revisionReasons,
+    editorRevisionRates: revisionPatterns.editorRevisionRates,
   } satisfies DashboardData
 }
 

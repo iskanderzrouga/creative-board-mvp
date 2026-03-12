@@ -549,3 +549,34 @@ Verification:
 Next step:
 
 - Continue the remaining later-phase `CODEX-PLAN.md` work with deeper data/model cleanup and the final release/deployment passes, while keeping the new sync conflict behavior aligned with the Supabase migration rollout.
+
+### CODEX-PLAN Execution: Phase 8 Business Logic Pass 1
+
+Status: In progress
+
+What I learned:
+
+- Phase 8 was most valuable once the rules moved below the UI layer. The drag-and-drop checks were already helping in the board, but the real gap was that direct business-logic calls could still bypass role restrictions, stage sequencing, and duplicate protection.
+- The analytics cleanup was also a good fit for this pass because `buildDashboardData` had grown into a long mixed-responsibility function. Splitting it into focused helpers made the workload-days fix much easier to land cleanly.
+
+What changed:
+
+- Moved the core card-move validation into [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts) with a shared `getCardMoveValidationMessage()` path, so grouped-lane requirements, editor-only move rules, Launch Ops constraints, and WIP-cap blocking now apply inside the business logic instead of only in the UI.
+- Added role-aware mutation guards in [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts) for `addCardToPortfolio`, `removeCardFromPortfolio`, `moveCardInPortfolio`, and `applyCardUpdates`, so observer/editor bypasses are blocked even if a caller skips the normal interface.
+- Cleaned up the hard-delete path in [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts) by removing the unused deleted-card activity branch and reindexing only the remaining cards.
+- Added quick-create validation plus safe task-type fallback handling in [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts), so blank titles and unknown brands are rejected at creation time while missing task-type ids fall back gracefully.
+- Fixed the workload-days calculation in [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts) to use each team member’s actual `hoursPerDay` instead of the old hardcoded divisor.
+- Broke the analytics builder in [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts) into focused helper functions for overview cards, funnel, team capacity, stuck cards, throughput, brand health, and revision patterns.
+- Updated [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) to call the new business-logic validation path, handle failed create/delete/move attempts safely, and pass viewer context into guarded mutations.
+- Added regression coverage in [`src/board.test.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.test.ts) for direct editor move bypasses, protected field updates, manager-only create/delete behavior, quick-create validation, duplicate-card-id prevention, and the workload-days fix.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Next step:
+
+- Continue phase 8 from `CODEX-PLAN.md` with the remaining feature-completeness items in the card detail experience, especially comments/activity pagination and section navigation, then move into the deeper test-coverage and release-polish phases.
