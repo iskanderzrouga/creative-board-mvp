@@ -18,6 +18,19 @@ interface StoredRemoteState {
   updatedAt: string
 }
 
+export function createWorkspaceStateSeedRow(workspaceId: string, state: AppState) {
+  return {
+    workspace_id: workspaceId,
+    state,
+  }
+}
+
+export function createWorkspaceStateUpdateRow(state: AppState) {
+  return {
+    state,
+  }
+}
+
 export interface RemoteAppStateResult {
   state: AppState
   lastSyncedAt: string | null
@@ -157,13 +170,8 @@ export async function loadOrCreateRemoteAppState(
     }
   }
 
-  const updatedAt = new Date().toISOString()
   const { data: seededRow, error: upsertError } = await supabase.from(WORKSPACE_STATE_TABLE).upsert(
-    {
-      workspace_id: REMOTE_WORKSPACE_ID,
-      state: fallbackState,
-      updated_at: updatedAt,
-    },
+    createWorkspaceStateSeedRow(REMOTE_WORKSPACE_ID, fallbackState),
     {
       onConflict: 'workspace_id',
     },
@@ -183,7 +191,7 @@ export async function loadOrCreateRemoteAppState(
 
   return {
     state: fallbackState,
-    lastSyncedAt: seededRow?.updated_at ?? updatedAt,
+    lastSyncedAt: seededRow?.updated_at ?? null,
     seeded: true,
   }
 }
@@ -212,10 +220,7 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
 
   const { data, error } = await supabase
     .from(WORKSPACE_STATE_TABLE)
-    .update({
-      state,
-      updated_at: updatedAt,
-    })
+    .update(createWorkspaceStateUpdateRow(state))
     .eq('workspace_id', REMOTE_WORKSPACE_ID)
     .eq('updated_at', expectedUpdatedAt)
     .select('updated_at')

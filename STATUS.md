@@ -2,6 +2,30 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Server-Owned Sync Timestamp Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Aligned the remote sync client with the existing server-side `workspace_state.updated_at` trigger so the browser no longer sends its own timestamps on shared-state inserts or updates.
+- Added small write-payload helpers in `src/remoteAppState.ts` to make the server-owned timestamp contract explicit and easier to guard in tests.
+- Added a new unit assertion in `src/remoteAppState.test.ts` verifying that real `workspace_state` write payloads do not include `updated_at`, which prevents this regression from slipping back in later refactors.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another remaining phase 7 item from `CODEX-PLAN.md` is now tightened: optimistic locking still uses `updated_at`, but the server is now the clear source of truth for that field on actual shared-state writes.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` work with the last sync/release gaps and then the production deployment plus regression checklist.
+
 ### CODEX-PLAN Execution: Tablet Responsive Layout Pass
 
 Status: In progress

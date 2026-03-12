@@ -4,6 +4,8 @@ import {
   E2E_REMOTE_STATE_KEY,
 } from './supabase'
 import {
+  createWorkspaceStateSeedRow,
+  createWorkspaceStateUpdateRow,
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
   saveRemoteAppState,
@@ -106,5 +108,20 @@ describe('remote app state sync', () => {
     }
 
     throw new Error('Expected a remote state conflict error.')
+  })
+
+  it('omits client-owned timestamps from real workspace_state write payloads', () => {
+    const seed = createSeedState()
+
+    expect(createWorkspaceStateSeedRow('primary', seed)).toEqual({
+      workspace_id: 'primary',
+      state: seed,
+    })
+    expect(createWorkspaceStateSeedRow('primary', seed)).not.toHaveProperty('updated_at')
+
+    expect(createWorkspaceStateUpdateRow(seed)).toEqual({
+      state: seed,
+    })
+    expect(createWorkspaceStateUpdateRow(seed)).not.toHaveProperty('updated_at')
   })
 })
