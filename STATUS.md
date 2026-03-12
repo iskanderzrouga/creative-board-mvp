@@ -2,6 +2,31 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Launch Ops Workflow Coverage Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added the remaining Launch Ops browser workflow coverage to `e2e/roles-filters.spec.ts`.
+- Verified that the Launch Ops editor role can move a Ready-stage card into Live, which matches the special-case permission path in `src/board.ts`.
+- Kept the broader editor/observer role tests alongside it so the role matrix now covers manager, regular editor, Launch Ops, and observer behavior in one place.
+- Confirmed the latest role-workflow pass against the full suite, bringing Playwright coverage to 25 passing browser tests.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another phase 11 workflow expectation from `CODEX-PLAN.md` is now under automated coverage: Launch Ops can move Ready cards to Live while still remaining outside manager-only settings and creation flows.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` work into the final production deployment and live regression checklist, plus any last small workflow gaps that show up before rollout.
+
 ### CODEX-PLAN Execution: Editor And Observer Workflow Pass
 
 Status: In progress

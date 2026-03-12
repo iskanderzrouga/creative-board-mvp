@@ -172,6 +172,25 @@ test('editor can update owned card content and move it forward one stage', async
   await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
 })
 
+test('launch ops can move ready cards to live', async ({ page }) => {
+  await openFreshApp(page)
+
+  await page.getByRole('button', { name: 'Expand sidebar' }).click()
+  await page.locator('.sidebar-role-stack').getByRole('button', { name: 'Editor role' }).click()
+  await page.locator('.sidebar-editor-menu').getByRole('button', { name: 'Ivan', exact: true }).click()
+
+  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+  await expect(page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true })).toBeDisabled()
+
+  const readyCard = page.getByRole('button', { name: /TC0020 LongLasting/ })
+  const liveLane = page.getByRole('group', { name: 'Live lane' })
+
+  await dragLocatorToTarget(page, readyCard, liveLane)
+
+  await expect(page.locator('.toast').filter({ hasText: /→ Live/ })).toHaveCount(1)
+  await expect(liveLane.getByRole('button', { name: /TC0020 LongLasting/ })).toBeVisible()
+})
+
 test('observer card detail stays read-only', async ({ page }) => {
   await openFreshApp(page)
 
