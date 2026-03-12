@@ -2,6 +2,31 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Phase 9 Coverage Pass 2
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added a new Playwright spec at `e2e/roles-filters.spec.ts` to cover the broader role and filter flows still called out in `CODEX-PLAN.md`.
+- Added role-switching coverage that verifies manager-only actions stay locked down for observer and editor views, while observer analytics access still works.
+- Added search and brand-filter coverage that exercises the multi-select brand behavior, search clear action, and filter reset flow against seeded board data.
+- Added blocked-work coverage that creates a new card, marks it blocked through the detail panel, confirms the blocked-only filter isolates it, and then verifies reset returns the full board view.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Browser coverage expanded from 5 Playwright tests to 8 Playwright tests, with the new tests focused on roles, filters, and blocked-work behavior.
+
+Next step:
+
+- Continue phase 9 with more E2E breadth around settings workflows and, if stable enough, drag/drop movement rules before moving into the remaining release-polish items.
+
 ### CODEX-PLAN Execution: Phase 1 Hardening + Verification Scaffolding
 
 Status: In progress
