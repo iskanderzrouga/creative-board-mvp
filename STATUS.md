@@ -36,6 +36,32 @@ Next step:
 
 - Continue with the major phase 2 extraction so the remaining UX, accessibility, sync, and testing work can land on smaller, safer modules instead of the current monolith.
 
+### CODEX-PLAN Execution: Phase 2 Extraction Pass 1
+
+Status: In progress
+
+What I changed in this pass:
+
+- Extracted app-shell and auth UI pieces out of `App.tsx` into dedicated component files: sidebar, page header, sync pill, auth gate, access gate, quick-create modal, backward-move modal, and delete-card modal.
+- Extracted the board card rendering trio into separate memoized components: `BoardCardSurface`, `SortableBoardCard`, and `LaneDropZone`.
+- Extracted the `AnalyticsPage` and `WorkloadPage` surfaces into standalone files, with workload drag-drop helpers moved alongside the workload page.
+- Cleaned `App.tsx` imports and dead helpers after the move so the orchestration file now focuses more on state, effects, and event wiring than raw rendering.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test:e2e` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- `src/App.tsx` dropped from 5388 lines at the start of this pass to 4736 lines after the extraction.
+
+Next step:
+
+- Continue phase 2 by extracting larger remaining modules such as `CardDetailPanel`, `SettingsPage`, access management, and supporting hooks so the monolith keeps shrinking toward the plan target.
+
 ## March 11, 2026
 
 ### Phase 1: Baseline And Safety Net
