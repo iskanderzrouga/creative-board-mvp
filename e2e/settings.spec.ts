@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { writeFileSync } from 'node:fs'
 
 const STORAGE_KEY = 'creative-board-state'
 const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
@@ -201,4 +202,28 @@ test('data export and import round-trip restores saved board state', async ({ pa
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Roundtrip Brand', exact: true })).toBeVisible()
+})
+
+test('importing corrupt JSON shows an error and keeps the current board state', async ({
+  page,
+}, testInfo) => {
+  await openFreshLocalApp(page)
+
+  await expect(page.getByRole('button', { name: /TC0022 LongLasting/ })).toBeVisible()
+
+  const invalidImportPath = testInfo.outputPath('corrupt-board-export.json')
+  writeFileSync(invalidImportPath, '{"portfolios": [', 'utf8')
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Data' }).click()
+  await expect(page.locator('input[type="file"]')).toHaveCount(1)
+  await page.waitForTimeout(100)
+  await page.locator('input[type="file"]').setInputFiles(invalidImportPath)
+
+  await expect(
+    page.locator('.toast').filter({ hasText: 'Import failed. Please use a valid export file.' }),
+  ).toHaveCount(1)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: /TC0022 LongLasting/ })).toBeVisible()
 })

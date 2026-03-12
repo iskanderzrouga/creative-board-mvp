@@ -204,7 +204,7 @@ export function useWorkspaceSession({
         if (!access) {
           setAccessStatus('denied')
           setAccessErrorMessage(
-            'This email is not on the approved access list yet. Contact your workspace manager.',
+            'This email is not on the approved access list. Contact your workspace manager.',
           )
           return
         }

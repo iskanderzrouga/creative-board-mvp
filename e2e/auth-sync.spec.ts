@@ -1,13 +1,49 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 
 const STORAGE_KEY = 'creative-board-state'
 const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
+const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
 const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 
 function ensureArtifactsDir() {
   mkdirSync('artifacts/phase-2', { recursive: true })
 }
+
+async function openFreshAuthGate(page: Page) {
+  await page.addInitScript(
+    ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.removeItem(remoteStateKey)
+      window.localStorage.setItem(authModeKey, 'enabled')
+      window.localStorage.removeItem(authEmailKey)
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+    },
+  )
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
+}
+
+test('team access validates work email format before send', async ({ page }) => {
+  await openFreshAuthGate(page)
+
+  const emailInput = page.getByLabel('Work email')
+  const sendButton = page.getByRole('button', { name: 'Send Magic Link' })
+
+  await emailInput.fill('team')
+  await expect(sendButton).toBeDisabled()
+  await expect(page.getByText('Enter a valid work email to continue.')).toBeVisible()
+
+  await emailInput.fill('team@example.com')
+  await expect(sendButton).toBeEnabled()
+  await expect(page.getByText('Enter a valid work email to continue.')).toHaveCount(0)
+})
 
 test('authenticated team login syncs the shared workspace across pages', async ({
   browser,

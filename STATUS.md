@@ -2,6 +2,29 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Phase 11 Auth And Import Recovery Coverage Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added inline email-format validation to the Team access screen in `src/components/AuthGate.tsx` so invalid addresses now show a clear error before a user tries to send a magic link.
+- Aligned the denied-access copy in `src/hooks/useWorkspaceSession.ts` with the exact approved-access wording from `CODEX-PLAN.md`.
+- Expanded `e2e/auth-sync.spec.ts` with a real Team access validation check so the public auth entry screen is now covered in the browser suite.
+- Expanded `e2e/settings.spec.ts` with a corrupt-import regression test so invalid JSON now stays under automated coverage alongside the working export/import round-trip.
+
+Verification:
+
+- Pending in this pass.
+
+Current progress signal:
+
+- Two more explicit phase 11 checklist edges from `CODEX-PLAN.md` are now backed by regression coverage: invalid email handling on Team access and corrupt JSON import recovery.
+
+Next step:
+
+- Run the full regression suite, verify the latest production deployment smoke path, and record the rollout status plus remaining external blockers.
+
 ### CODEX-PLAN Execution: Launch Ops Workflow Coverage Pass
 
 Status: In progress

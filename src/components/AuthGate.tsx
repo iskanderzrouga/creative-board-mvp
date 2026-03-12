@@ -24,6 +24,11 @@ export function AuthGate({
   onSubmit,
 }: AuthGateProps) {
   const canSubmit = isLikelyEmail(email)
+  const inlineValidationMessage =
+    !errorMessage && email.trim().length > 0 && !canSubmit
+      ? 'Enter a valid work email to continue.'
+      : null
+  const displayErrorMessage = errorMessage ?? inlineValidationMessage
 
   return (
     <div className="auth-shell">
@@ -51,6 +56,7 @@ export function AuthGate({
                 type="email"
                 value={email}
                 placeholder="team@company.com"
+                aria-invalid={displayErrorMessage ? 'true' : 'false'}
                 onChange={(event) => onEmailChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !pending) {
@@ -73,7 +79,7 @@ export function AuthGate({
             </div>
 
             {infoMessage ? <p className="auth-helper">{infoMessage}</p> : null}
-            {errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
+            {displayErrorMessage ? <p className="auth-error">{displayErrorMessage}</p> : null}
           </div>
         )}
       </div>
