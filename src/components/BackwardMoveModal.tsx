@@ -1,3 +1,4 @@
+import { useId, useRef } from 'react'
 import {
   formatHours,
   getRevisionReasonById,
@@ -5,6 +6,7 @@ import {
   type GlobalSettings,
   type StageId,
 } from '../board'
+import { useModalAccessibility } from '../hooks/useModalAccessibility'
 
 interface BackwardMoveFormState {
   reasonId: string
@@ -35,6 +37,8 @@ export function BackwardMoveModal({
   onCancel,
   onConfirm,
 }: BackwardMoveModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const titleId = useId()
   const reasons = getSortedRevisionReasons(settings)
   const selectedReason = getRevisionReasonById(settings, formState.reasonId)
   const otherSelected = selectedReason?.id === 'revision-other'
@@ -44,12 +48,21 @@ export function BackwardMoveModal({
     Number(formState.estimatedHours) > 0 &&
     (!otherSelected || formState.otherReason.trim())
 
+  useModalAccessibility(modalRef, true)
+
   return (
     <>
-      <div className="modal-overlay" onClick={onCancel} />
-      <div className="backward-move-modal">
+      <div className="modal-overlay" aria-hidden="true" onClick={onCancel} />
+      <div
+        ref={modalRef}
+        className="backward-move-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
         <div className="quick-create-head">
-          <strong>{`Moving ${card.id} back to ${destinationStage}`}</strong>
+          <strong id={titleId}>{`Moving ${card.id} back to ${destinationStage}`}</strong>
         </div>
 
         <div className="backward-move-body">

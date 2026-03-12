@@ -414,3 +414,29 @@ Verification:
 Next step:
 
 - Continue into the remaining phase 5 and phase 6 items in `CODEX-PLAN.md`, especially replacing browser-native confirms with custom flows and tightening modal accessibility, focus handling, and mobile behavior.
+
+### CODEX-PLAN Execution: Phase 6 Modal Accessibility Pass 1
+
+Status: In progress
+
+What I learned:
+
+- The largest accessibility gap left in the current UI was not color contrast or copy. It was the interaction model of the modal surfaces: the dialogs looked custom, but most of them still behaved like plain positioned `div`s.
+- The extracted component structure made this pass straightforward because the three centered dialogs were already isolated into their own files, so the focus-management logic could be added once and reused instead of patched into `App.tsx`.
+- The slide-out card detail panel still functions a little differently from the smaller dialogs, but it benefits immediately from the same ARIA cleanup even before a deeper focus-trap pass lands there later.
+
+What changed:
+
+- Added [`src/hooks/useModalAccessibility.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useModalAccessibility.ts) to handle first-focus placement, Tab-loop focus trapping, background scroll locking, and focus restoration for open dialogs.
+- Wired the new accessibility hook into [`src/components/QuickCreateModal.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/QuickCreateModal.tsx), [`src/components/BackwardMoveModal.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/BackwardMoveModal.tsx), and [`src/components/DeleteCardModal.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/DeleteCardModal.tsx), and added explicit `role="dialog"`, `aria-modal`, labels, and close-button labels to those surfaces.
+- Improved the slide-out card detail accessibility in [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx) by giving it dialog semantics, a real label target, and clearer close/title accessibility metadata.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Continue through the remaining phase 5 and phase 6 work in `CODEX-PLAN.md`, with the biggest remaining UX/accessibility target now being the replacement of the last `window.confirm` flows and the broader responsive/mobile polish.

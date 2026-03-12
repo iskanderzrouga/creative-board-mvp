@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
 import {
   STAGES,
@@ -125,6 +125,7 @@ export function CardDetailPanel({
   onCreateDriveFolder,
   onRequestDelete,
 }: CardDetailPanelProps) {
+  const titleId = useId()
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -168,19 +169,28 @@ export function CardDetailPanel({
 
   return (
     <>
-      <div className="panel-overlay" onClick={onClose} />
-      <aside className="slide-panel" aria-label="Card detail panel">
+      <div className="panel-overlay" aria-hidden="true" onClick={onClose} />
+      <aside
+        className="slide-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
             {canEdit ? (
               <input
+                id={titleId}
                 className="panel-title-input"
                 value={card.title}
+                aria-label="Card title"
                 onChange={(event) => onSave({ title: event.target.value })}
               />
             ) : (
-              <h2 className="panel-title">{card.title}</h2>
+              <h2 id={titleId} className="panel-title">
+                {card.title}
+              </h2>
             )}
             <div className="panel-pill-row">
               <span
@@ -215,7 +225,12 @@ export function CardDetailPanel({
                 Delete
               </button>
             ) : null}
-            <button type="button" className="close-icon-button" onClick={onClose}>
+            <button
+              type="button"
+              className="close-icon-button"
+              aria-label="Close card detail panel"
+              onClick={onClose}
+            >
               ×
             </button>
           </div>

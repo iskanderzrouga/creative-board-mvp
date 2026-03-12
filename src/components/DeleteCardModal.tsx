@@ -1,4 +1,6 @@
+import { useId, useRef } from 'react'
 import type { Card } from '../board'
+import { useModalAccessibility } from '../hooks/useModalAccessibility'
 
 interface DeleteCardModalProps {
   card: Card
@@ -7,17 +9,37 @@ interface DeleteCardModalProps {
 }
 
 export function DeleteCardModal({ card, onCancel, onConfirm }: DeleteCardModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const titleId = useId()
+  const descriptionId = useId()
+  useModalAccessibility(modalRef, true)
+
   return (
     <>
-      <div className="modal-overlay" onClick={onCancel} />
-      <div className="backward-move-modal delete-card-modal" role="dialog" aria-modal="true">
+      <div className="modal-overlay" aria-hidden="true" onClick={onCancel} />
+      <div
+        ref={modalRef}
+        className="backward-move-modal delete-card-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+      >
         <div className="quick-create-head">
-          <strong>{`Delete ${card.id}?`}</strong>
-          <button type="button" className="close-icon-button" onClick={onCancel}>
+          <strong id={titleId}>{`Delete ${card.id}?`}</strong>
+          <button
+            type="button"
+            className="close-icon-button"
+            aria-label="Close delete card dialog"
+            onClick={onCancel}
+          >
             ×
           </button>
         </div>
-        <p className="muted-copy">This will permanently remove the card from the board.</p>
+        <p id={descriptionId} className="muted-copy">
+          This will permanently remove the card from the board.
+        </p>
         <div className="quick-create-actions">
           <button type="button" className="ghost-button" onClick={onCancel}>
             Cancel

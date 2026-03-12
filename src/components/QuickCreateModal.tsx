@@ -1,9 +1,11 @@
+import { useId, useRef } from 'react'
 import {
   getTaskTypeGroups,
   type GlobalSettings,
   type Portfolio,
   type QuickCreateInput,
 } from '../board'
+import { useModalAccessibility } from '../hooks/useModalAccessibility'
 
 interface QuickCreateModalProps {
   portfolio: Portfolio
@@ -22,13 +24,29 @@ export function QuickCreateModal({
   onClose,
   onCreate,
 }: QuickCreateModalProps) {
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const titleId = useId()
+  useModalAccessibility(modalRef, true)
+
   return (
     <>
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="quick-create-modal">
+      <div className="modal-overlay" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={modalRef}
+        className="quick-create-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
         <div className="quick-create-head">
-          <strong>New Card</strong>
-          <button type="button" className="close-icon-button" onClick={onClose}>
+          <strong id={titleId}>New Card</strong>
+          <button
+            type="button"
+            className="close-icon-button"
+            aria-label="Close new card dialog"
+            onClick={onClose}
+          >
             ×
           </button>
         </div>
