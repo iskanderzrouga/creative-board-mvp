@@ -46,7 +46,8 @@ test('card detail panel paginates older comments and exposes section navigation'
   await expect(page.getByRole('button', { name: 'Details' })).toBeVisible()
   await page.getByRole('button', { name: 'Comments', exact: true }).click()
 
-  const commentInput = page.getByPlaceholder('Leave feedback or an update...')
+  const commentInput = page.locator('textarea[placeholder="Leave feedback or an update..."]')
+  await expect(commentInput).toBeVisible()
   for (let index = 1; index <= 11; index += 1) {
     await commentInput.fill(`Coverage comment ${index}`)
     await page.getByRole('button', { name: 'Post' }).click()
@@ -61,4 +62,14 @@ test('card detail panel paginates older comments and exposes section navigation'
 
   await page.getByRole('button', { name: 'Links' }).click()
   await expect(page.getByText('Frame.io')).toBeVisible()
+
+  await page.getByPlaceholder('Link label').fill('Invalid coverage link')
+  await page.getByPlaceholder('https://').fill('javascript:alert(1)')
+  await page.getByRole('button', { name: 'Add link' }).click()
+  await expect(page.getByText('Enter a full http:// or https:// link before saving.')).toBeVisible()
+  await expect(page.getByText('Invalid coverage link')).toHaveCount(0)
+
+  await page.getByPlaceholder('https://').fill('https://example.com/review')
+  await page.getByRole('button', { name: 'Add link' }).click()
+  await expect(page.getByText('Invalid coverage link')).toBeVisible()
 })

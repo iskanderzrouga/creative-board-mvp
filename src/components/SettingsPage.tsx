@@ -147,6 +147,67 @@ export function SettingsPage({
     return `B${state.portfolios.length}`
   }
 
+  function updateGeneralThreshold(
+    key: 'amberStart' | 'redStart',
+    rawValue: string,
+  ) {
+    const nextValue = Number(rawValue) || 1
+    const currentThresholds = state.settings.general.timeInStageThresholds
+    const nextThresholds = {
+      ...currentThresholds,
+      [key]: nextValue,
+    }
+
+    if (nextThresholds.amberStart >= nextThresholds.redStart) {
+      showToast('Amber warning must stay lower than the red warning threshold.', 'amber')
+      return
+    }
+
+    onStateChange((current) => ({
+      ...current,
+      settings: {
+        ...current.settings,
+        general: {
+          ...current.settings.general,
+          timeInStageThresholds: nextThresholds,
+        },
+      },
+    }))
+  }
+
+  function updateCapacityThreshold(
+    key: 'greenMax' | 'yellowMax' | 'redMin',
+    rawValue: string,
+  ) {
+    const nextValue = Number(rawValue) || 1
+    const currentThresholds = state.settings.capacity.utilizationThresholds
+    const isValidUpdate =
+      key === 'greenMax'
+        ? nextValue < currentThresholds.yellowMax
+        : key === 'yellowMax'
+          ? currentThresholds.greenMax < nextValue && nextValue < currentThresholds.redMin
+          : currentThresholds.yellowMax < nextValue
+
+    if (!isValidUpdate) {
+      showToast('Utilization thresholds must stay in order: green max < yellow max < red min.', 'amber')
+      return
+    }
+
+    onStateChange((current) => ({
+      ...current,
+      settings: {
+        ...current.settings,
+        capacity: {
+          ...current.settings.capacity,
+          utilizationThresholds: {
+            ...current.settings.capacity.utilizationThresholds,
+            [key]: nextValue,
+          },
+        },
+      },
+    }))
+  }
+
   function confirmSettingsDelete() {
     if (!pendingSettingsDelete) {
       return
@@ -301,21 +362,7 @@ export function SettingsPage({
                   type="number"
                   min={1}
                   value={state.settings.general.timeInStageThresholds.amberStart}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        general: {
-                          ...current.settings.general,
-                          timeInStageThresholds: {
-                            ...current.settings.general.timeInStageThresholds,
-                            amberStart: Number(event.target.value) || 1,
-                          },
-                        },
-                      },
-                    }))
-                  }
+                  onChange={(event) => updateGeneralThreshold('amberStart', event.target.value)}
                 />
               </label>
               <label>
@@ -324,21 +371,7 @@ export function SettingsPage({
                   type="number"
                   min={1}
                   value={state.settings.general.timeInStageThresholds.redStart}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        general: {
-                          ...current.settings.general,
-                          timeInStageThresholds: {
-                            ...current.settings.general.timeInStageThresholds,
-                            redStart: Number(event.target.value) || 1,
-                          },
-                        },
-                      },
-                    }))
-                  }
+                  onChange={(event) => updateGeneralThreshold('redStart', event.target.value)}
                 />
               </label>
               <label className="toggle-row">
@@ -935,21 +968,7 @@ export function SettingsPage({
                   type="number"
                   min={1}
                   value={state.settings.capacity.utilizationThresholds.greenMax}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        capacity: {
-                          ...current.settings.capacity,
-                          utilizationThresholds: {
-                            ...current.settings.capacity.utilizationThresholds,
-                            greenMax: Number(event.target.value) || 1,
-                          },
-                        },
-                      },
-                    }))
-                  }
+                  onChange={(event) => updateCapacityThreshold('greenMax', event.target.value)}
                 />
               </label>
               <label>
@@ -958,21 +977,7 @@ export function SettingsPage({
                   type="number"
                   min={1}
                   value={state.settings.capacity.utilizationThresholds.yellowMax}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        capacity: {
-                          ...current.settings.capacity,
-                          utilizationThresholds: {
-                            ...current.settings.capacity.utilizationThresholds,
-                            yellowMax: Number(event.target.value) || 1,
-                          },
-                        },
-                      },
-                    }))
-                  }
+                  onChange={(event) => updateCapacityThreshold('yellowMax', event.target.value)}
                 />
               </label>
               <label>
@@ -981,21 +986,7 @@ export function SettingsPage({
                   type="number"
                   min={1}
                   value={state.settings.capacity.utilizationThresholds.redMin}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        capacity: {
-                          ...current.settings.capacity,
-                          utilizationThresholds: {
-                            ...current.settings.capacity.utilizationThresholds,
-                            redMin: Number(event.target.value) || 1,
-                          },
-                        },
-                      },
-                    }))
-                  }
+                  onChange={(event) => updateCapacityThreshold('redMin', event.target.value)}
                 />
               </label>
             </div>

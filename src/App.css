@@ -113,11 +113,12 @@ button {
 .new-card-form input,
 .new-card-form select,
 .slide-panel input,
+.slide-panel textarea,
 .slide-panel select,
 .settings-row input:not([type='checkbox']),
 .settings-row select,
 .frameio-row input,
-.comment-composer input,
+.comment-composer textarea,
 .add-link-form input {
   border: 1px solid var(--line-input);
   border-radius: 8px;
@@ -1122,6 +1123,13 @@ button {
   padding: 0 10px;
 }
 
+.field-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger-text);
+  font-size: 12px;
+}
+
 .comment-card {
   padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
@@ -1151,9 +1159,10 @@ button {
   gap: 8px;
 }
 
-.comment-composer input {
-  min-height: 36px;
-  padding: 0 10px;
+.comment-composer textarea {
+  min-height: 72px;
+  padding: 10px 12px;
+  resize: vertical;
 }
 
 .muted-copy {

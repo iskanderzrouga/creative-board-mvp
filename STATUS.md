@@ -2,6 +2,33 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Validation And Detail Form Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added the remaining settings validation guardrails from `CODEX-PLAN.md` so invalid threshold combinations are rejected instead of being saved.
+- Enforced `amberStart < redStart` in the General settings tab with an inline toast when a manager tries to break the ordering.
+- Enforced ordered utilization thresholds in the Capacity tab so `green max < yellow max < red min` stays intact while still allowing recovery from the older equal-threshold seed values.
+- Updated the card detail panel so the high-churn text inputs for title, hook, angle, and audience now use local drafts and save on blur instead of pushing state on every keystroke.
+- Replaced the comment input with a multiline textarea and added add-link URL validation so only `http://` and `https://` links can be saved from the detail panel.
+- Expanded browser coverage in `e2e/settings.spec.ts` and `e2e/card-crud.spec.ts` to verify the new validation toasts, textarea composer, and invalid-link rejection flow.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- The remaining `CODEX-PLAN.md` form work is moving from permissive prototype behavior toward guarded production flows, and the test suite now covers those validation paths directly.
+
+Next step:
+
+- Continue the next unfinished `CODEX-PLAN.md` items, especially the remaining release-polish and rollout/regression checklist work.
+
 ### CODEX-PLAN Execution: Team Settings Control Pass
 
 Status: In progress

@@ -122,6 +122,15 @@ function getTypePillLabel(taskType: TaskType) {
   return `${taskType.icon} ${taskType.name}`
 }
 
+function isHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function CardDetailPanel({
   keyId,
   portfolio,
@@ -151,9 +160,14 @@ export function CardDetailPanel({
     comments: null,
     activity: null,
   })
+  const [titleDraft, setTitleDraft] = useState(card.title)
+  const [hookDraft, setHookDraft] = useState(card.hook)
+  const [angleDraft, setAngleDraft] = useState(card.angle)
+  const [audienceDraft, setAudienceDraft] = useState(card.audience)
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
+  const [linkErrorMessage, setLinkErrorMessage] = useState<string | null>(null)
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
@@ -200,6 +214,38 @@ export function CardDetailPanel({
     })
   }
 
+  function commitTextDraft(key: 'title' | 'hook' | 'angle' | 'audience', value: string) {
+    if (value === card[key]) {
+      return
+    }
+
+    onSave({ [key]: value } as Pick<Card, typeof key>)
+  }
+
+  function handleLinkSave() {
+    if (!linkLabel.trim() || !linkUrl.trim()) {
+      return
+    }
+
+    if (!isHttpUrl(linkUrl.trim())) {
+      setLinkErrorMessage('Enter a full http:// or https:// link before saving.')
+      return
+    }
+
+    onSave({
+      attachments: [
+        ...card.attachments,
+        {
+          label: linkLabel.trim(),
+          url: linkUrl.trim(),
+        },
+      ],
+    })
+    setLinkLabel('')
+    setLinkUrl('')
+    setLinkErrorMessage(null)
+  }
+
   function scrollToSection(sectionId: CardDetailSectionId) {
     const target = sectionRefs.current[sectionId]
     if (!target) {
@@ -235,9 +281,10 @@ export function CardDetailPanel({
               <input
                 id={titleId}
                 className="panel-title-input"
-                value={card.title}
+                value={titleDraft}
                 aria-label="Card title"
-                onChange={(event) => onSave({ title: event.target.value })}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={() => commitTextDraft('title', titleDraft)}
               />
             ) : (
               <h2 id={titleId} className="panel-title">
@@ -556,7 +603,11 @@ export function CardDetailPanel({
             <label>
               <span>Hook</span>
               {canEdit ? (
-                <input value={card.hook} onChange={(event) => onSave({ hook: event.target.value })} />
+                <input
+                  value={hookDraft}
+                  onChange={(event) => setHookDraft(event.target.value)}
+                  onBlur={() => commitTextDraft('hook', hookDraft)}
+                />
               ) : (
                 <strong>{card.hook || '—'}</strong>
               )}
@@ -564,7 +615,11 @@ export function CardDetailPanel({
             <label>
               <span>Angle</span>
               {canEdit ? (
-                <input value={card.angle} onChange={(event) => onSave({ angle: event.target.value })} />
+                <input
+                  value={angleDraft}
+                  onChange={(event) => setAngleDraft(event.target.value)}
+                  onBlur={() => commitTextDraft('angle', angleDraft)}
+                />
               ) : (
                 <strong>{card.angle || '—'}</strong>
               )}
@@ -572,7 +627,11 @@ export function CardDetailPanel({
             <label>
               <span>Audience</span>
               {canEdit ? (
-                <input value={card.audience} onChange={(event) => onSave({ audience: event.target.value })} />
+                <input
+                  value={audienceDraft}
+                  onChange={(event) => setAudienceDraft(event.target.value)}
+                  onBlur={() => commitTextDraft('audience', audienceDraft)}
+                />
               ) : (
                 <strong>{card.audience || '—'}</strong>
               )}
@@ -713,8 +772,8 @@ export function CardDetailPanel({
           className="panel-section"
         >
           <div className="section-rule-title">Links</div>
-          <div className="frameio-row">
-            <span className="frameio-label">Frame.io</span>
+            <div className="frameio-row">
+              <span className="frameio-label">Frame.io</span>
             {canEditFrameio ? (
               <input
                 value={card.frameioLink}
@@ -762,36 +821,37 @@ export function CardDetailPanel({
             <div className="add-link-form">
               <input
                 value={linkLabel}
-                onChange={(event) => setLinkLabel(event.target.value)}
+                onChange={(event) => {
+                  setLinkLabel(event.target.value)
+                  if (linkErrorMessage) {
+                    setLinkErrorMessage(null)
+                  }
+                }}
                 placeholder="Link label"
               />
               <input
                 value={linkUrl}
-                onChange={(event) => setLinkUrl(event.target.value)}
+                aria-invalid={Boolean(linkErrorMessage)}
+                onChange={(event) => {
+                  setLinkUrl(event.target.value)
+                  if (linkErrorMessage) {
+                    setLinkErrorMessage(null)
+                  }
+                }}
                 placeholder="https://"
               />
               <button
                 type="button"
                 className="primary-button"
-                onClick={() => {
-                  if (!linkLabel.trim() || !linkUrl.trim()) {
-                    return
-                  }
-                  onSave({
-                    attachments: [
-                      ...card.attachments,
-                      {
-                        label: linkLabel.trim(),
-                        url: linkUrl.trim(),
-                      },
-                    ],
-                  })
-                  setLinkLabel('')
-                  setLinkUrl('')
-                }}
+                onClick={handleLinkSave}
               >
                 Add link
               </button>
+              {linkErrorMessage ? (
+                <p className="field-error" role="alert">
+                  {linkErrorMessage}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -829,12 +889,13 @@ export function CardDetailPanel({
           ) : null}
           {canComment ? (
             <div className="comment-composer">
-              <input
+              <textarea
                 value={commentDraft}
                 onChange={(event) => setCommentDraft(event.target.value)}
                 placeholder="Leave feedback or an update..."
+                rows={2}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && commentDraft.trim()) {
+                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && commentDraft.trim()) {
                     onAddComment(commentDraft.trim())
                     setCommentDraft('')
                   }

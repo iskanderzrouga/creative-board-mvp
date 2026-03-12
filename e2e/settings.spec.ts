@@ -52,6 +52,21 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
 
+  const amberWarningInput = page.getByLabel('Amber warning at days')
+  await expect(amberWarningInput).toHaveValue('3')
+  await amberWarningInput.fill('6')
+  await expect(page.getByText('Amber warning must stay lower than the red warning threshold.')).toBeVisible()
+  await expect(amberWarningInput).toHaveValue('3')
+
+  await page.getByRole('button', { name: 'Capacity' }).click()
+  const redMinInput = page.getByLabel('Red min %')
+  await expect(redMinInput).toHaveValue('90')
+  await redMinInput.fill('89')
+  await expect(
+    page.getByText('Utilization thresholds must stay in order: green max < yellow max < red min.'),
+  ).toBeVisible()
+  await expect(redMinInput).toHaveValue('90')
+
   await page.getByRole('button', { name: 'Portfolios' }).click()
   await expect(page.getByLabel('BrandLab Drive webhook URL')).toBeVisible()
 
