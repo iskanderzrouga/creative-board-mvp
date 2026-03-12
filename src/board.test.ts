@@ -9,8 +9,15 @@ import {
   createCardFromQuickInput,
   createEmptyPortfolio,
   createSeedState,
+  getAgeToneFromMs,
   getBrandRemovalBlocker,
+  getBoardStats,
+  getCardScheduledHours,
+  getDefaultBoardFilters,
+  getDueStatus,
   getTeamMemberRemovalBlocker,
+  getVisibleCards,
+  getRevisionCount,
   moveCardInPortfolio,
   removeBrandFromPortfolio,
   removeCardFromPortfolio,
@@ -25,6 +32,12 @@ const MANAGER_VIEWER: ViewerContext = {
   mode: 'manager',
   editorName: null,
   memberRole: 'Manager',
+}
+
+const OBSERVER_VIEWER: ViewerContext = {
+  mode: 'observer',
+  editorName: null,
+  memberRole: null,
 }
 
 describe('board integrity helpers', () => {
@@ -527,11 +540,6 @@ describe('board integrity helpers', () => {
   it('requires manager permissions to add or remove cards', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]
-    const observerViewer: ViewerContext = {
-      mode: 'observer',
-      editorName: null,
-      memberRole: null,
-    }
     const candidate = createCardFromQuickInput(
       portfolio,
       state.settings,
@@ -544,8 +552,8 @@ describe('board integrity helpers', () => {
       '2026-03-12T14:15:00Z',
     )
 
-    expect(addCardToPortfolio(portfolio, candidate, observerViewer)).toBe(portfolio)
-    expect(removeCardFromPortfolio(portfolio, portfolio.cards[0]!.id, observerViewer)).toBe(portfolio)
+    expect(addCardToPortfolio(portfolio, candidate, OBSERVER_VIEWER)).toBe(portfolio)
+    expect(removeCardFromPortfolio(portfolio, portfolio.cards[0]!.id, OBSERVER_VIEWER)).toBe(portfolio)
   })
 
   it('validates quick-create input and falls back to a safe task type', () => {
@@ -634,5 +642,377 @@ describe('board integrity helpers', () => {
     const dashboard = buildDashboardData([tunedPortfolio], state.settings, new Date('2026-03-12T14:30:00Z').getTime())
 
     expect(dashboard.teamGrid.find((row) => row.editorName === sourceCard!.owner)?.workloadDays).toBe(2)
+  })
+
+  it('creates quick-create cards with trimmed titles, brand prefixes, and generated names', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const brand = portfolio.brands[0]
+
+    expect(brand).toBeTruthy()
+
+    const createdCard = createCardFromQuickInput(
+      portfolio,
+      state.settings,
+      {
+        title: '  Launch teaser cut  ',
+        brand: brand!.name,
+        taskTypeId: state.settings.taskLibrary[0]!.id,
+      },
+      'Naomi',
+      '2026-03-12T15:00:00Z',
+    )
+
+    expect(createdCard.title).toBe('Launch teaser cut')
+    expect(createdCard.id.startsWith(brand!.prefix)).toBe(true)
+    expect(createdCard.brand).toBe(brand!.name)
+    expect(createdCard.product).toBe(brand!.products[0])
+    expect(createdCard.stage).toBe('Backlog')
+    expect(createdCard.generatedSheetName).toContain(createdCard.id)
+    expect(createdCard.generatedAdName).toContain(createdCard.id)
+    expect(createdCard.activityLog[0]?.type).toBe('created')
+  })
+
+  it('adds backlog cards at the end of the lane and updates prefix counters', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const brand = portfolio.brands[0]
+    const backlogCount = portfolio.cards.filter(
+      (card) => card.stage === 'Backlog' && card.archivedAt === null,
+    ).length
+    const card = createCardFromQuickInput(
+      portfolio,
+      state.settings,
+      {
+        title: 'Backlog queue append',
+        brand: brand!.name,
+        taskTypeId: state.settings.taskLibrary[0]!.id,
+      },
+      'Naomi',
+      '2026-03-12T15:05:00Z',
+    )
+
+    const updatedPortfolio = addCardToPortfolio(portfolio, card, MANAGER_VIEWER)
+    const addedCard = updatedPortfolio.cards.find((item) => item.id === card.id)
+
+    expect(updatedPortfolio.cards).toHaveLength(portfolio.cards.length + 1)
+    expect(addedCard?.positionInSection).toBe(backlogCount)
+    expect(updatedPortfolio.lastIdPerPrefix[brand!.prefix]).toBeGreaterThan(
+      portfolio.lastIdPerPrefix[brand!.prefix] ?? 0,
+    )
+  })
+
+  it('removes cards when present and ignores missing card ids', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const targetCard = portfolio.cards[0]
+
+    expect(targetCard).toBeTruthy()
+
+    const updatedPortfolio = removeCardFromPortfolio(portfolio, targetCard!.id, MANAGER_VIEWER)
+
+    expect(updatedPortfolio.cards).toHaveLength(portfolio.cards.length - 1)
+    expect(updatedPortfolio.cards.some((card) => card.id === targetCard!.id)).toBe(false)
+    expect(removeCardFromPortfolio(portfolio, 'missing-card', MANAGER_VIEWER)).toBe(portfolio)
+  })
+
+  it('moves backlog cards forward with assignment, history, and activity entries', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const owner = portfolio.team.find((member) => member.role === 'Editor')?.name
+    const createdCard = createCardFromQuickInput(
+      portfolio,
+      state.settings,
+      {
+        title: 'Forward move coverage card',
+        brand: portfolio.brands[0]!.name,
+        taskTypeId: state.settings.taskLibrary[0]!.id,
+      },
+      'Naomi',
+      '2026-03-12T15:10:00Z',
+    )
+    const portfolioWithBacklogCard = addCardToPortfolio(portfolio, createdCard, MANAGER_VIEWER)
+
+    expect(owner).toBeTruthy()
+
+    const movedPortfolio = moveCardInPortfolio(
+      portfolioWithBacklogCard,
+      createdCard.id,
+      'Briefed',
+      owner!,
+      0,
+      '2026-03-12T15:15:00Z',
+      'Naomi',
+      MANAGER_VIEWER,
+    )
+    const movedCard = movedPortfolio.cards.find((card) => card.id === createdCard.id)
+
+    expect(movedCard?.stage).toBe('Briefed')
+    expect(movedCard?.owner).toBe(owner)
+    expect(movedCard?.dateAssigned).toBe('2026-03-12')
+    expect(movedCard?.stageHistory.at(-1)?.stage).toBe('Briefed')
+    expect(movedCard?.stageHistory.at(-1)?.enteredAt).toBe('2026-03-12T15:15:00Z')
+    expect(movedCard?.activityLog.some((entry) => entry.type === 'assigned')).toBe(true)
+    expect(movedCard?.activityLog.some((entry) => entry.type === 'moved-forward')).toBe(true)
+  })
+
+  it('records activity entries for blocked, unblocked, estimate, due date, archive, and unarchive updates', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const sourceCard = portfolio.cards[0]
+
+    expect(sourceCard).toBeTruthy()
+
+    const blockedPortfolio = applyCardUpdates(
+      portfolio,
+      state.settings,
+      sourceCard!.id,
+      {
+        blocked: {
+          reason: 'Waiting on brand feedback',
+          at: '2026-03-12T15:20:00Z',
+        },
+      },
+      'Naomi',
+      '2026-03-12T15:20:00Z',
+      MANAGER_VIEWER,
+    )
+    const unblockedPortfolio = applyCardUpdates(
+      blockedPortfolio,
+      state.settings,
+      sourceCard!.id,
+      { blocked: null },
+      'Naomi',
+      '2026-03-12T15:25:00Z',
+      MANAGER_VIEWER,
+    )
+    const estimatedPortfolio = applyCardUpdates(
+      unblockedPortfolio,
+      state.settings,
+      sourceCard!.id,
+      { estimatedHours: sourceCard!.estimatedHours + 2 },
+      'Naomi',
+      '2026-03-12T15:30:00Z',
+      MANAGER_VIEWER,
+    )
+    const dueDatedPortfolio = applyCardUpdates(
+      estimatedPortfolio,
+      state.settings,
+      sourceCard!.id,
+      { dueDate: '2026-03-15' },
+      'Naomi',
+      '2026-03-12T15:35:00Z',
+      MANAGER_VIEWER,
+    )
+    const archivedPortfolio = applyCardUpdates(
+      dueDatedPortfolio,
+      state.settings,
+      sourceCard!.id,
+      { archivedAt: '2026-03-12T15:40:00Z' },
+      'Naomi',
+      '2026-03-12T15:40:00Z',
+      MANAGER_VIEWER,
+    )
+    const restoredPortfolio = applyCardUpdates(
+      archivedPortfolio,
+      state.settings,
+      sourceCard!.id,
+      { archivedAt: null },
+      'Naomi',
+      '2026-03-12T15:45:00Z',
+      MANAGER_VIEWER,
+    )
+    const updatedCard = restoredPortfolio.cards.find((card) => card.id === sourceCard!.id)
+
+    expect(updatedCard?.activityLog.some((entry) => entry.type === 'blocked')).toBe(true)
+    expect(updatedCard?.activityLog.some((entry) => entry.type === 'unblocked')).toBe(true)
+    expect(updatedCard?.activityLog.filter((entry) => entry.type === 'effort').length).toBeGreaterThan(0)
+    expect(updatedCard?.activityLog.some((entry) => entry.type === 'due-date')).toBe(true)
+    expect(updatedCard?.activityLog.some((entry) => entry.type === 'archive')).toBe(true)
+    expect(updatedCard?.activityLog.some((entry) => entry.type === 'unarchive')).toBe(true)
+  })
+
+  it('filters visible cards across brand, owner, flags, editor visibility, and search', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const editorName = portfolio.team.find((member) => member.role === 'Editor')?.name
+    const nowMs = new Date('2026-03-12T16:00:00Z').getTime()
+    const tunedPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.slice(0, 4).map((card, index) => ({
+        ...card,
+        archivedAt: null,
+        brand: portfolio.brands[index % 2]!.name,
+        owner: index === 0 ? editorName ?? null : index === 1 ? 'Another Editor' : null,
+        stage: index === 2 ? ('Backlog' as const) : ('Briefed' as const),
+        blocked: index === 0 ? { reason: 'Blocked asset', at: '2026-03-10T09:00:00Z' } : null,
+        dueDate:
+          index === 0 ? '2026-03-10' : index === 1 ? '2026-03-13' : null,
+        stageEnteredAt:
+          index === 0 ? '2026-03-01T09:00:00Z' : '2026-03-11T09:00:00Z',
+        title: index === 3 ? 'Search target card' : card.title,
+        hook: index === 3 ? 'Search hook' : card.hook,
+        brief: index === 3 ? '<p>Unique findable brief</p>' : card.brief,
+      })),
+    }
+    const baseFilters = getDefaultBoardFilters(tunedPortfolio)
+
+    expect(
+      getVisibleCards(
+        tunedPortfolio,
+        MANAGER_VIEWER,
+        { ...baseFilters, brandNames: [portfolio.brands[0]!.name] },
+        state.settings,
+        nowMs,
+      ).every((card) => card.brand === portfolio.brands[0]!.name),
+    ).toBe(true)
+
+    const ownerFiltered = getVisibleCards(
+      tunedPortfolio,
+      MANAGER_VIEWER,
+      { ...baseFilters, ownerNames: ['Another Editor'] },
+      state.settings,
+      nowMs,
+    )
+    expect(
+      ownerFiltered.every((card) => card.stage === 'Backlog' || card.owner === 'Another Editor'),
+    ).toBe(true)
+
+    expect(
+      getVisibleCards(
+        tunedPortfolio,
+        MANAGER_VIEWER,
+        { ...baseFilters, blockedOnly: true },
+        state.settings,
+        nowMs,
+      ),
+    ).toHaveLength(1)
+    expect(
+      getVisibleCards(
+        tunedPortfolio,
+        MANAGER_VIEWER,
+        { ...baseFilters, overdueOnly: true },
+        state.settings,
+        nowMs,
+      ),
+    ).toHaveLength(1)
+    expect(
+      getVisibleCards(
+        tunedPortfolio,
+        MANAGER_VIEWER,
+        { ...baseFilters, stuckOnly: true },
+        state.settings,
+        nowMs,
+      ),
+    ).toHaveLength(1)
+
+    const editorViewer: ViewerContext = {
+      mode: 'editor',
+      editorName: editorName ?? null,
+      memberRole: 'Editor',
+    }
+    const editorVisible = getVisibleCards(
+      tunedPortfolio,
+      editorViewer,
+      baseFilters,
+      state.settings,
+      nowMs,
+    )
+    expect(editorVisible.every((card) => card.owner === editorName)).toBe(true)
+
+    expect(
+      getVisibleCards(
+        tunedPortfolio,
+        MANAGER_VIEWER,
+        { ...baseFilters, searchQuery: 'unique findable' },
+        state.settings,
+        nowMs,
+      ).map((card) => card.title),
+    ).toContain('Search target card')
+  })
+
+  it('builds dashboard summaries and board stats with expected counts', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const nowMs = new Date('2026-03-12T16:10:00Z').getTime()
+    const dashboard = buildDashboardData(state.portfolios, state.settings, nowMs)
+    const boardStats = getBoardStats(
+      portfolio,
+      MANAGER_VIEWER,
+      getDefaultBoardFilters(portfolio),
+      state.settings,
+      nowMs,
+    )
+    const expectedActiveCards = portfolio.cards.filter(
+      (card) => !card.archivedAt && card.stage !== 'Live',
+    ).length
+    const expectedBacklogCards = portfolio.cards.filter(
+      (card) => !card.archivedAt && card.stage === 'Backlog',
+    ).length
+
+    expect(dashboard.overviewCards[0]?.activeCards).toBe(expectedActiveCards)
+    expect(dashboard.funnel.find((bucket) => bucket.stage === 'Backlog')?.total).toBe(
+      expectedBacklogCards,
+    )
+    expect(boardStats.total).toBe(portfolio.cards.filter((card) => !card.archivedAt).length)
+    expect(
+      Object.values(boardStats.byStage).reduce((sum, value) => sum + value, 0),
+    ).toBe(boardStats.total)
+  })
+
+  it('coerces null, malformed, and already-valid app states safely', () => {
+    const seed = createSeedState()
+    const malformed = coerceAppState({
+      portfolios: [{ id: 'broken', name: 'Broken', brands: [], team: [], cards: [], webhookUrl: '' }],
+      settings: {
+        general: {
+          appName: 'Broken board',
+        },
+      },
+      activeRole: {
+        mode: 'invalid-role',
+      },
+    })
+    const preserved = coerceAppState(seed)
+
+    expect(coerceAppState(null).version).toBe(seed.version)
+    expect(malformed.portfolios[0]?.team.some((member) => member.role === 'Manager')).toBe(true)
+    expect(malformed.activeRole.mode).toBe(seed.activeRole.mode)
+    expect(preserved.activePortfolioId).toBe(seed.activePortfolioId)
+    expect(preserved.settings.general.appName).toBe(seed.settings.general.appName)
+  })
+
+  it('returns expected helper values for age, due status, revision count, and scheduled hours', () => {
+    const settings = createSeedState().settings
+    const card = {
+      ...createSeedState().portfolios[0]!.cards[0]!,
+      dueDate: '2026-03-12',
+      estimatedHours: 6,
+      revisionEstimatedHours: 3,
+      stageHistory: [
+        {
+          stage: 'Backlog' as const,
+          enteredAt: '2026-03-10T09:00:00Z',
+          exitedAt: '2026-03-11T09:00:00Z',
+          durationDays: 1,
+        },
+        {
+          stage: 'Briefed' as const,
+          enteredAt: '2026-03-11T09:00:00Z',
+          exitedAt: null,
+          durationDays: null,
+          movedBack: true,
+        },
+      ],
+    }
+
+    expect(getAgeToneFromMs(1 * 24 * 60 * 60 * 1000, settings)).toBe('fresh')
+    expect(getAgeToneFromMs(4 * 24 * 60 * 60 * 1000, settings)).toBe('aging')
+    expect(getAgeToneFromMs(6 * 24 * 60 * 60 * 1000, settings)).toBe('stuck')
+    expect(getDueStatus(card, new Date('2026-03-13T09:00:00Z').getTime())).toBe('overdue')
+    expect(getDueStatus({ ...card, dueDate: '2026-03-14' }, new Date('2026-03-13T09:00:00Z').getTime())).toBe('soon')
+    expect(getDueStatus({ ...card, dueDate: null }, new Date('2026-03-13T09:00:00Z').getTime())).toBe('none')
+    expect(getRevisionCount(card)).toBe(1)
+    expect(getCardScheduledHours(card)).toBe(3)
+    expect(getCardScheduledHours({ ...card, revisionEstimatedHours: null, estimatedHours: 0 })).toBe(1)
   })
 })

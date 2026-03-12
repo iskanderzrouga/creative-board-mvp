@@ -608,3 +608,32 @@ Verification:
 Next step:
 
 - Finish the remaining phase 8 and phase 9 plan items, starting with broader automated coverage for the newer card-detail and workflow behaviors, then continue into the release-polish and deployment phases.
+
+### CODEX-PLAN Execution: Phase 9 Coverage Pass 1
+
+Status: In progress
+
+What I learned:
+
+- The biggest testing gap was not infrastructure anymore; it was breadth. Coverage support and CI already existed, but too much of the workflow logic still depended on a relatively small set of happy-path tests.
+- `board.ts` was the right place to push first because it carries most of the product rules. Once those unit gaps were filled, the coverage target in `CODEX-PLAN.md` became reachable without inventing low-value tests around already-stable wiring code.
+- The first Playwright pass after adding more specs exposed a runner-level issue rather than an app bug: the local suite had become flaky simply because too many workers were competing for the same lightweight dev server. Tuning local worker count fixed that while still keeping multi-browser breadth in CI.
+
+What changed:
+
+- Expanded [`src/board.test.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.test.ts) with coverage for quick-create defaults, backlog insertion and prefix tracking, delete behavior, successful forward movement, activity-log update paths, visible-card filtering, dashboard summaries, state coercion, and core utility helpers.
+- Tightened [`vitest.config.ts`](/Users/iskanderzrouga/Desktop/Editors Board/vitest.config.ts) so coverage reporting is focused on [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts), which is the main business-logic target from the plan.
+- Added a new Playwright CRUD/detail-panel spec in [`e2e/card-crud.spec.ts`](/Users/iskanderzrouga/Desktop/Editors Board/e2e/card-crud.spec.ts) covering create-edit-delete flow plus the new card-detail comment pagination and section navigation behavior.
+- Updated [`playwright.config.ts`](/Users/iskanderzrouga/Desktop/Editors Board/playwright.config.ts) with HTML reporting, CI retries, and CI-only Firefox/WebKit projects, while keeping local runs stable with a lower worker count.
+- Updated [`.github/workflows/ci.yml`](/Users/iskanderzrouga/Desktop/Editors Board/.github/workflows/ci.yml) so CI installs Chromium, Firefox, and WebKit and uploads the Playwright HTML report as an artifact.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+- `npm run test:unit:coverage` passed with [`src/board.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.ts) at `60.86%` statement coverage.
+
+Next step:
+
+- Continue phase 9 from `CODEX-PLAN.md` with more end-to-end coverage around roles, filters, drag/drop, and settings workflows, then keep moving into the remaining release-polish and deployment work.
