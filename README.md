@@ -6,6 +6,7 @@ Editors Board is a production-minded creative operations board built with React,
 
 - Vercel-hosted frontend
 - Supabase email magic-link authentication
+- Supabase-backed workspace access control with role binding
 - One shared team workspace stored in `public.workspace_state`
 - Local browser storage kept as a resilience cache
 - Playwright smoke coverage for the board, analytics access, and authenticated shared-workspace sync
@@ -18,6 +19,7 @@ Set these in Vercel and, when needed, in a local `.env.local` file:
 VITE_SUPABASE_URL="https://your-project.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY="your-publishable-key"
 VITE_REMOTE_WORKSPACE_ID="primary"
+VITE_MAGIC_LINK_REDIRECT_URL="https://your-production-url.vercel.app"
 ```
 
 `VITE_SUPABASE_ANON_KEY` is supported only as a legacy fallback. Prefer `VITE_SUPABASE_PUBLISHABLE_KEY`.
@@ -49,6 +51,10 @@ The current production table is:
   - `workspace_id text primary key`
   - `state jsonb not null`
   - `updated_at timestamptz not null`
+- `public.workspace_access`
+  - `email text primary key`
+  - `role_mode text not null`
+  - `editor_name text null`
 
 The v1 contract is one shared authenticated workspace, usually `primary`.
 
@@ -66,7 +72,39 @@ Use the direct connection only from environments with working IPv6 support.
 
 ### Auth setup
 
-This release uses Supabase email magic links. Add your deployed Vercel origin to Supabase Auth redirect URLs before going live, or login links may fail to return users to the app correctly.
+This release uses Supabase email magic links with `shouldCreateUser: false`, so only invited Supabase Auth users can request a link.
+
+Before going live:
+
+- Set Supabase Auth `Site URL` to your production app origin, for example `https://creative-board-lake.vercel.app`.
+- Add the same production origin to Supabase Auth redirect URLs.
+- Add any local dev origins you still need, such as `http://localhost:5173`, `http://127.0.0.1:5173`, or your actual dev port.
+- Keep `VITE_MAGIC_LINK_REDIRECT_URL` aligned with the production origin so links never default back to an old localhost value in production.
+
+Every person who should enter the app now needs two things:
+
+1. A Supabase Auth user or invite in the project.
+2. A row in `public.workspace_access`.
+
+Example manager grant:
+
+```sql
+insert into public.workspace_access (email, role_mode)
+values ('manager@company.com', 'manager')
+on conflict (email) do update
+set role_mode = excluded.role_mode, editor_name = excluded.editor_name;
+```
+
+Example editor grant:
+
+```sql
+insert into public.workspace_access (email, role_mode, editor_name)
+values ('editor@company.com', 'editor', 'Daniel T')
+on conflict (email) do update
+set role_mode = excluded.role_mode, editor_name = excluded.editor_name;
+```
+
+Random authenticated users are no longer enough on their own. `workspace_state` now requires a matching `workspace_access` record through row-level security, and the app binds the visible role to that access record instead of letting the browser choose any role locally.
 
 ## Vercel deployment
 
@@ -76,6 +114,7 @@ This repo is already linked to a Vercel project. Typical release flow:
 npx vercel env add VITE_SUPABASE_URL production --value "https://your-project.supabase.co" --yes
 npx vercel env add VITE_SUPABASE_PUBLISHABLE_KEY production --value "your-publishable-key" --yes
 npx vercel env add VITE_REMOTE_WORKSPACE_ID production --value "primary" --yes
+npx vercel env add VITE_MAGIC_LINK_REDIRECT_URL production --value "https://your-production-url.vercel.app" --yes
 npx vercel --prod --yes
 ```
 
@@ -84,7 +123,8 @@ Repeat the env setup for `preview` and `development` if you want those environme
 ## Release checklist
 
 - Supabase migration applied
-- Supabase Auth enabled for team login
+- Supabase Auth enabled for invited team login
+- `workspace_access` rows created for approved users
 - Vercel env vars set
 - Supabase redirect URLs include the deployed Vercel origin
 - `npm run lint` passed

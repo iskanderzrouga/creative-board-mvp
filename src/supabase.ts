@@ -1,10 +1,12 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import type { RoleMode } from './board'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
 const supabasePublishableKey =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ??
   import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ??
   ''
+const magicLinkRedirectUrl = import.meta.env.VITE_MAGIC_LINK_REDIRECT_URL?.trim() ?? ''
 
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const E2E_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
@@ -15,6 +17,12 @@ export const REMOTE_WORKSPACE_ID =
 
 export interface AuthSessionState {
   email: string
+}
+
+export interface WorkspaceAccessState {
+  email: string
+  roleMode: RoleMode
+  editorName: string | null
 }
 
 let client: SupabaseClient | null | undefined
@@ -47,6 +55,14 @@ function getE2EAuthSession() {
 
   const email = window.localStorage.getItem(E2E_AUTH_EMAIL_KEY)?.trim()
   return email ? { email } : null
+}
+
+function getMagicLinkRedirectUrl() {
+  if (magicLinkRedirectUrl) {
+    return magicLinkRedirectUrl
+  }
+
+  return hasBrowser() ? window.location.origin : undefined
 }
 
 export function isSupabaseConfigured() {
@@ -148,7 +164,8 @@ export async function signInWithMagicLink(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email: normalizedEmail,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: getMagicLinkRedirectUrl(),
+      shouldCreateUser: false,
     },
   })
 
@@ -157,6 +174,45 @@ export async function signInWithMagicLink(email: string) {
   }
 
   return { deliveredInstantly: false }
+}
+
+export async function getWorkspaceAccess() {
+  if (isE2ESupabaseMode()) {
+    const session = getE2EAuthSession()
+    if (!session) {
+      return null
+    }
+
+    return {
+      email: session.email,
+      roleMode: 'manager' as const,
+      editorName: null,
+    } satisfies WorkspaceAccessState
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('workspace_access')
+    .select('email, role_mode, editor_name')
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  if (!data) {
+    return null
+  }
+
+  return {
+    email: data.email,
+    roleMode: data.role_mode as RoleMode,
+    editorName: data.editor_name ?? null,
+  } satisfies WorkspaceAccessState
 }
 
 export async function signOutOfSupabase() {

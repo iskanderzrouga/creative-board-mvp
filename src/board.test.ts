@@ -4,7 +4,11 @@ import {
   applyCardUpdates,
   createEmptyPortfolio,
   createSeedState,
+  getBrandRemovalBlocker,
+  getTeamMemberRemovalBlocker,
+  removeBrandFromPortfolio,
   removePortfolioFromAppState,
+  removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
 } from './board'
@@ -93,5 +97,56 @@ describe('board integrity helpers', () => {
     expect(
       updatedPortfolio.cards.find((card) => card.id === targetCard!.id)?.owner,
     ).toBe(targetCard!.owner)
+  })
+
+  it('keeps the product valid when a card is moved to a different brand', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const currentBrand = portfolio.brands[0]
+    const nextBrand = portfolio.brands[1]
+    const targetCard = portfolio.cards.find((card) => card.brand === currentBrand?.name)
+
+    expect(targetCard).toBeTruthy()
+    expect(nextBrand?.products[0]).toBeTruthy()
+
+    const updatedPortfolio = applyCardUpdates(
+      portfolio,
+      state.settings,
+      targetCard!.id,
+      { brand: nextBrand!.name },
+      'Naomi',
+      '2026-03-12T09:00:00Z',
+    )
+
+    const updatedCard = updatedPortfolio.cards.find((card) => card.id === targetCard!.id)
+    expect(updatedCard?.brand).toBe(nextBrand!.name)
+    expect(updatedCard?.product).toBe(nextBrand!.products[0])
+  })
+
+  it('blocks deleting a brand that is still linked to cards', () => {
+    const portfolio = createSeedState().portfolios[0]
+
+    expect(getBrandRemovalBlocker(portfolio, 0)).toContain('Reassign those cards first.')
+    expect(removeBrandFromPortfolio(portfolio, 0)).toBe(portfolio)
+  })
+
+  it('blocks removing a team member who still owns cards', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const memberIndex = portfolio.team.findIndex((member) =>
+      portfolio.cards.some((card) => card.owner === member.name),
+    )
+
+    expect(memberIndex).toBeGreaterThanOrEqual(0)
+    expect(getTeamMemberRemovalBlocker(portfolio, memberIndex)).toContain('Reassign those cards first.')
+    expect(removeTeamMemberFromPortfolio(portfolio, memberIndex)).toBe(portfolio)
+  })
+
+  it('blocks removing the last manager from a portfolio', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const managerIndex = portfolio.team.findIndex((member) => member.role === 'Manager')
+
+    expect(managerIndex).toBeGreaterThanOrEqual(0)
+    expect(getTeamMemberRemovalBlocker(portfolio, managerIndex)).toBe('At least one manager is required.')
+    expect(removeTeamMemberFromPortfolio(portfolio, managerIndex)).toBe(portfolio)
   })
 })

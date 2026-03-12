@@ -72,6 +72,10 @@ What changed so far:
 - Added a UI guardrail so only Backlog cards can be explicitly set to `Unassigned` from the detail panel.
 - Added a state-level safeguard in `applyCardUpdates` so grouped-stage cards keep their existing owner if a null owner update is attempted programmatically.
 - Added a unit test that locks this workflow rule in place.
+- Added product-to-brand repair in `applyCardUpdates` so moving a card to a different brand automatically snaps it to a valid product instead of leaving a broken brand/product combination behind.
+- Blocked brand deletion when it would remove the last brand or orphan linked cards, which previously could make cards disappear from the default board filters.
+- Blocked team-member deletion when cards are still assigned or when the action would remove the last manager, closing a settings path that could create broken ownership or leave the workspace without manager coverage.
+- Synced card products when brand product lists change in settings so cards do not quietly retain invalid product values after admin edits.
 
 Verification:
 
@@ -82,6 +86,50 @@ Verification:
 Next step:
 
 - Continue the phase by auditing drag-and-drop transitions, backward-move revision handling, blocked-card behavior, and auto-archive edge cases.
+
+### Phase 3: Configuration And Admin Reliability
+
+Status: In progress
+
+What I learned:
+
+- The first Supabase auth rollout still left a serious production gap: once signed in, a user could self-select `manager`, `editor`, or `observer` in the sidebar because that role switch was purely local UI state.
+- The bad magic-link behavior was split across two layers. The deployed frontend needed an explicit production redirect URL, and Supabase Auth still needs its dashboard `Site URL` and allowed redirect URLs aligned so links do not fall back to an old localhost value.
+- Production access needs two controls, not one: auth users must be invited, and database reads/writes must be limited to an approved access list.
+
+What changed:
+
+- Added a new migration at [`supabase/migrations/20260312033000_add_workspace_access_controls.sql`](/Users/iskanderzrouga/Desktop/Editors Board/supabase/migrations/20260312033000_add_workspace_access_controls.sql) that creates `public.workspace_access`, seeds `iskander@bluebrands.co` as a manager, and replaces the old `workspace_state` authenticated-only policies with allowlist-backed RLS.
+- Changed the Supabase login flow in [`src/supabase.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/supabase.ts) to use `shouldCreateUser: false`, fetch the signed-in user’s `workspace_access` record, and support an explicit `VITE_MAGIC_LINK_REDIRECT_URL`.
+- Bound the app’s visible role to the authenticated access record in [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx), added verification and access-denied gates, and disabled sidebar role switching outside the account’s approved role.
+- Updated [`.env.example`](/Users/iskanderzrouga/Desktop/Editors Board/.env.example) and [`README.md`](/Users/iskanderzrouga/Desktop/Editors Board/README.md) with the new redirect env var, invited-user login model, `workspace_access` setup, and the exact production redirect URL requirements.
+- Added the new `VITE_MAGIC_LINK_REDIRECT_URL` env var to the linked Vercel project and redeployed production.
+
+What failed along the way:
+
+- Running the two `vercel env add` commands in parallel triggered an `npx` cache collision in the local npm temp directory.
+- The first live request inspection only looked at the OTP request body, which hid the important part of the redirect behavior because Supabase sends the redirect URL as a query parameter instead.
+
+How those failures were resolved:
+
+- Re-ran the Vercel environment update sequentially, which added the production and development env vars cleanly.
+- Repeated the production browser interception and captured the full OTP request URL, which confirmed the deployed app now sends `redirect_to=https://creative-board-lake.vercel.app` and `create_user=false`.
+
+Verification:
+
+- `npx supabase db push --dry-run --db-url 'postgresql://postgres.zytmxgtrpwlnogtrmmgt:***@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require' --include-all --workdir .` passed and identified the new access-control migration.
+- `npx supabase db push --db-url 'postgresql://postgres.zytmxgtrpwlnogtrmmgt:***@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require' --include-all --workdir .` passed and applied the access-control migration to the live project.
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+- `npx vercel env add VITE_MAGIC_LINK_REDIRECT_URL production --value 'https://creative-board-lake.vercel.app' --yes` passed.
+- `npx vercel env add VITE_MAGIC_LINK_REDIRECT_URL development --value 'https://creative-board-lake.vercel.app' --yes` passed.
+- `npx vercel --prod --yes` passed and re-aliased production to [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app).
+- A live browser interception against production confirmed the auth request now targets `https://zytmxgtrpwlnogtrmmgt.supabase.co/auth/v1/otp?redirect_to=https%3A%2F%2Fcreative-board-lake.vercel.app` with `create_user=false`.
+
+Next step:
+
+- In Supabase Auth URL configuration, set the production `Site URL` and allowed redirect URLs to [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app) plus the local dev origins you still use, then continue the roadmap with deeper drag/drop and archival workflow auditing.
 
 ### Supabase Production Rollout
 

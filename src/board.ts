@@ -990,6 +990,37 @@ export function getBrandByName(portfolio: Portfolio, brandName: string) {
   return portfolio.brands.find((brand) => brand.name === brandName) ?? null
 }
 
+function getPrimaryProductForBrand(brand: Brand | null) {
+  return brand?.products[0] ?? ''
+}
+
+export function syncCardProductWithBrand(portfolio: Portfolio, card: Card) {
+  const brand = getBrandByName(portfolio, card.brand)
+  if (!brand) {
+    return card
+  }
+
+  if (brand.products.length === 0) {
+    return card.product === '' ? card : syncGeneratedNames({ ...card, product: '' })
+  }
+
+  if (brand.products.includes(card.product)) {
+    return card
+  }
+
+  return syncGeneratedNames({
+    ...card,
+    product: getPrimaryProductForBrand(brand),
+  })
+}
+
+export function syncPortfolioCardProducts(portfolio: Portfolio) {
+  return {
+    ...portfolio,
+    cards: portfolio.cards.map((card) => syncCardProductWithBrand(portfolio, card)),
+  }
+}
+
 export function getBrandColor(portfolio: Portfolio, brandName: string) {
   return getBrandByName(portfolio, brandName)?.color ?? '#94a3b8'
 }
@@ -2026,6 +2057,41 @@ export function renameBrandInPortfolio(
   }
 }
 
+export function getBrandRemovalBlocker(portfolio: Portfolio, brandIndex: number) {
+  const brand = portfolio.brands[brandIndex]
+  if (!brand) {
+    return 'That brand no longer exists.'
+  }
+
+  if (portfolio.brands.length <= 1) {
+    return 'At least one brand is required.'
+  }
+
+  const linkedCards = portfolio.cards.filter((card) => card.brand === brand.name).length
+  if (linkedCards > 0) {
+    return `${brand.name} is still linked to ${linkedCards} ${linkedCards === 1 ? 'card' : 'cards'}. Reassign those cards first.`
+  }
+
+  return null
+}
+
+export function removeBrandFromPortfolio(portfolio: Portfolio, brandIndex: number) {
+  const brand = portfolio.brands[brandIndex]
+  if (!brand || getBrandRemovalBlocker(portfolio, brandIndex)) {
+    return portfolio
+  }
+
+  const remainingLastIdPerPrefix = Object.fromEntries(
+    Object.entries(portfolio.lastIdPerPrefix).filter(([prefix]) => prefix !== brand.prefix),
+  )
+
+  return {
+    ...portfolio,
+    brands: portfolio.brands.filter((_, index) => index !== brandIndex),
+    lastIdPerPrefix: remainingLastIdPerPrefix,
+  }
+}
+
 export function renameTeamMemberInPortfolio(
   portfolio: Portfolio,
   memberIndex: number,
@@ -2044,6 +2110,38 @@ export function renameTeamMemberInPortfolio(
     cards: portfolio.cards.map((card) =>
       card.owner === previousMember.name ? { ...card, owner: nextName } : card,
     ),
+  }
+}
+
+export function getTeamMemberRemovalBlocker(portfolio: Portfolio, memberIndex: number) {
+  const member = portfolio.team[memberIndex]
+  if (!member) {
+    return 'That team member no longer exists.'
+  }
+
+  if (
+    isManagerRole(member.role) &&
+    portfolio.team.filter((item, index) => index !== memberIndex && isManagerRole(item.role)).length === 0
+  ) {
+    return 'At least one manager is required.'
+  }
+
+  const assignedCards = portfolio.cards.filter((card) => card.owner === member.name).length
+  if (assignedCards > 0) {
+    return `${member.name} still owns ${assignedCards} ${assignedCards === 1 ? 'card' : 'cards'}. Reassign those cards first.`
+  }
+
+  return null
+}
+
+export function removeTeamMemberFromPortfolio(portfolio: Portfolio, memberIndex: number) {
+  if (getTeamMemberRemovalBlocker(portfolio, memberIndex)) {
+    return portfolio
+  }
+
+  return {
+    ...portfolio,
+    team: portfolio.team.filter((_, index) => index !== memberIndex),
   }
 }
 
@@ -2995,6 +3093,7 @@ export function applyCardUpdates(
         ...card,
         ...normalizedUpdates,
       })
+      nextCard = syncCardProductWithBrand(portfolio, nextCard)
 
       if (
         normalizedOwner !== undefined &&

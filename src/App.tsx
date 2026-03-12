@@ -35,11 +35,13 @@ import {
 } from './remoteAppState'
 import {
   getAuthSession,
+  getWorkspaceAccess,
   isSupabaseConfigured,
   onAuthStateChange,
   signInWithMagicLink,
   signOutOfSupabase,
   type AuthSessionState,
+  type WorkspaceAccessState,
 } from './supabase'
 import {
   CARD_FIELDS,
@@ -82,8 +84,10 @@ import {
   getRevisionCount,
   isLaunchOpsRole,
   getCardScheduledHours,
+  getBrandRemovalBlocker,
   getTaskTypeById,
   getTaskTypeGroups,
+  getTeamMemberRemovalBlocker,
   getTeamMemberById,
   getTeamMemberByName,
   getVisibleCards,
@@ -92,10 +96,13 @@ import {
   loadAppState,
   moveCardInPortfolio,
   persistAppState,
+  removeBrandFromPortfolio,
   removePortfolioFromAppState,
   removeCardFromPortfolio,
+  removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
+  syncPortfolioCardProducts,
   type ActiveRole,
   type AppPage,
   type AppState,
@@ -127,6 +134,7 @@ interface ToastState {
 }
 
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
+type AccessStatus = 'disabled' | 'checking' | 'granted' | 'denied' | 'error'
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
 
 interface CopyState {
@@ -198,6 +206,7 @@ interface SidebarProps {
   portfolio: Portfolio | null
   portfolios: Portfolio[]
   role: ActiveRole
+  lockedRole: ActiveRole | null
   editorOptions: TeamMember[]
   editorMenuOpen: boolean
   attention: ReturnType<typeof getAttentionSummary>
@@ -314,22 +323,44 @@ function getRoleActorName(role: ActiveRole, portfolio: Portfolio | null) {
   return portfolio ? getTeamMemberById(portfolio, role.editorId)?.name ?? 'Editor' : 'Editor'
 }
 
-function getCurrentPage(state: AppState) {
-  if (state.activePage === 'analytics' && state.activeRole.mode !== 'observer') {
+function getAllowedPageForRole(page: AppPage, roleMode: RoleMode) {
+  if (page === 'analytics' && roleMode !== 'observer') {
     return 'board' as AppPage
   }
-  if (state.activePage === 'settings' && state.activeRole.mode !== 'manager') {
+  if (page === 'settings' && roleMode !== 'manager') {
     return 'board' as AppPage
   }
   if (
-    state.activePage === 'workload' &&
-    state.activeRole.mode !== 'manager' &&
-    state.activeRole.mode !== 'observer'
+    page === 'workload' &&
+    roleMode !== 'manager' &&
+    roleMode !== 'observer'
   ) {
     return 'board' as AppPage
   }
 
-  return state.activePage
+  return page
+}
+
+function getRoleFromWorkspaceAccess(access: WorkspaceAccessState | null, currentRole: ActiveRole) {
+  if (!access) {
+    return currentRole
+  }
+
+  if (access.roleMode === 'editor') {
+    return {
+      mode: 'editor' as const,
+      editorId: currentRole.editorId,
+    }
+  }
+
+  return {
+    mode: access.roleMode,
+    editorId: currentRole.editorId,
+  }
+}
+
+function getCurrentPage(state: AppState) {
+  return getAllowedPageForRole(state.activePage, state.activeRole.mode)
 }
 
 function getPageLabel(page: AppPage) {
@@ -719,6 +750,7 @@ function Sidebar({
   portfolio,
   portfolios,
   role,
+  lockedRole,
   editorOptions,
   editorMenuOpen,
   attention,
@@ -728,6 +760,10 @@ function Sidebar({
   onRoleChange,
   onToggleEditorMenu,
 }: SidebarProps) {
+  const canChooseManager = !lockedRole || lockedRole.mode === 'manager'
+  const canChooseEditor = !lockedRole || lockedRole.mode === 'editor'
+  const canChooseObserver = !lockedRole || lockedRole.mode === 'observer'
+  const lockedEditorId = lockedRole?.mode === 'editor' ? lockedRole.editorId : null
   const navItems: Array<{
     page: AppPage
     disabled: boolean
@@ -806,6 +842,8 @@ function Sidebar({
             type="button"
             className={`role-segment ${role.mode === 'manager' ? 'is-active' : ''}`}
             onClick={() => onRoleChange({ mode: 'manager', editorId: role.editorId })}
+            disabled={!canChooseManager}
+            title={!canChooseManager ? 'Your account access is fixed by the workspace admin.' : undefined}
           >
             {expanded ? 'Manager' : 'M'}
           </button>
@@ -813,7 +851,19 @@ function Sidebar({
             <button
               type="button"
               className={`role-segment ${role.mode === 'editor' ? 'is-active' : ''}`}
-              onClick={onToggleEditorMenu}
+              onClick={() => {
+                if (canChooseEditor && !lockedEditorId) {
+                  onToggleEditorMenu()
+                }
+              }}
+              disabled={!canChooseEditor || Boolean(lockedEditorId)}
+              title={
+                !canChooseEditor
+                  ? 'Your account access is fixed by the workspace admin.'
+                  : lockedEditorId
+                    ? 'Your editor lane is assigned by the workspace admin.'
+                    : undefined
+              }
             >
               {expanded
                 ? role.mode === 'editor'
@@ -822,9 +872,9 @@ function Sidebar({
                     }`
                   : 'Editor'
                 : 'E'}
-              {expanded ? <span className="segment-caret">▾</span> : null}
+              {expanded && !lockedEditorId ? <span className="segment-caret">▾</span> : null}
             </button>
-            {editorMenuOpen ? (
+            {editorMenuOpen && !lockedEditorId ? (
               <div className="sidebar-editor-menu">
                 {editorOptions.map((member) => (
                   <button
@@ -843,6 +893,8 @@ function Sidebar({
             type="button"
             className={`role-segment ${role.mode === 'observer' ? 'is-active' : ''}`}
             onClick={() => onRoleChange({ mode: 'observer', editorId: role.editorId })}
+            disabled={!canChooseObserver}
+            title={!canChooseObserver ? 'Your account access is fixed by the workspace admin.' : undefined}
           >
             {expanded ? 'Observer' : 'O'}
           </button>
@@ -945,9 +997,9 @@ function AuthGate({
           <span className="auth-kicker">Editors Board</span>
           <h1>Team access</h1>
           <p>
-            Sign in with your work email to open the shared live workspace. The board
-            stays simple, but the saved state now lives in Supabase instead of only in
-            this browser.
+            Sign in with an approved work email to open the shared live workspace. The
+            board stays simple, but the saved state now lives in Supabase instead of
+            only in this browser.
           </p>
         </div>
 
@@ -990,6 +1042,42 @@ function AuthGate({
             {errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function AccessGate({
+  email,
+  message,
+  onSignOut,
+}: {
+  email: string
+  message: string
+  onSignOut: () => void
+}) {
+  return (
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="auth-copy">
+          <span className="auth-kicker">Editors Board</span>
+          <h1>Access restricted</h1>
+          <p>
+            This workspace is limited to approved team accounts. Your sign-in worked,
+            but this email does not have permission to open the shared board yet.
+          </p>
+        </div>
+
+        <div className="auth-status-card">
+          <strong>{email}</strong>
+          <span>{message}</span>
+        </div>
+
+        <div className="auth-actions">
+          <button type="button" className="ghost-button" onClick={onSignOut}>
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -2316,10 +2404,6 @@ function SettingsPage({
     return `B${state.portfolios.length}`
   }
 
-  function getMemberCards(portfolio: Portfolio, memberName: string) {
-    return portfolio.cards.filter((card) => card.owner === memberName)
-  }
-
   return (
     <div className="settings-page">
       <div className="settings-page-sidebar">
@@ -2579,20 +2663,22 @@ function SettingsPage({
                             <input
                               value={brand.products.join(', ')}
                               onChange={(event) =>
-                                updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                                  ...currentPortfolio,
-                                  brands: currentPortfolio.brands.map((item, index) =>
-                                    index === brandIndex
-                                      ? {
-                                          ...item,
-                                          products: event.target.value
-                                            .split(',')
-                                            .map((product) => product.trim())
-                                            .filter(Boolean),
-                                        }
-                                      : item,
-                                  ),
-                                }))
+                                updatePortfolio(portfolio.id, (currentPortfolio) =>
+                                  syncPortfolioCardProducts({
+                                    ...currentPortfolio,
+                                    brands: currentPortfolio.brands.map((item, index) =>
+                                      index === brandIndex
+                                        ? {
+                                            ...item,
+                                            products: event.target.value
+                                              .split(',')
+                                              .map((product) => product.trim())
+                                              .filter(Boolean),
+                                          }
+                                        : item,
+                                    ),
+                                  }),
+                                )
                               }
                             />
                             <input
@@ -2611,12 +2697,19 @@ function SettingsPage({
                             <button
                               type="button"
                               className="clear-link"
-                              onClick={() =>
-                                updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                                  ...currentPortfolio,
-                                  brands: currentPortfolio.brands.filter((_, index) => index !== brandIndex),
-                                }))
-                              }
+                              onClick={() => {
+                                const blocker = getBrandRemovalBlocker(portfolio, brandIndex)
+                                if (blocker) {
+                                  showToast(blocker, 'amber')
+                                  return
+                                }
+                                if (!window.confirm(`Delete ${brand.name}?`)) {
+                                  return
+                                }
+                                updatePortfolio(portfolio.id, (currentPortfolio) =>
+                                  removeBrandFromPortfolio(currentPortfolio, brandIndex),
+                                )
+                              }}
                             >
                               Delete
                             </button>
@@ -2739,14 +2832,27 @@ function SettingsPage({
                   />
                   <input
                     value={member.role}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const nextRole = event.target.value
+                      const removingLastManager =
+                        member.role.toLowerCase().includes('manager') &&
+                        !nextRole.toLowerCase().includes('manager') &&
+                        settingsPortfolio.team.filter(
+                          (item, index) => index !== memberIndex && item.role.toLowerCase().includes('manager'),
+                        ).length === 0
+
+                      if (removingLastManager) {
+                        showToast('At least one manager is required.', 'amber')
+                        return
+                      }
+
                       updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
                         ...currentPortfolio,
                         team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex ? { ...item, role: event.target.value } : item,
+                          index === memberIndex ? { ...item, role: nextRole } : item,
                         ),
                       }))
-                    }
+                    }}
                   />
                   <input
                     type="number"
@@ -2860,22 +2966,17 @@ function SettingsPage({
                     type="button"
                     className="clear-link danger-link"
                     onClick={() => {
-                      const assignedCards = getMemberCards(settingsPortfolio, member.name)
-                      if (assignedCards.length > 0) {
-                        const confirmed = window.confirm(
-                          `${member.name} has ${assignedCards.length} assigned cards. Remove them and unassign those cards?`,
-                        )
-                        if (!confirmed) {
-                          return
-                        }
+                      const blocker = getTeamMemberRemovalBlocker(settingsPortfolio, memberIndex)
+                      if (blocker) {
+                        showToast(blocker, 'amber')
+                        return
                       }
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.filter((_, index) => index !== memberIndex),
-                        cards: currentPortfolio.cards.map((card) =>
-                          card.owner === member.name ? { ...card, owner: null } : card,
-                        ),
-                      }))
+                      if (!window.confirm(`Delete ${member.name}?`)) {
+                        return
+                      }
+                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) =>
+                        removeTeamMemberFromPortfolio(currentPortfolio, memberIndex),
+                      )
                     }}
                   >
                     Delete
@@ -3536,6 +3637,9 @@ function App() {
   const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null)
   const [authStatus, setAuthStatus] = useState<AuthStatus>(authEnabled ? 'checking' : 'disabled')
   const [authSession, setAuthSession] = useState<AuthSessionState | null>(null)
+  const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccessState | null>(null)
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>(authEnabled ? 'checking' : 'disabled')
+  const [accessErrorMessage, setAccessErrorMessage] = useState<string | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPending, setLoginPending] = useState(false)
   const [loginInfoMessage, setLoginInfoMessage] = useState<string | null>(null)
@@ -3643,6 +3747,20 @@ function App() {
     activePortfolio && dragCardId
       ? activePortfolio.cards.find((card) => card.id === dragCardId) ?? null
       : null
+  const lockedRole =
+    workspaceAccess?.roleMode === 'editor'
+      ? {
+          mode: 'editor' as const,
+          editorId:
+            activePortfolio?.team.find((member) => member.name === workspaceAccess.editorName)?.id ??
+            null,
+        }
+      : workspaceAccess
+        ? {
+            mode: workspaceAccess.roleMode,
+            editorId: state.activeRole.editorId,
+          }
+        : null
   const headerUtilityContent =
     authStatus === 'signed-in' && authSession ? (
       <div className="session-toolbar">
@@ -3694,6 +3812,7 @@ function App() {
 
   useEffect(() => {
     if (!authEnabled) {
+      setAccessStatus('disabled')
       return
     }
 
@@ -3707,6 +3826,11 @@ function App() {
 
         setAuthSession(session)
         setAuthStatus(session ? 'signed-in' : 'signed-out')
+        if (!session) {
+          setWorkspaceAccess(null)
+          setAccessErrorMessage(null)
+          setAccessStatus('checking')
+        }
       })
       .catch(() => {
         if (cancelled) {
@@ -3715,6 +3839,9 @@ function App() {
 
         setAuthSession(null)
         setAuthStatus('signed-out')
+        setWorkspaceAccess(null)
+        setAccessErrorMessage(null)
+        setAccessStatus('checking')
       })
 
     const unsubscribe = onAuthStateChange((session) => {
@@ -3730,6 +3857,9 @@ function App() {
         setLoginInfoMessage(null)
         setLoginErrorMessage(null)
       } else {
+        setWorkspaceAccess(null)
+        setAccessErrorMessage(null)
+        setAccessStatus('checking')
         remoteHydratedRef.current = false
         setSyncStatus('loading')
         setLastSyncedAt(null)
@@ -3743,7 +3873,99 @@ function App() {
   }, [authEnabled])
 
   useEffect(() => {
-    if (!authEnabled || authStatus !== 'signed-in') {
+    if (!authEnabled) {
+      return
+    }
+
+    if (authStatus !== 'signed-in' || !authSession) {
+      if (authStatus === 'signed-out') {
+        setWorkspaceAccess(null)
+        setAccessErrorMessage(null)
+        setAccessStatus('checking')
+      }
+      return
+    }
+
+    let cancelled = false
+    setAccessStatus('checking')
+    setAccessErrorMessage(null)
+
+    void getWorkspaceAccess()
+      .then((access) => {
+        if (cancelled) {
+          return
+        }
+
+        setWorkspaceAccess(access)
+
+        if (!access) {
+          setAccessStatus('denied')
+          setAccessErrorMessage(
+            `${authSession.email} is not on the approved workspace access list yet.`,
+          )
+          return
+        }
+
+        if (access.roleMode === 'editor' && !access.editorName) {
+          setAccessStatus('error')
+          setAccessErrorMessage('This account is missing its editor assignment. Add an editor name in workspace_access.')
+          return
+        }
+
+        setAccessStatus('granted')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+
+        setWorkspaceAccess(null)
+        setAccessStatus('error')
+        setAccessErrorMessage('Workspace access could not be verified. Check Supabase policies and your session.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [authEnabled, authSession, authStatus])
+
+  useEffect(() => {
+    if (!workspaceAccess) {
+      return
+    }
+
+    setState((current) => {
+      const nextRoleBase = getRoleFromWorkspaceAccess(workspaceAccess, current.activeRole)
+      const currentPortfolio = getActivePortfolio(current)
+      const resolvedEditorId =
+        workspaceAccess.roleMode === 'editor'
+          ? currentPortfolio?.team.find((member) => member.name === workspaceAccess.editorName)?.id ?? null
+          : nextRoleBase.editorId
+      const nextRole: ActiveRole = {
+        mode: nextRoleBase.mode,
+        editorId: resolvedEditorId,
+      }
+      const nextPage = getAllowedPageForRole(current.activePage, nextRole.mode)
+
+      if (
+        current.activeRole.mode === nextRole.mode &&
+        current.activeRole.editorId === nextRole.editorId &&
+        current.activePage === nextPage
+      ) {
+        return current
+      }
+
+      return {
+        ...current,
+        activeRole: nextRole,
+        activePage: nextPage,
+      }
+    })
+    setEditorMenuOpen(false)
+  }, [state.activePortfolioId, state.portfolios, workspaceAccess])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted') {
       if (!authEnabled) {
         setSyncStatus('local')
       }
@@ -3792,10 +4014,10 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [authEnabled, authStatus, remoteSyncErrorShown])
+  }, [accessStatus, authEnabled, authStatus, remoteSyncErrorShown])
 
   useEffect(() => {
-    if (!authEnabled || authStatus !== 'signed-in' || !remoteHydratedRef.current) {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !remoteHydratedRef.current) {
       return
     }
 
@@ -3829,7 +4051,7 @@ function App() {
         window.clearTimeout(remoteSaveTimerRef.current)
       }
     }
-  }, [authEnabled, authStatus, remoteSyncErrorShown, state])
+  }, [accessStatus, authEnabled, authStatus, remoteSyncErrorShown, state])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -3964,11 +4186,17 @@ function App() {
       setLoginInfoMessage(
         result.deliveredInstantly
           ? 'Signed in. Loading the shared workspace...'
-          : 'Magic link sent. Open it from your inbox to enter the shared workspace.',
+          : 'Magic link sent to the approved account. Open it from your inbox to enter the shared workspace.',
       )
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not send the magic link.'
+      const normalizedMessage = message.toLowerCase()
       setLoginErrorMessage(
-        error instanceof Error ? error.message : 'Could not send the magic link.',
+        normalizedMessage.includes('user not found') ||
+          normalizedMessage.includes('signup') ||
+          normalizedMessage.includes('sign up')
+          ? 'This email is not invited yet. Add it in Supabase Auth and workspace_access before sending a magic link.'
+          : message,
       )
     } finally {
       setLoginPending(false)
@@ -4770,6 +4998,48 @@ function App() {
     )
   }
 
+  if (authEnabled && authStatus === 'signed-in' && accessStatus === 'checking' && authSession) {
+    return (
+      <>
+        <div className="auth-shell">
+          <div className="auth-card">
+            <div className="auth-copy">
+              <span className="auth-kicker">Editors Board</span>
+              <h1>Verifying access</h1>
+              <p>Checking your approved workspace permissions before loading the shared board.</p>
+            </div>
+            <div className="auth-status-card">
+              <strong>{authSession.email}</strong>
+              <span>Confirming your role and workspace access...</span>
+            </div>
+          </div>
+        </div>
+        {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+      </>
+    )
+  }
+
+  if (
+    authEnabled &&
+    authStatus === 'signed-in' &&
+    accessStatus !== 'granted' &&
+    authSession
+  ) {
+    return (
+      <>
+        <AccessGate
+          email={authSession.email}
+          message={
+            accessErrorMessage ??
+            'This account is not approved for the shared workspace yet.'
+          }
+          onSignOut={handleSignOut}
+        />
+        {toast ? <div className={`toast tone-${toast.tone}`}>{toast.message}</div> : null}
+      </>
+    )
+  }
+
   return (
     <div className="app-frame">
       <div
@@ -4783,6 +5053,7 @@ function App() {
           portfolio={activePortfolio}
           portfolios={state.portfolios}
           role={state.activeRole}
+          lockedRole={lockedRole}
           editorOptions={editorOptions}
           editorMenuOpen={editorMenuOpen}
           attention={attention}
