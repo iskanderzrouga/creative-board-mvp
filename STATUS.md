@@ -133,6 +133,49 @@ Verification:
 - A live browser interception against production confirmed the auth request now targets `https://zytmxgtrpwlnogtrmmgt.supabase.co/auth/v1/otp?redirect_to=https%3A%2F%2Fcreative-board-lake.vercel.app` with `create_user=false`.
 - A separate live browser check mocked a `429` response from Supabase Auth and confirmed production now shows the friendlier rate-limit message instead of a generic failure, captured in `artifacts/phase-2/production-rate-limit.png`.
 
+### Phase 3: Team Onboarding And Workspace Access
+
+Status: In progress
+
+What I learned:
+
+- The app still had a major “demo leftover” gap: managers could edit operational team lanes, but there was no first-class product flow to approve actual workspace users by email.
+- Keeping `shouldCreateUser: false` made access safer, but it also meant approved teammates could not create their account from the real app without manual Supabase admin work.
+- The missing production model was: manager-approved email allowlist in the app, then first-login account creation through the login screen.
+
+What changed:
+
+- Added a new Supabase migration at [`supabase/migrations/20260312070000_enable_manager_workspace_access_management.sql`](/Users/iskanderzrouga/Desktop/Editors Board/supabase/migrations/20260312070000_enable_manager_workspace_access_management.sql) with:
+  - `public.current_user_is_workspace_manager()`
+  - `public.is_workspace_email_allowed(candidate_email text)`
+  - manager RLS policies for listing, inserting, updating, and deleting `workspace_access`
+- Updated [`src/supabase.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/supabase.ts) so login first checks the approved-email allowlist, then allows first-time account creation for approved emails through `signInWithOtp`.
+- Added manager-facing workspace access management in [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) under `Settings` → `Team & Roles`, including add/edit/delete controls for approved emails, role mode, and linked editor assignment.
+- Updated [`README.md`](/Users/iskanderzrouga/Desktop/Editors Board/README.md) so the live onboarding flow is documented as: manager adds approved email, teammate uses the shared login page, first login creates the account.
+
+What failed along the way:
+
+- The first implementation of the inline access-editor drafts used a synchronous `setState` inside an effect and tripped the React Hooks lint rule.
+
+How that failure was resolved:
+
+- Simplified the row-draft logic so default values are derived during render instead of synchronizing local state inside an effect.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+- `npx supabase db push --db-url 'postgresql://postgres.zytmxgtrpwlnogtrmmgt:***@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require' --include-all --workdir .` passed and applied the manager workspace-access migration.
+- `npx vercel --prod --yes` passed and re-aliased production to [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app).
+- A live production browser check confirmed:
+  - approved email `iskander@bluebrands.co` reaches Supabase auth with `create_user=true`
+  - unapproved emails are blocked in-app before any OTP request is sent
+
+Next step:
+
+- Redeploy the frontend so the new workspace-access manager UI is live, then continue the roadmap with deeper workflow and configuration hardening.
+
 Next step:
 
 - In Supabase Auth URL configuration, set the production `Site URL` and allowed redirect URLs to [creative-board-lake.vercel.app](https://creative-board-lake.vercel.app) plus the local dev origins you still use, then continue the roadmap with deeper drag/drop and archival workflow auditing.

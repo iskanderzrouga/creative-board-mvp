@@ -2275,6 +2275,13 @@ button {
   gap: 16px;
 }
 
+.settings-block-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .settings-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -2338,6 +2345,16 @@ button {
     90px
     70px
     72px;
+}
+
+.workspace-access-head,
+.workspace-access-row {
+  grid-template-columns:
+    minmax(220px, 1.4fr)
+    minmax(120px, 0.8fr)
+    minmax(170px, 1fr)
+    minmax(130px, 0.8fr)
+    minmax(170px, 1fr);
 }
 
 .task-library-head,

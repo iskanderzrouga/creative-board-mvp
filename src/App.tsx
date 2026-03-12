@@ -34,13 +34,17 @@ import {
   saveRemoteAppState,
 } from './remoteAppState'
 import {
+  deleteWorkspaceAccessEntry,
   getAuthSession,
   getWorkspaceAccess,
   isSupabaseConfigured,
+  listWorkspaceAccessEntries,
   onAuthStateChange,
   signInWithMagicLink,
   signOutOfSupabase,
+  upsertWorkspaceAccessEntry,
   type AuthSessionState,
+  type WorkspaceAccessEntry,
   type WorkspaceAccessState,
 } from './supabase'
 import {
@@ -137,6 +141,7 @@ interface ToastState {
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
 type AccessStatus = 'disabled' | 'checking' | 'granted' | 'denied' | 'error'
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
+type WorkspaceDirectoryStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 interface CopyState {
   key: string
@@ -273,6 +278,10 @@ interface SettingsPageProps {
   importInputRef: React.RefObject<HTMLInputElement | null>
   testingWebhookId: string | null
   headerUtilityContent?: ReactNode
+  workspaceAccessEntries: WorkspaceAccessEntry[]
+  workspaceAccessStatus: WorkspaceDirectoryStatus
+  workspaceAccessErrorMessage: string | null
+  workspaceAccessPendingEmail: string | null
   onTabChange: (tab: SettingTab) => void
   onSettingsPortfolioChange: (portfolioId: string) => void
   onBackToBoard: () => void
@@ -282,6 +291,12 @@ interface SettingsPageProps {
   onResetData: () => void
   onClearAllData: () => void
   onTestWebhook: (scope: string, url: string) => void
+  onWorkspaceAccessSave: (entry: {
+    email: string
+    roleMode: RoleMode
+    editorName: string | null
+  }) => Promise<void>
+  onWorkspaceAccessDelete: (email: string) => Promise<void>
   showToast: (message: string, tone: ToastTone) => void
 }
 
@@ -999,8 +1014,8 @@ function AuthGate({
           <h1>Team access</h1>
           <p>
             Sign in with an approved work email to open the shared live workspace. The
-            board stays simple, but the saved state now lives in Supabase instead of
-            only in this browser.
+            first approved sign-in creates the account automatically, and the saved
+            state now lives in Supabase instead of only in this browser.
           </p>
         </div>
 
@@ -2337,6 +2352,222 @@ function RevisionReasonLibraryEditor({
   )
 }
 
+function WorkspaceAccessManager({
+  entries,
+  editorOptions,
+  status,
+  errorMessage,
+  pendingEmail,
+  onSave,
+  onDelete,
+}: {
+  entries: WorkspaceAccessEntry[]
+  editorOptions: string[]
+  status: WorkspaceDirectoryStatus
+  errorMessage: string | null
+  pendingEmail: string | null
+  onSave: (entry: { email: string; roleMode: RoleMode; editorName: string | null }) => Promise<void>
+  onDelete: (email: string) => Promise<void>
+}) {
+  const [drafts, setDrafts] = useState<Record<string, { email: string; roleMode: RoleMode; editorName: string }>>({})
+  const [newEntry, setNewEntry] = useState({
+    email: '',
+    roleMode: 'observer' as RoleMode,
+    editorName: '',
+  })
+
+  return (
+    <div className="settings-stack">
+      <div className="settings-block">
+        <div className="settings-block-header">
+          <div>
+            <strong>Workspace Access</strong>
+            <p className="muted-copy">
+              Add approved work emails here. Once saved, teammates can use the app login page
+              to create their account on first sign-in.
+            </p>
+          </div>
+        </div>
+
+        {status === 'loading' ? <p className="muted-copy">Loading workspace access…</p> : null}
+        {status === 'error' && errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
+
+        <div className="settings-table full-table">
+          <div className="settings-row settings-head workspace-access-head">
+            <span>Email</span>
+            <span>App Role</span>
+            <span>Linked Editor</span>
+            <span>Last Updated</span>
+            <span />
+          </div>
+
+          {entries.map((entry) => {
+            const draft = drafts[entry.email] ?? {
+              email: entry.email,
+              roleMode: entry.roleMode,
+              editorName: entry.editorName ?? '',
+            }
+
+            return (
+              <div key={entry.email} className="settings-row workspace-access-row">
+                <input
+                  type="email"
+                  value={draft.email}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [entry.email]: { ...draft, email: event.target.value },
+                    }))
+                  }
+                />
+                <select
+                  value={draft.roleMode}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [entry.email]: {
+                        ...draft,
+                        roleMode: event.target.value as RoleMode,
+                        editorName:
+                          event.target.value === 'editor'
+                            ? draft.editorName
+                            : '',
+                      },
+                    }))
+                  }
+                >
+                  <option value="manager">Manager</option>
+                  <option value="editor">Editor</option>
+                  <option value="observer">Observer</option>
+                </select>
+                <select
+                  value={draft.editorName}
+                  disabled={draft.roleMode !== 'editor'}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [entry.email]: {
+                        ...draft,
+                        editorName: event.target.value,
+                      },
+                    }))
+                  }
+                >
+                  <option value="">
+                    {draft.roleMode === 'editor' ? 'Select editor' : 'Not needed'}
+                  </option>
+                  {editorOptions.map((editorName) => (
+                    <option key={editorName} value={editorName}>
+                      {editorName}
+                    </option>
+                  ))}
+                </select>
+                <span className="muted-copy">
+                  {entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}
+                </span>
+                <div className="task-type-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={pendingEmail === entry.email}
+                    onClick={() =>
+                      void onSave({
+                        email: draft.email,
+                        roleMode: draft.roleMode,
+                        editorName: draft.roleMode === 'editor' ? draft.editorName : null,
+                      })
+                    }
+                  >
+                    {pendingEmail === entry.email ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    className="clear-link danger-link"
+                    disabled={pendingEmail === entry.email}
+                    onClick={() => void onDelete(entry.email)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
+          <div className="settings-row workspace-access-row is-new">
+            <input
+              type="email"
+              value={newEntry.email}
+              placeholder="teammate@company.com"
+              onChange={(event) =>
+                setNewEntry((current) => ({
+                  ...current,
+                  email: event.target.value,
+                }))
+              }
+            />
+            <select
+              value={newEntry.roleMode}
+              onChange={(event) =>
+                setNewEntry((current) => ({
+                  ...current,
+                  roleMode: event.target.value as RoleMode,
+                  editorName: event.target.value === 'editor' ? current.editorName : '',
+                }))
+              }
+            >
+              <option value="manager">Manager</option>
+              <option value="editor">Editor</option>
+              <option value="observer">Observer</option>
+            </select>
+            <select
+              value={newEntry.editorName}
+              disabled={newEntry.roleMode !== 'editor'}
+              onChange={(event) =>
+                setNewEntry((current) => ({
+                  ...current,
+                  editorName: event.target.value,
+                }))
+              }
+            >
+              <option value="">
+                {newEntry.roleMode === 'editor' ? 'Select editor' : 'Not needed'}
+              </option>
+              {editorOptions.map((editorName) => (
+                <option key={editorName} value={editorName}>
+                  {editorName}
+                </option>
+              ))}
+            </select>
+            <span className="muted-copy">New</span>
+            <div className="task-type-actions">
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!newEntry.email.trim() || pendingEmail === '__new__'}
+                onClick={() =>
+                  void onSave({
+                    email: newEntry.email,
+                    roleMode: newEntry.roleMode,
+                    editorName: newEntry.roleMode === 'editor' ? newEntry.editorName : null,
+                  }).then(() =>
+                    setNewEntry({
+                      email: '',
+                      roleMode: 'observer',
+                      editorName: '',
+                    }),
+                  )
+                }
+              >
+                {pendingEmail === '__new__' ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SettingsPage({
   state,
   settingsTab,
@@ -2344,6 +2575,10 @@ function SettingsPage({
   importInputRef,
   testingWebhookId,
   headerUtilityContent,
+  workspaceAccessEntries,
+  workspaceAccessStatus,
+  workspaceAccessErrorMessage,
+  workspaceAccessPendingEmail,
   onTabChange,
   onSettingsPortfolioChange,
   onBackToBoard,
@@ -2353,12 +2588,23 @@ function SettingsPage({
   onResetData,
   onClearAllData,
   onTestWebhook,
+  onWorkspaceAccessSave,
+  onWorkspaceAccessDelete,
   showToast,
 }: SettingsPageProps) {
   const settingsPortfolio =
     state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
     state.portfolios[0]
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
+  const workspaceEditorOptions = Array.from(
+    new Set(
+      state.portfolios.flatMap((portfolio) =>
+        portfolio.team
+          .filter((member) => member.active && !member.role.toLowerCase().includes('manager'))
+          .map((member) => member.name),
+      ),
+    ),
+  ).sort((left, right) => left.localeCompare(right))
 
   function updatePortfolio(
     portfolioId: string,
@@ -3013,6 +3259,16 @@ function SettingsPage({
             >
               + Add team member
             </button>
+
+            <WorkspaceAccessManager
+              entries={workspaceAccessEntries}
+              editorOptions={workspaceEditorOptions}
+              status={workspaceAccessStatus}
+              errorMessage={workspaceAccessErrorMessage}
+              pendingEmail={workspaceAccessPendingEmail}
+              onSave={onWorkspaceAccessSave}
+              onDelete={onWorkspaceAccessDelete}
+            />
           </div>
         ) : null}
 
@@ -3641,6 +3897,10 @@ function App() {
   const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccessState | null>(null)
   const [accessStatus, setAccessStatus] = useState<AccessStatus>(authEnabled ? 'checking' : 'disabled')
   const [accessErrorMessage, setAccessErrorMessage] = useState<string | null>(null)
+  const [workspaceAccessEntries, setWorkspaceAccessEntries] = useState<WorkspaceAccessEntry[]>([])
+  const [workspaceAccessStatus, setWorkspaceAccessStatus] = useState<WorkspaceDirectoryStatus>('idle')
+  const [workspaceAccessErrorMessage, setWorkspaceAccessErrorMessage] = useState<string | null>(null)
+  const [workspaceAccessPendingEmail, setWorkspaceAccessPendingEmail] = useState<string | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPending, setLoginPending] = useState(false)
   const [loginInfoMessage, setLoginInfoMessage] = useState<string | null>(null)
@@ -3967,6 +4227,45 @@ function App() {
   }, [state.activePortfolioId, state.portfolios, workspaceAccess])
 
   useEffect(() => {
+    if (
+      !authEnabled ||
+      authStatus !== 'signed-in' ||
+      accessStatus !== 'granted' ||
+      workspaceAccess?.roleMode !== 'manager'
+    ) {
+      setWorkspaceAccessEntries([])
+      setWorkspaceAccessStatus('idle')
+      setWorkspaceAccessErrorMessage(null)
+      return
+    }
+
+    let cancelled = false
+    setWorkspaceAccessStatus('loading')
+    setWorkspaceAccessErrorMessage(null)
+
+    void listWorkspaceAccessEntries()
+      .then((entries) => {
+        if (cancelled) {
+          return
+        }
+        setWorkspaceAccessEntries(entries)
+        setWorkspaceAccessStatus('ready')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        setWorkspaceAccessEntries([])
+        setWorkspaceAccessStatus('error')
+        setWorkspaceAccessErrorMessage('Workspace access records could not be loaded.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessStatus, authEnabled, authStatus, workspaceAccess?.roleMode])
+
+  useEffect(() => {
     if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted') {
       if (!authEnabled) {
         setSyncStatus('local')
@@ -4163,6 +4462,83 @@ function App() {
 
   function showToast(message: string, tone: ToastTone) {
     setToast({ message, tone })
+  }
+
+  async function handleSaveWorkspaceAccessEntry(entry: {
+    email: string
+    roleMode: RoleMode
+    editorName: string | null
+  }) {
+    const normalizedEmail = entry.email.trim().toLowerCase()
+    if (!normalizedEmail) {
+      return
+    }
+
+    if (workspaceAccess?.email === normalizedEmail && entry.roleMode !== 'manager') {
+      showToast('Keep your own workspace account as a manager, or another manager will need to change it.', 'amber')
+      return
+    }
+
+    setWorkspaceAccessPendingEmail(workspaceAccessEntries.some((item) => item.email === normalizedEmail) ? normalizedEmail : '__new__')
+    setWorkspaceAccessErrorMessage(null)
+
+    try {
+      const saved = await upsertWorkspaceAccessEntry(entry)
+      setWorkspaceAccessEntries((current) =>
+        [...current.filter((item) => item.email !== normalizedEmail), saved].sort((left, right) =>
+          left.email.localeCompare(right.email),
+        ),
+      )
+      setWorkspaceAccessStatus('ready')
+      showToast(
+        workspaceAccessEntries.some((item) => item.email === normalizedEmail)
+          ? `Updated access for ${normalizedEmail}`
+          : `Added ${normalizedEmail} to workspace access`,
+        'green',
+      )
+    } catch (error) {
+      setWorkspaceAccessStatus('error')
+      setWorkspaceAccessErrorMessage(
+        error instanceof Error ? error.message : 'Could not save workspace access.',
+      )
+      showToast('Could not save workspace access.', 'red')
+    } finally {
+      setWorkspaceAccessPendingEmail(null)
+    }
+  }
+
+  async function handleDeleteWorkspaceAccessEntry(email: string) {
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail) {
+      return
+    }
+
+    if (workspaceAccess?.email === normalizedEmail) {
+      showToast('You cannot remove your own manager access from this screen.', 'amber')
+      return
+    }
+
+    if (!window.confirm(`Remove workspace access for ${normalizedEmail}?`)) {
+      return
+    }
+
+    setWorkspaceAccessPendingEmail(normalizedEmail)
+    setWorkspaceAccessErrorMessage(null)
+
+    try {
+      await deleteWorkspaceAccessEntry(normalizedEmail)
+      setWorkspaceAccessEntries((current) => current.filter((item) => item.email !== normalizedEmail))
+      setWorkspaceAccessStatus('ready')
+      showToast(`Removed workspace access for ${normalizedEmail}`, 'amber')
+    } catch (error) {
+      setWorkspaceAccessStatus('error')
+      setWorkspaceAccessErrorMessage(
+        error instanceof Error ? error.message : 'Could not remove workspace access.',
+      )
+      showToast('Could not remove workspace access.', 'red')
+    } finally {
+      setWorkspaceAccessPendingEmail(null)
+    }
   }
 
   async function handleSendMagicLink() {
@@ -5490,6 +5866,10 @@ function App() {
             importInputRef={importInputRef}
             testingWebhookId={testingWebhookId}
             headerUtilityContent={headerUtilityContent}
+            workspaceAccessEntries={workspaceAccessEntries}
+            workspaceAccessStatus={workspaceAccessStatus}
+            workspaceAccessErrorMessage={workspaceAccessErrorMessage}
+            workspaceAccessPendingEmail={workspaceAccessPendingEmail}
             onTabChange={setSettingsTab}
             onSettingsPortfolioChange={setSettingsPortfolioId}
             onBackToBoard={() => setPage('board')}
@@ -5499,6 +5879,8 @@ function App() {
             onResetData={resetToSeed}
             onClearAllData={clearAllData}
             onTestWebhook={testWebhook}
+            onWorkspaceAccessSave={handleSaveWorkspaceAccessEntry}
+            onWorkspaceAccessDelete={handleDeleteWorkspaceAccessEntry}
             showToast={showToast}
           />
         ) : null}

@@ -83,8 +83,10 @@ Before going live:
 
 Every person who should enter the app now needs two things:
 
-1. A Supabase Auth user or invite in the project.
-2. A row in `public.workspace_access`.
+1. A row in `public.workspace_access`.
+2. The shared login page URL.
+
+Managers can now maintain `workspace_access` directly from the app under `Settings` → `Team & Roles`. Once an approved email is saved there, the teammate can visit the app login page and create their account on first sign-in with a magic link.
 
 Example manager grant:
 

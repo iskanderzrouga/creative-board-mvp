@@ -25,6 +25,13 @@ export interface WorkspaceAccessState {
   editorName: string | null
 }
 
+export interface WorkspaceAccessEntry {
+  email: string
+  roleMode: RoleMode
+  editorName: string | null
+  updatedAt: string | null
+}
+
 let client: SupabaseClient | null | undefined
 
 function hasBrowser() {
@@ -161,11 +168,23 @@ export async function signInWithMagicLink(email: string) {
     throw new Error('Supabase is not configured.')
   }
 
+  const { data: allowed, error: allowError } = await supabase.rpc('is_workspace_email_allowed', {
+    candidate_email: normalizedEmail,
+  })
+
+  if (allowError) {
+    throw allowError
+  }
+
+  if (!allowed) {
+    throw new Error('This email is not approved for the workspace yet.')
+  }
+
   const { error } = await supabase.auth.signInWithOtp({
     email: normalizedEmail,
     options: {
       emailRedirectTo: getMagicLinkRedirectUrl(),
-      shouldCreateUser: false,
+      shouldCreateUser: true,
     },
   })
 
@@ -174,6 +193,20 @@ export async function signInWithMagicLink(email: string) {
   }
 
   return { deliveredInstantly: false }
+}
+
+function mapWorkspaceAccessEntry(row: {
+  email: string
+  role_mode: RoleMode
+  editor_name: string | null
+  updated_at: string | null
+}) {
+  return {
+    email: row.email,
+    roleMode: row.role_mode,
+    editorName: row.editor_name,
+    updatedAt: row.updated_at,
+  } satisfies WorkspaceAccessEntry
 }
 
 export async function getWorkspaceAccess() {
@@ -213,6 +246,110 @@ export async function getWorkspaceAccess() {
     roleMode: data.role_mode as RoleMode,
     editorName: data.editor_name ?? null,
   } satisfies WorkspaceAccessState
+}
+
+export async function listWorkspaceAccessEntries() {
+  if (isE2ESupabaseMode()) {
+    const session = getE2EAuthSession()
+    return session
+      ? [
+          {
+            email: session.email,
+            roleMode: 'manager' as const,
+            editorName: null,
+            updatedAt: null,
+          } satisfies WorkspaceAccessEntry,
+        ]
+      : []
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('workspace_access')
+    .select('email, role_mode, editor_name, updated_at')
+    .order('email', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? []).map(mapWorkspaceAccessEntry)
+}
+
+export async function upsertWorkspaceAccessEntry(entry: {
+  email: string
+  roleMode: RoleMode
+  editorName: string | null
+}) {
+  const normalizedEmail = entry.email.trim().toLowerCase()
+  if (!normalizedEmail) {
+    throw new Error('Enter a valid work email.')
+  }
+
+  if (entry.roleMode === 'editor' && !entry.editorName?.trim()) {
+    throw new Error('Editors need a linked team member name.')
+  }
+
+  if (isE2ESupabaseMode()) {
+    return {
+      email: normalizedEmail,
+      roleMode: entry.roleMode,
+      editorName: entry.roleMode === 'editor' ? entry.editorName?.trim() ?? null : null,
+      updatedAt: new Date().toISOString(),
+    } satisfies WorkspaceAccessEntry
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { data, error } = await supabase
+    .from('workspace_access')
+    .upsert(
+      {
+        email: normalizedEmail,
+        role_mode: entry.roleMode,
+        editor_name: entry.roleMode === 'editor' ? entry.editorName?.trim() ?? null : null,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'email',
+      },
+    )
+    .select('email, role_mode, editor_name, updated_at')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return mapWorkspaceAccessEntry(data)
+}
+
+export async function deleteWorkspaceAccessEntry(email: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+  if (!normalizedEmail) {
+    return
+  }
+
+  if (isE2ESupabaseMode()) {
+    return
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { error } = await supabase.from('workspace_access').delete().eq('email', normalizedEmail)
+  if (error) {
+    throw error
+  }
 }
 
 export async function signOutOfSupabase() {
