@@ -2,6 +2,43 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Phase 11 Production Rollout Verification Pass
+
+Status: In progress, blocked on Supabase auth rollout
+
+What I changed in this pass:
+
+- Deployed commit `de871ec` to Vercel production and confirmed the live alias now points at `https://creative-board-lake.vercel.app`.
+- Ran the full local phase 11 regression commands again: `npm run lint`, `npm run test:unit`, `npm run test:e2e`, and `npm run build`.
+- Ran a live production smoke pass against `creative-board-lake.vercel.app` and confirmed the public Team access screen loads, invalid email validation appears inline, and the mocked signed-in production path can create a card, persist it across reload, and sign out back to Team access.
+- Probed the real magic-link request path after the production deploy and confirmed the remaining rollout blocker is the missing Supabase Edge Function deployment, not the frontend.
+- Captured the production auth failure concretely: the browser POST to `https://zytmxgtrpwlnogtrmmgt.supabase.co/functions/v1/request-magic-link` failed with `net::ERR_FAILED`, and a direct `curl` preflight check returned `404 {"code":"NOT_FOUND","message":"Requested function was not found"}`.
+- Kept the rollout notes aligned with the current shell limitation: the Supabase function still cannot be redeployed from this environment because `SUPABASE_ACCESS_TOKEN` is not available for `npx supabase link/deploy`.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test:e2e` passed with 27 Playwright tests.
+- `npm run build` passed.
+- Vercel production deploy succeeded:
+  - `https://creative-board-j744xed1d-iskander-zrougas-projects.vercel.app`
+  - aliased to `https://creative-board-lake.vercel.app`
+- Live production smoke passed for:
+  - public Team access screen load
+  - inline invalid email validation
+  - mocked signed-in create card flow
+  - reload persistence in mocked shared mode
+  - sign-out return to Team access
+
+Current progress signal:
+
+- The production frontend rollout is live and the non-email smoke path is healthy, but the real magic-link auth flow is still blocked because the `request-magic-link` Supabase Edge Function is not deployed in the linked Supabase project.
+
+Next step:
+
+- Deploy the Supabase `request-magic-link` Edge Function and rerun the live approved-email and unapproved-email auth checks once Supabase deployment credentials are available.
+
 ### CODEX-PLAN Execution: Phase 11 Auth And Import Recovery Coverage Pass
 
 Status: In progress
@@ -15,7 +52,10 @@ What I changed in this pass:
 
 Verification:
 
-- Pending in this pass.
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test:e2e` passed.
+- `npm run build` passed.
 
 Current progress signal:
 
