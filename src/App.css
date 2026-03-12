@@ -403,6 +403,18 @@ button {
   flex-wrap: wrap;
 }
 
+.confirm-dialog-copy {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.confirm-dialog-copy p {
+  margin: 0;
+}
+
 .board-grid {
   display: grid;
   grid-template-columns: repeat(6, 272px);

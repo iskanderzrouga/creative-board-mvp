@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatDateTime, type RoleMode } from '../board'
+import { ConfirmDialog } from './ConfirmDialog'
 import type { WorkspaceAccessEntry } from '../supabase'
 
 type WorkspaceDirectoryStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -29,6 +30,7 @@ export function WorkspaceAccessManager({
   onDelete,
 }: WorkspaceAccessManagerProps) {
   const [drafts, setDrafts] = useState<Record<string, { email: string; roleMode: RoleMode; editorName: string }>>({})
+  const [pendingDeleteEmail, setPendingDeleteEmail] = useState<string | null>(null)
   const [newEntry, setNewEntry] = useState({
     email: '',
     roleMode: 'observer' as RoleMode,
@@ -136,7 +138,7 @@ export function WorkspaceAccessManager({
                     type="button"
                     className="clear-link danger-link"
                     disabled={pendingEmail === entry.email}
-                    onClick={() => void onDelete(entry.email)}
+                    onClick={() => setPendingDeleteEmail(entry.email)}
                   >
                     Delete
                   </button>
@@ -216,6 +218,26 @@ export function WorkspaceAccessManager({
           </div>
         </div>
       </div>
+
+      {pendingDeleteEmail ? (
+        <ConfirmDialog
+          title="Remove workspace access?"
+          message={
+            <p>
+              <strong>{pendingDeleteEmail}</strong> will no longer be able to sign in to this
+              workspace.
+            </p>
+          }
+          confirmLabel="Remove access"
+          pending={pendingEmail === pendingDeleteEmail}
+          onCancel={() => setPendingDeleteEmail(null)}
+          onConfirm={() =>
+            void onDelete(pendingDeleteEmail).then(() => {
+              setPendingDeleteEmail(null)
+            })
+          }
+        />
+      ) : null}
     </div>
   )
 }

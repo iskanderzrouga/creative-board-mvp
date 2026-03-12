@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { type GlobalSettings, type RevisionReason } from '../board'
+import { ConfirmDialog } from './ConfirmDialog'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
@@ -21,6 +22,7 @@ export function RevisionReasonLibraryEditor({
   showToast,
 }: RevisionReasonLibraryEditorProps) {
   const [draggingReasonId, setDraggingReasonId] = useState<string | null>(null)
+  const [reasonToDelete, setReasonToDelete] = useState<RevisionReason | null>(null)
 
   function handleDelete(reason: RevisionReason) {
     if (reason.locked) {
@@ -28,11 +30,7 @@ export function RevisionReasonLibraryEditor({
       return
     }
 
-    if (!window.confirm(`Delete ${reason.name}?`)) {
-      return
-    }
-
-    onDeleteRevisionReason(reason.id)
+    setReasonToDelete(reason)
   }
 
   function reorderReasons(sourceId: string, targetId: string) {
@@ -140,6 +138,19 @@ export function RevisionReasonLibraryEditor({
       >
         + Add revision reason
       </button>
+
+      {reasonToDelete ? (
+        <ConfirmDialog
+          title={`Delete ${reasonToDelete.name}?`}
+          message={<p>This revision reason will be removed from the shared library.</p>}
+          confirmLabel="Delete reason"
+          onCancel={() => setReasonToDelete(null)}
+          onConfirm={() => {
+            onDeleteRevisionReason(reasonToDelete.id)
+            setReasonToDelete(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

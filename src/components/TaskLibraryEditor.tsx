@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ConfirmDialog } from './ConfirmDialog'
 import {
   CARD_FIELDS,
   TASK_TYPE_CATEGORIES,
@@ -28,6 +29,7 @@ export function TaskLibraryEditor({
 }: TaskLibraryEditorProps) {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
+  const [taskTypeToDelete, setTaskTypeToDelete] = useState<{ id: string; name: string; usageCount: number } | null>(null)
 
   function handleDelete(taskType: TaskType) {
     if (taskType.locked) {
@@ -39,14 +41,11 @@ export function TaskLibraryEditor({
       (sum, portfolio) => sum + portfolio.cards.filter((card) => card.taskTypeId === taskType.id).length,
       0,
     )
-    const confirmDelete = usageCount
-      ? window.confirm(`${usageCount} cards use this type. Delete it and reassign those cards to Custom?`)
-      : window.confirm(`Delete ${taskType.name}?`)
-    if (!confirmDelete) {
-      return
-    }
-
-    onDeleteTaskType(taskType.id)
+    setTaskTypeToDelete({
+      id: taskType.id,
+      name: taskType.name,
+      usageCount,
+    })
   }
 
   function reorderTaskTypes(sourceId: string, targetId: string) {
@@ -266,6 +265,30 @@ export function TaskLibraryEditor({
       >
         + Add task type
       </button>
+
+      {taskTypeToDelete ? (
+        <ConfirmDialog
+          title={`Delete ${taskTypeToDelete.name}?`}
+          message={
+            taskTypeToDelete.usageCount > 0 ? (
+              <>
+                <p>
+                  <strong>{taskTypeToDelete.usageCount} cards</strong> currently use this type.
+                </p>
+                <p>Those cards will be reassigned to Custom after the task type is removed.</p>
+              </>
+            ) : (
+              <p>This task type will be removed from the shared library.</p>
+            )
+          }
+          confirmLabel="Delete task type"
+          onCancel={() => setTaskTypeToDelete(null)}
+          onConfirm={() => {
+            onDeleteTaskType(taskTypeToDelete.id)
+            setTaskTypeToDelete(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

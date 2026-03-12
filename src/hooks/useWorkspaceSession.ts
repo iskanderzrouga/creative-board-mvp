@@ -398,10 +398,6 @@ export function useWorkspaceSession({
       return
     }
 
-    if (!window.confirm(`Remove workspace access for ${normalizedEmail}?`)) {
-      return
-    }
-
     setWorkspaceAccessPendingEmail(normalizedEmail)
     setWorkspaceAccessErrorMessage(null)
 

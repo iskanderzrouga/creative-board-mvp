@@ -33,6 +33,7 @@ import { AuthGate } from './components/AuthGate'
 import { BackwardMoveModal } from './components/BackwardMoveModal'
 import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
 import { QuickCreateModal } from './components/QuickCreateModal'
 import { SettingsPage } from './components/SettingsPage'
@@ -114,6 +115,8 @@ interface PendingDeleteCard {
   cardId: string
 }
 
+type PendingAppConfirm = 'reset-seed' | 'clear-all'
+
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 
 function App() {
@@ -151,6 +154,7 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(authEnabled ? 'loading' : 'local')
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
+  const [pendingAppConfirm, setPendingAppConfirm] = useState<PendingAppConfirm | null>(null)
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     if (typeof window === 'undefined') {
       return false
@@ -1128,12 +1132,14 @@ function App() {
   }
 
   function resetToSeed() {
-    if (!window.confirm('This will erase all changes and restore the original demo data. Continue?')) {
-      return
-    }
+    setPendingAppConfirm('reset-seed')
+  }
+
+  function confirmResetToSeed() {
     const nextState = createSeedState()
     replaceState(nextState)
     setSelectedCard(null)
+    setPendingAppConfirm(null)
     setToast({
       message: 'Board reset to seed data',
       tone: 'amber',
@@ -1141,12 +1147,10 @@ function App() {
   }
 
   function clearAllData() {
-    if (!window.confirm('This will remove all data. Continue?')) {
-      return
-    }
-    if (!window.confirm('This cannot be undone. Clear everything?')) {
-      return
-    }
+    setPendingAppConfirm('clear-all')
+  }
+
+  function confirmClearAllData() {
     const emptyState = createSeedState()
     emptyState.portfolios.forEach((portfolio) => {
       portfolio.cards = []
@@ -1155,6 +1159,8 @@ function App() {
       )
     })
     replaceState(emptyState)
+    setSelectedCard(null)
+    setPendingAppConfirm(null)
     showToast('All data cleared', 'amber')
   }
 
@@ -1457,6 +1463,25 @@ function App() {
           onAddComment={addCommentToCard}
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}
+        />
+      ) : null}
+
+      {pendingAppConfirm ? (
+        <ConfirmDialog
+          title={pendingAppConfirm === 'reset-seed' ? 'Reset to seed data?' : 'Clear all data?'}
+          message={
+            pendingAppConfirm === 'reset-seed' ? (
+              <p>This restores the original demo workspace and removes your current changes.</p>
+            ) : (
+              <>
+                <p>This removes every card from every portfolio and resets the running ID counters.</p>
+                <p>This action cannot be undone.</p>
+              </>
+            )
+          }
+          confirmLabel={pendingAppConfirm === 'reset-seed' ? 'Reset board' : 'Clear all data'}
+          onCancel={() => setPendingAppConfirm(null)}
+          onConfirm={pendingAppConfirm === 'reset-seed' ? confirmResetToSeed : confirmClearAllData}
         />
       ) : null}
 

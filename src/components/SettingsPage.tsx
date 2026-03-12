@@ -1,4 +1,5 @@
 import { useState, type ReactNode, type RefObject } from 'react'
+import { ConfirmDialog } from './ConfirmDialog'
 import { PageHeader } from './PageHeader'
 import { RevisionReasonLibraryEditor } from './RevisionReasonLibraryEditor'
 import { TaskLibraryEditor } from './TaskLibraryEditor'
@@ -25,6 +26,10 @@ import {
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 type WorkspaceDirectoryStatus = 'idle' | 'loading' | 'ready' | 'error'
+type PendingSettingsDelete =
+  | { kind: 'portfolio'; portfolioId: string }
+  | { kind: 'brand'; portfolioId: string; brandIndex: number }
+  | { kind: 'member'; portfolioId: string; memberIndex: number }
 
 interface SettingsPageProps {
   state: AppState
@@ -84,6 +89,7 @@ export function SettingsPage({
     state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
     state.portfolios[0]
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
+  const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(null)
   const workspaceEditorOptions = Array.from(
     new Set(
       state.portfolios.flatMap((portfolio) =>
@@ -131,6 +137,82 @@ export function SettingsPage({
 
     return `B${state.portfolios.length}`
   }
+
+  function confirmSettingsDelete() {
+    if (!pendingSettingsDelete) {
+      return
+    }
+
+    if (pendingSettingsDelete.kind === 'portfolio') {
+      onStateChange((current) => removePortfolioFromAppState(current, pendingSettingsDelete.portfolioId))
+      setPendingSettingsDelete(null)
+      return
+    }
+
+    if (pendingSettingsDelete.kind === 'brand') {
+      updatePortfolio(pendingSettingsDelete.portfolioId, (currentPortfolio) =>
+        removeBrandFromPortfolio(currentPortfolio, pendingSettingsDelete.brandIndex),
+      )
+      setPendingSettingsDelete(null)
+      return
+    }
+
+    updatePortfolio(pendingSettingsDelete.portfolioId, (currentPortfolio) =>
+      removeTeamMemberFromPortfolio(currentPortfolio, pendingSettingsDelete.memberIndex),
+    )
+    setPendingSettingsDelete(null)
+  }
+
+  function getSettingsDeleteDialog() {
+    if (!pendingSettingsDelete) {
+      return null
+    }
+
+    if (pendingSettingsDelete.kind === 'portfolio') {
+      const portfolio = state.portfolios.find((item) => item.id === pendingSettingsDelete.portfolioId)
+      if (!portfolio) {
+        return null
+      }
+
+      return {
+        title: `Delete ${portfolio.name}?`,
+        message: (
+          <p>
+            This removes the portfolio and all cards, brands, and team assignments inside it.
+          </p>
+        ),
+        confirmLabel: 'Delete portfolio',
+      }
+    }
+
+    if (pendingSettingsDelete.kind === 'brand') {
+      const portfolio = state.portfolios.find((item) => item.id === pendingSettingsDelete.portfolioId)
+      const brand = portfolio?.brands[pendingSettingsDelete.brandIndex]
+      if (!portfolio || !brand) {
+        return null
+      }
+
+      return {
+        title: `Delete ${brand.name}?`,
+        message: <p>This removes the brand from {portfolio.name}.</p>,
+        confirmLabel: 'Delete brand',
+      }
+    }
+
+    const portfolio = state.portfolios.find((item) => item.id === pendingSettingsDelete.portfolioId)
+    const member = portfolio?.team[pendingSettingsDelete.memberIndex]
+    if (!portfolio || !member) {
+      return null
+    }
+
+    return {
+      title: `Delete ${member.name}?`,
+      message: <p>This removes the team member from {portfolio.name}.</p>,
+      confirmLabel: 'Delete member',
+    }
+  }
+
+  const settingsDeleteDialog = getSettingsDeleteDialog()
 
   return (
     <div className="settings-page">
@@ -326,18 +408,18 @@ export function SettingsPage({
                     <button
                       type="button"
                       className="clear-link danger-link"
-                      onClick={() => {
-                        if (state.portfolios.length === 1) {
-                          showToast('At least one portfolio is required', 'red')
-                          return
-                        }
-                        if (!window.confirm(`Delete ${portfolio.name}?`)) {
-                          return
-                        }
-                        onStateChange((current) => removePortfolioFromAppState(current, portfolio.id))
-                      }}
-                    >
-                      Delete
+                    onClick={() => {
+                      if (state.portfolios.length === 1) {
+                        showToast('At least one portfolio is required', 'red')
+                        return
+                      }
+                      setPendingSettingsDelete({
+                        kind: 'portfolio',
+                        portfolioId: portfolio.id,
+                      })
+                    }}
+                  >
+                    Delete
                     </button>
                   </div>
                 </div>
@@ -423,12 +505,11 @@ export function SettingsPage({
                                   showToast(blocker, 'amber')
                                   return
                                 }
-                                if (!window.confirm(`Delete ${brand.name}?`)) {
-                                  return
-                                }
-                                updatePortfolio(portfolio.id, (currentPortfolio) =>
-                                  removeBrandFromPortfolio(currentPortfolio, brandIndex),
-                                )
+                                setPendingSettingsDelete({
+                                  kind: 'brand',
+                                  portfolioId: portfolio.id,
+                                  brandIndex,
+                                })
                               }}
                             >
                               Delete
@@ -669,12 +750,11 @@ export function SettingsPage({
                         showToast(blocker, 'amber')
                         return
                       }
-                      if (!window.confirm(`Delete ${member.name}?`)) {
-                        return
-                      }
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) =>
-                        removeTeamMemberFromPortfolio(currentPortfolio, memberIndex),
-                      )
+                      setPendingSettingsDelete({
+                        kind: 'member',
+                        portfolioId: settingsPortfolio.id,
+                        memberIndex,
+                      })
                     }}
                   >
                     Delete
@@ -947,6 +1027,16 @@ export function SettingsPage({
               <input ref={importInputRef} type="file" accept="application/json" hidden />
             </div>
           </div>
+        ) : null}
+
+        {settingsDeleteDialog ? (
+          <ConfirmDialog
+            title={settingsDeleteDialog.title}
+            message={settingsDeleteDialog.message}
+            confirmLabel={settingsDeleteDialog.confirmLabel}
+            onCancel={() => setPendingSettingsDelete(null)}
+            onConfirm={confirmSettingsDelete}
+          />
         ) : null}
       </div>
     </div>

@@ -440,3 +440,30 @@ Verification:
 Next step:
 
 - Continue through the remaining phase 5 and phase 6 work in `CODEX-PLAN.md`, with the biggest remaining UX/accessibility target now being the replacement of the last `window.confirm` flows and the broader responsive/mobile polish.
+
+### CODEX-PLAN Execution: Phase 5 Confirmation Flow Cleanup
+
+Status: In progress
+
+What I learned:
+
+- The remaining browser-native confirmation prompts were concentrated in a small number of high-risk places: destructive settings actions, workspace access removal, task-library cleanup, revision-reason cleanup, and the app-level reset/clear flows.
+- Replacing those prompts was easiest once the modal accessibility hook already existed, because the app could reuse one shared confirmation surface instead of introducing several slightly different delete dialogs.
+- The confirm cleanup also clarified a good architectural boundary: the UI should own whether a delete is confirmed, while hooks like `useWorkspaceSession` should just execute the delete once the UI asks for it.
+
+What changed:
+
+- Added a reusable confirmation dialog in [`src/components/ConfirmDialog.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/ConfirmDialog.tsx), backed by the existing modal accessibility behavior and shared modal styling in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css).
+- Removed the remaining `window.confirm` usage from [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx), [`src/hooks/useWorkspaceSession.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useWorkspaceSession.ts), [`src/components/SettingsPage.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/SettingsPage.tsx), [`src/components/TaskLibraryEditor.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/TaskLibraryEditor.tsx), [`src/components/RevisionReasonLibraryEditor.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/RevisionReasonLibraryEditor.tsx), and [`src/components/WorkspaceAccessManager.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/WorkspaceAccessManager.tsx).
+- Replaced the old multi-step destructive confirmations with in-app dialogs for resetting seed data, clearing all board data, deleting portfolios, deleting brands, deleting team members, removing workspace access, deleting task types, and deleting revision reasons.
+- Kept the existing validation blockers in place before opening those dialogs, so invalid destructive actions are still prevented with toasts rather than moved into confirmation copy.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Continue into the remaining phase 6 responsiveness and accessibility polish from `CODEX-PLAN.md`, then move into the later sync-hardening and structural cleanup phases.
