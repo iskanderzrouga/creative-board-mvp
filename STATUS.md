@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Settings Coverage + Webhook Cleanup Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Removed the fake webhook test buttons from portfolio and global integrations settings so the app no longer pretends to validate webhook delivery with an artificial delay.
+- Kept both webhook fields editable and added clearer helper copy explaining that delivery should be verified from the receiving service or during deployment.
+- Updated the new workspace-access draft in `WorkspaceAccessManager` so new entries now default to the plan’s intended `editor` role instead of `observer`.
+- Tightened the workspace-access add flow so the `Add` button stays disabled until an editor role also has a linked editor selected.
+- Added the missing browser coverage in `e2e/settings.spec.ts` for settings access, webhook field behavior, and the new workspace-access default role flow.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Browser coverage expanded from 9 Playwright tests to 11 Playwright tests, and the new settings spec now covers plan-specific admin settings behavior.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` items with the final release polish and then the production rollout/regression checklist.
+
 ### CODEX-PLAN Execution: Phase 10 Release Polish Pass 1
 
 Status: In progress

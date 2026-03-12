@@ -33,9 +33,12 @@ export function WorkspaceAccessManager({
   const [pendingDeleteEmail, setPendingDeleteEmail] = useState<string | null>(null)
   const [newEntry, setNewEntry] = useState({
     email: '',
-    roleMode: 'observer' as RoleMode,
+    roleMode: 'editor' as RoleMode,
     editorName: '',
   })
+  const canAddNewEntry =
+    Boolean(newEntry.email.trim()) &&
+    (newEntry.roleMode !== 'editor' || Boolean(newEntry.editorName))
 
   return (
     <div className="settings-stack">
@@ -197,7 +200,7 @@ export function WorkspaceAccessManager({
               <button
                 type="button"
                 className="primary-button"
-                disabled={!newEntry.email.trim() || pendingEmail === '__new__'}
+                disabled={!canAddNewEntry || pendingEmail === '__new__'}
                 onClick={() =>
                   void onSave({
                     email: newEntry.email,
@@ -206,7 +209,7 @@ export function WorkspaceAccessManager({
                   }).then(() =>
                     setNewEntry({
                       email: '',
-                      roleMode: 'observer',
+                      roleMode: 'editor',
                       editorName: '',
                     }),
                   )

@@ -36,7 +36,6 @@ interface SettingsPageProps {
   settingsTab: SettingTab
   settingsPortfolioId: string
   importInputRef: RefObject<HTMLInputElement | null>
-  testingWebhookId: string | null
   headerUtilityContent?: ReactNode
   workspaceAccessEntries: WorkspaceAccessEntry[]
   workspaceAccessStatus: WorkspaceDirectoryStatus
@@ -50,7 +49,6 @@ interface SettingsPageProps {
   onImportClick: () => void
   onResetData: () => void
   onClearAllData: () => void
-  onTestWebhook: (scope: string, url: string) => void
   onWorkspaceAccessSave: (entry: {
     email: string
     roleMode: RoleMode
@@ -66,7 +64,6 @@ export function SettingsPage({
   settingsTab,
   settingsPortfolioId,
   importInputRef,
-  testingWebhookId,
   headerUtilityContent,
   workspaceAccessEntries,
   workspaceAccessStatus,
@@ -80,7 +77,6 @@ export function SettingsPage({
   onImportClick,
   onResetData,
   onClearAllData,
-  onTestWebhook,
   onWorkspaceAccessSave,
   onWorkspaceAccessDelete,
   showToast,
@@ -549,26 +545,25 @@ export function SettingsPage({
 
                     <div className="nested-settings-block">
                       <div className="nested-settings-title">Drive Webhook</div>
-                      <div className="integration-inline">
-                        <input
-                          value={portfolio.webhookUrl}
-                          onChange={(event) =>
-                            updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                              ...currentPortfolio,
-                              webhookUrl: event.target.value,
-                            }))
-                          }
-                          placeholder="https://script.google.com/macros/..."
-                        />
-                        <button
-                          type="button"
-                          className="primary-button"
-                          disabled={!portfolio.webhookUrl || testingWebhookId === portfolio.id}
-                          onClick={() => onTestWebhook(portfolio.id, portfolio.webhookUrl)}
-                        >
-                          {testingWebhookId === portfolio.id ? 'Testing...' : 'Test Connection'}
-                        </button>
-                      </div>
+                      <label className="full-width">
+                        <div className="integration-inline">
+                          <input
+                            aria-label={`${portfolio.name} Drive webhook URL`}
+                            value={portfolio.webhookUrl}
+                            onChange={(event) =>
+                              updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                ...currentPortfolio,
+                                webhookUrl: event.target.value,
+                              }))
+                            }
+                            placeholder="https://script.google.com/macros/..."
+                          />
+                        </div>
+                      </label>
+                      <p className="muted-copy">
+                        Save the receiving webhook URL here. Validate delivery from the destination
+                        service during deployment instead of using a fake in-app test.
+                      </p>
                     </div>
                   </>
                 ) : null}
@@ -973,6 +968,7 @@ export function SettingsPage({
                 <span>Global Google Drive webhook</span>
                 <div className="integration-inline">
                   <input
+                    aria-label="Global Google Drive webhook"
                     value={state.settings.integrations.globalDriveWebhookUrl}
                     onChange={(event) =>
                       onStateChange((current) => ({
@@ -987,15 +983,11 @@ export function SettingsPage({
                       }))
                     }
                   />
-                  <button
-                    type="button"
-                    className="primary-button"
-                    disabled={!state.settings.integrations.globalDriveWebhookUrl || testingWebhookId === 'global-drive'}
-                    onClick={() => onTestWebhook('global-drive', state.settings.integrations.globalDriveWebhookUrl)}
-                  >
-                    {testingWebhookId === 'global-drive' ? 'Testing...' : 'Test'}
-                  </button>
                 </div>
+                <span className="muted-copy">
+                  Save the shared fallback webhook here. Verify delivery from the receiving service
+                  or during the live rollout instead of relying on a placeholder test button.
+                </span>
               </label>
               <div className="placeholder-card">
                 <strong>Frame.io</strong>

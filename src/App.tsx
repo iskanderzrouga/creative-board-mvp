@@ -150,7 +150,6 @@ function App() {
     getDefaultBackwardMoveForm(loadAppState().settings),
   )
   const [creatingDriveCardId, setCreatingDriveCardId] = useState<string | null>(null)
-  const [testingWebhookId, setTestingWebhookId] = useState<string | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(authEnabled ? 'loading' : 'local')
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
@@ -1035,19 +1034,6 @@ function App() {
     showToast('All data cleared', 'amber')
   }
 
-  async function testWebhook(scope: string, url: string) {
-    if (!url) {
-      return
-    }
-    setTestingWebhookId(scope)
-    try {
-      await new Promise((resolve) => window.setTimeout(resolve, 400))
-      showToast(`Webhook test is deferred to the backend pass. URL saved: ${url}`, 'blue')
-    } finally {
-      setTestingWebhookId(null)
-    }
-  }
-
   const sidebarExpanded = sidebarPinned || sidebarHovered
   const toastView = toast ? (
     <div className={`toast tone-${toast.tone}`} role="status" aria-live="polite">
@@ -1283,7 +1269,6 @@ function App() {
             settingsTab={settingsTab}
             settingsPortfolioId={settingsPortfolioId}
             importInputRef={importInputRef}
-            testingWebhookId={testingWebhookId}
             headerUtilityContent={headerUtilityContent}
             workspaceAccessEntries={workspaceAccessEntries}
             workspaceAccessStatus={workspaceAccessStatus}
@@ -1297,7 +1282,6 @@ function App() {
             onImportClick={() => importInputRef.current?.click()}
             onResetData={resetToSeed}
             onClearAllData={clearAllData}
-            onTestWebhook={testWebhook}
             onWorkspaceAccessSave={handleSaveWorkspaceAccessEntry}
             onWorkspaceAccessDelete={handleDeleteWorkspaceAccessEntry}
             showToast={showToast}
