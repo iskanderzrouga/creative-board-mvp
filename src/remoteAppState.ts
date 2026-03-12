@@ -23,6 +23,18 @@ export interface RemoteAppStateResult {
   seeded: boolean
 }
 
+export class RemoteStateConflictError extends Error {
+  latestState: AppState
+  latestUpdatedAt: string
+
+  constructor(state: AppState, updatedAt: string) {
+    super('Remote workspace changed before this save completed.')
+    this.name = 'RemoteStateConflictError'
+    this.latestState = state
+    this.latestUpdatedAt = updatedAt
+  }
+}
+
 function hasBrowser() {
   return typeof window !== 'undefined'
 }
@@ -59,6 +71,25 @@ function setStoredE2ERemoteState(state: AppState, updatedAt: string) {
   }
 
   window.localStorage.setItem(E2E_REMOTE_STATE_KEY, JSON.stringify(payload))
+}
+
+async function getRemoteWorkspaceStateRow() {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from(WORKSPACE_STATE_TABLE)
+    .select('state, updated_at')
+    .eq('workspace_id', REMOTE_WORKSPACE_ID)
+    .maybeSingle<WorkspaceStateRow>()
+
+  if (error) {
+    throw error
+  }
+
+  return data
 }
 
 function isE2ERemoteMode() {
@@ -100,15 +131,7 @@ export async function loadOrCreateRemoteAppState(
     }
   }
 
-  const { data, error } = await supabase
-    .from(WORKSPACE_STATE_TABLE)
-    .select('state, updated_at')
-    .eq('workspace_id', REMOTE_WORKSPACE_ID)
-    .maybeSingle<WorkspaceStateRow>()
-
-  if (error) {
-    throw error
-  }
+  const data = await getRemoteWorkspaceStateRow()
 
   if (data) {
     return {
@@ -119,7 +142,7 @@ export async function loadOrCreateRemoteAppState(
   }
 
   const updatedAt = new Date().toISOString()
-  const { error: upsertError } = await supabase.from(WORKSPACE_STATE_TABLE).upsert(
+  const { data: seededRow, error: upsertError } = await supabase.from(WORKSPACE_STATE_TABLE).upsert(
     {
       workspace_id: REMOTE_WORKSPACE_ID,
       state: fallbackState,
@@ -128,23 +151,35 @@ export async function loadOrCreateRemoteAppState(
     {
       onConflict: 'workspace_id',
     },
-  )
+  ).select('updated_at').single<{ updated_at: string }>()
 
   if (upsertError) {
+    const latest = await getRemoteWorkspaceStateRow()
+    if (latest) {
+      return {
+        state: coerceAppState(latest.state),
+        lastSyncedAt: latest.updated_at,
+        seeded: false,
+      }
+    }
     throw upsertError
   }
 
   return {
     state: fallbackState,
-    lastSyncedAt: updatedAt,
+    lastSyncedAt: seededRow?.updated_at ?? updatedAt,
     seeded: true,
   }
 }
 
-export async function saveRemoteAppState(state: AppState) {
+export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: string | null) {
   const updatedAt = new Date().toISOString()
 
   if (isE2ERemoteMode()) {
+    const stored = getStoredE2ERemoteState()
+    if (stored && expectedUpdatedAt && stored.updatedAt !== expectedUpdatedAt) {
+      throw new RemoteStateConflictError(stored.state, stored.updatedAt)
+    }
     setStoredE2ERemoteState(state, updatedAt)
     return updatedAt
   }
@@ -154,20 +189,35 @@ export async function saveRemoteAppState(state: AppState) {
     return null
   }
 
-  const { error } = await supabase.from(WORKSPACE_STATE_TABLE).upsert(
-    {
-      workspace_id: REMOTE_WORKSPACE_ID,
+  if (!expectedUpdatedAt) {
+    const loaded = await loadOrCreateRemoteAppState(state)
+    return loaded.lastSyncedAt
+  }
+
+  const { data, error } = await supabase
+    .from(WORKSPACE_STATE_TABLE)
+    .update({
       state,
       updated_at: updatedAt,
-    },
-    {
-      onConflict: 'workspace_id',
-    },
-  )
+    })
+    .eq('workspace_id', REMOTE_WORKSPACE_ID)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('updated_at')
+    .maybeSingle<{ updated_at: string }>()
 
   if (error) {
     throw error
   }
 
-  return updatedAt
+  if (data?.updated_at) {
+    return data.updated_at
+  }
+
+  const latest = await getRemoteWorkspaceStateRow()
+  if (latest) {
+    throw new RemoteStateConflictError(coerceAppState(latest.state), latest.updated_at)
+  }
+
+  const loaded = await loadOrCreateRemoteAppState(state)
+  return loaded.lastSyncedAt
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyCardUpdates,
   archiveEligibleCards,
+  coerceAppState,
   createEmptyPortfolio,
   createSeedState,
   getBrandRemovalBlocker,
@@ -401,5 +402,39 @@ describe('board integrity helpers', () => {
     for (const card of sortedLaneCards) {
       expect(card.positionInSection).toBe(originalPositions.get(card.id))
     }
+  })
+
+  it('migrates older saved app states to the current version', () => {
+    const seed = createSeedState()
+    const legacyState = {
+      portfolios: [
+        {
+          ...seed.portfolios[0],
+          cards: seed.portfolios[0]?.cards.map((card) => ({
+            ...card,
+            blocked: undefined,
+            archivedAt: undefined,
+          })),
+        },
+      ],
+      settings: {
+        ...seed.settings,
+        taskLibrary: seed.settings.taskLibrary.map((taskType) => ({
+          ...taskType,
+          optionalFields: undefined,
+        })),
+      },
+      activePortfolioId: seed.activePortfolioId,
+      activeRole: seed.activeRole,
+      activePage: seed.activePage,
+      version: 1,
+    }
+
+    const migrated = coerceAppState(legacyState)
+
+    expect(migrated.version).toBe(seed.version)
+    expect(migrated.portfolios[0]?.cards[0]?.blocked ?? null).toBeNull()
+    expect(migrated.portfolios[0]?.cards[0]?.archivedAt ?? null).toBeNull()
+    expect(migrated.settings.taskLibrary.every((taskType) => Array.isArray(taskType.optionalFields))).toBe(true)
   })
 })

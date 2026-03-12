@@ -521,3 +521,31 @@ Verification:
 Next step:
 
 - Continue phase 7 from `CODEX-PLAN.md` with the heavier state/version integrity work, especially optimistic locking, server-owned sync metadata, and broader migration safety.
+
+### CODEX-PLAN Execution: Phase 7 Sync Integrity Pass 2
+
+Status: In progress
+
+What I learned:
+
+- The debounced-save and retry work from the previous pass improved resilience, but it still allowed one important gap: without an optimistic write token, two sessions could still overwrite each other silently.
+- The safest near-term way to add optimistic locking without breaking preview compatibility was to use `workspace_state.updated_at` as the write token, rather than introducing a brand-new database version column immediately.
+- This pass benefited from adding direct tests around the remote-state module itself. The conflict path is subtle enough that it is better to prove with unit coverage than rely only on manual multi-tab testing.
+
+What changed:
+
+- Added optimistic-lock conflict detection to [`src/remoteAppState.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/remoteAppState.ts) by requiring remote saves to match the last known `updated_at` token before writing.
+- Added explicit conflict handling to [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts), so when another session has already saved newer shared state, the app loads the latest remote version instead of silently overwriting it.
+- Added the database-side sync metadata migration in [`supabase/migrations/20260312143000_server_owns_workspace_state_updated_at.sql`](/Users/iskanderzrouga/Desktop/Editors Board/supabase/migrations/20260312143000_server_owns_workspace_state_updated_at.sql) so `workspace_state.updated_at` is owned by the server through a trigger.
+- Added regression coverage in [`src/remoteAppState.test.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/remoteAppState.test.ts) for seeded remote state and stale-token conflicts, plus a legacy-state migration test in [`src/board.test.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/board.test.ts) to lock in current version-upgrade behavior.
+- Updated [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) to continue passing the sync metadata needed by the hardened effects.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Continue the remaining later-phase `CODEX-PLAN.md` work with deeper data/model cleanup and the final release/deployment passes, while keeping the new sync conflict behavior aligned with the Supabase migration rollout.

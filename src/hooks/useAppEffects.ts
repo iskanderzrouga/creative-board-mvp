@@ -21,6 +21,7 @@ import {
 } from '../board'
 import {
   loadOrCreateRemoteAppState,
+  RemoteStateConflictError,
   saveRemoteAppState,
 } from '../remoteAppState'
 
@@ -273,7 +274,7 @@ export function useAppEffects({
       remoteSaveTimerRef.current = null
 
       const attemptSave = (attemptIndex: number) => {
-        void saveRemoteAppState(state)
+        void saveRemoteAppState(state, lastSyncedAt)
           .then((updatedAt) => {
             if (cancelled) {
               return
@@ -283,8 +284,21 @@ export function useAppEffects({
             setSyncStatus(updatedAt ? 'synced' : 'local')
             setRemoteSyncErrorShown(false)
           })
-          .catch(() => {
+          .catch((error) => {
             if (cancelled) {
+              return
+            }
+
+            if (error instanceof RemoteStateConflictError) {
+              replaceStateRef.current(error.latestState)
+              setLastSyncedAt(error.latestUpdatedAt)
+              setSyncStatus('synced')
+              setRemoteSyncErrorShown(false)
+              setToast({
+                message:
+                  'Another session saved newer workspace changes. The latest shared version has been loaded.',
+                tone: 'amber',
+              })
               return
             }
 
@@ -328,6 +342,7 @@ export function useAppEffects({
     remoteHydratedRef,
     remoteSaveTimerRef,
     remoteSyncErrorShown,
+    lastSyncedAt,
     setLastSyncedAt,
     setRemoteSyncErrorShown,
     setSyncStatus,
