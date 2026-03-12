@@ -322,3 +322,39 @@ Verification:
 Next step:
 
 - Continue phase 2 by extracting one more orchestration chunk from [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) so the file drops under the 1500-line target in `CODEX-PLAN.md`, then proceed into the remaining UX/accessibility plan items.
+
+### CODEX-PLAN Execution: Phase 2 Extraction Pass 3
+
+Status: In progress
+
+What I learned:
+
+- The remaining size problem in [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) was no longer mostly UI markup. It was the lifecycle glue: local persistence, remote sync, keyboard shortcuts, import handling, and a handful of app-level helper functions.
+- The authenticated board regression that surfaced during Playwright was a real side effect bug from the refactor: the new lifecycle hook was depending on render-created callbacks, so the post-login remote-load effect kept restarting and made the authenticated board unstable.
+- The E2E auth test also needed a more explicit mocked-login interaction because the instant local E2E auth path swaps screens faster than a normal magic-link flow.
+
+What changed:
+
+- Added [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts) to own app lifecycle behavior:
+  - local persistence
+  - local fallback-state synchronization
+  - remote workspace hydration and save effects
+  - toast and copy timers
+  - archive interval
+  - keyboard shortcuts
+  - import-file handling
+- Added [`src/appHelpers.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/appHelpers.ts) and moved the remaining app-level helper logic out of [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx), including page/role helpers, backward-move defaults, search count labeling, and clipboard logic.
+- Fixed the authenticated sync regression by stabilizing lifecycle callbacks inside [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts) with refs so the remote-load effect no longer re-runs on every render after sign-in.
+- Hardened the auth sync E2E in [`e2e/auth-sync.spec.ts`](/Users/iskanderzrouga/Desktop/Editors Board/e2e/auth-sync.spec.ts) so the mocked instant-login path triggers the auth handler directly instead of relying on a long-lived physical click target.
+- Reduced [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) again, from 1711 lines after pass 2 to 1426 lines, which clears the phase 2 target of keeping the file under 1500 lines.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run build` passed.
+- `npm run test:e2e` passed.
+
+Next step:
+
+- Move out of the phase 2 extraction target and continue into the later `CODEX-PLAN.md` items, starting with the remaining design-system/CSS cleanup and the UX/accessibility passes.

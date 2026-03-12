@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -15,6 +14,18 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import './App.css'
+import {
+  canEditorDragStage,
+  copyToClipboard,
+  getAllowedPageForRole,
+  getCurrentPage,
+  getDefaultBackwardMoveForm,
+  getRoleActorName,
+  getRoleFromWorkspaceAccess,
+  getSearchCountLabel,
+  isLikelyEmail,
+  type BackwardMoveFormState,
+} from './appHelpers'
 import { AccessGate } from './components/AccessGate'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { AuthGate } from './components/AuthGate'
@@ -26,23 +37,17 @@ import { QuickCreateModal } from './components/QuickCreateModal'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { SyncStatusPill } from './components/SyncStatusPill'
+import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
 import {
-  loadOrCreateRemoteAppState,
-  saveRemoteAppState,
-} from './remoteAppState'
-import {
   isSupabaseConfigured,
-  type WorkspaceAccessState,
 } from './supabase'
 import {
   GROUPED_STAGES,
   STAGES,
   addCardToPortfolio,
   applyCardUpdates,
-  archiveEligibleCards,
-  coerceAppState,
   createCardFromQuickInput,
   createSeedState,
   getActivePortfolio,
@@ -61,18 +66,15 @@ import {
   isLaunchOpsRole,
   loadAppState,
   moveCardInPortfolio,
-  persistAppState,
   removeCardFromPortfolio,
   type ActiveRole,
   type AppPage,
   type AppState,
   type BoardFilters,
   type Card,
-  type GlobalSettings,
   type LaneModel,
   type Portfolio,
   type QuickCreateInput,
-  type RoleMode,
   type SettingTab,
   type StageId,
   type Timeframe,
@@ -109,103 +111,6 @@ interface PendingBackwardMove {
 interface PendingDeleteCard {
   portfolioId: string
   cardId: string
-}
-
-interface BackwardMoveFormState {
-  reasonId: string
-  otherReason: string
-  estimatedHours: number | ''
-}
-
-function getRoleActorName(role: ActiveRole, portfolio: Portfolio | null) {
-  if (role.mode === 'manager') {
-    return 'Naomi'
-  }
-  if (role.mode === 'observer') {
-    return 'Iskander'
-  }
-
-  return portfolio ? getTeamMemberById(portfolio, role.editorId)?.name ?? 'Editor' : 'Editor'
-}
-
-function isLikelyEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
-}
-
-function getAllowedPageForRole(page: AppPage, roleMode: RoleMode) {
-  if (page === 'analytics' && roleMode === 'editor') {
-    return 'board' as AppPage
-  }
-  if (page === 'settings' && roleMode !== 'manager') {
-    return 'board' as AppPage
-  }
-  if (
-    page === 'workload' &&
-    roleMode !== 'manager' &&
-    roleMode !== 'observer'
-  ) {
-    return 'board' as AppPage
-  }
-
-  return page
-}
-
-function getRoleFromWorkspaceAccess(access: WorkspaceAccessState | null, currentRole: ActiveRole) {
-  if (!access) {
-    return currentRole
-  }
-
-  if (access.roleMode === 'editor') {
-    return {
-      mode: 'editor' as const,
-      editorId: currentRole.editorId,
-    }
-  }
-
-  return {
-    mode: access.roleMode,
-    editorId: currentRole.editorId,
-  }
-}
-
-function getCurrentPage(state: AppState) {
-  return getAllowedPageForRole(state.activePage, state.activeRole.mode)
-}
-
-function canEditorDragStage(stage: StageId) {
-  return stage === 'Briefed' || stage === 'In Production' || stage === 'Review' || stage === 'Ready'
-}
-
-function getSortedRevisionReasons(settings: GlobalSettings) {
-  return settings.revisionReasons.slice().sort((left, right) => left.order - right.order)
-}
-
-function getDefaultBackwardMoveForm(settings: GlobalSettings): BackwardMoveFormState {
-  const defaultReason = getSortedRevisionReasons(settings)[0] ?? null
-
-  return {
-    reasonId: defaultReason?.id ?? '',
-    otherReason: '',
-    estimatedHours: defaultReason?.estimatedHours ?? '',
-  }
-}
-
-function getSearchCountLabel(filteredCount: number, totalCount: number) {
-  return `Showing ${filteredCount} of ${totalCount} cards`
-}
-
-async function copyToClipboard(value: string) {
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value)
-    return
-  }
-
-  const element = document.createElement('textarea')
-  element.value = value
-  document.body.appendChild(element)
-  element.select()
-  document.execCommand('copy')
-  document.body.removeChild(element)
 }
 
 function App() {
@@ -434,234 +339,44 @@ function App() {
     return map
   }, [columns])
 
-  useEffect(() => {
-    persistAppState(state)
-  }, [state])
-
-  useEffect(() => {
-    localFallbackStateRef.current = state
-  }, [state])
-
-  useEffect(() => {
-    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted') {
-      if (!authEnabled) {
-        setSyncStatus('local')
-      }
-      return
-    }
-
-    let cancelled = false
-    setSyncStatus('loading')
-
-    void loadOrCreateRemoteAppState(localFallbackStateRef.current)
-      .then((result) => {
-        if (cancelled) {
-          return
-        }
-
-        localFallbackStateRef.current = result.state
-        setState(() => result.state)
-        syncStateControls(result.state)
-        remoteHydratedRef.current = true
-        setLastSyncedAt(result.lastSyncedAt)
-        setSyncStatus(result.lastSyncedAt ? 'synced' : 'local')
-        setRemoteSyncErrorShown(false)
-
-        if (result.seeded) {
-          setToast({
-            message: 'Shared workspace is ready.',
-            tone: 'green',
-          })
-        }
-      })
-      .catch(() => {
-        if (cancelled) {
-          return
-        }
-
-        remoteHydratedRef.current = true
-        setSyncStatus('error')
-        if (!remoteSyncErrorShown) {
-          setRemoteSyncErrorShown(true)
-          setToast({
-            message:
-              'Supabase sync is configured but unavailable right now. The board is using the local saved copy.',
-            tone: 'amber',
-          })
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [accessStatus, authEnabled, authStatus, remoteSyncErrorShown])
-
-  useEffect(() => {
-    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !remoteHydratedRef.current) {
-      return
-    }
-
-    if (remoteSaveTimerRef.current !== null) {
-      window.clearTimeout(remoteSaveTimerRef.current)
-    }
-
-    setSyncStatus('syncing')
-    remoteSaveTimerRef.current = window.setTimeout(() => {
-      void saveRemoteAppState(state)
-        .then((updatedAt) => {
-          setLastSyncedAt(updatedAt)
-          setSyncStatus(updatedAt ? 'synced' : 'local')
-          setRemoteSyncErrorShown(false)
-        })
-        .catch(() => {
-          setSyncStatus('error')
-          if (!remoteSyncErrorShown) {
-            setRemoteSyncErrorShown(true)
-            setToast({
-              message:
-                'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
-              tone: 'amber',
-            })
-          }
-        })
-    }, 800)
-
-    return () => {
-      if (remoteSaveTimerRef.current !== null) {
-        window.clearTimeout(remoteSaveTimerRef.current)
-      }
-    }
-  }, [accessStatus, authEnabled, authStatus, remoteSyncErrorShown, state])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (toast) {
-        setToast(null)
-      }
-    }, 3000)
-
-    return () => window.clearTimeout(timer)
-  }, [toast])
-
-  useEffect(() => {
-    if (!copyState) {
-      return
-    }
-
-    const timer = window.setTimeout(() => setCopyState(null), 1200)
-    return () => window.clearTimeout(timer)
-  }, [copyState])
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const nextNow = Date.now()
-      setNowMs(nextNow)
-      setState((current) => archiveEligibleCards(current, nextNow))
-    }, 60_000)
-
-    return () => window.clearInterval(timer)
-  }, [])
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      const hasModifier = event.metaKey || event.ctrlKey
-
-      if (event.key === 'Escape') {
-        if (pendingDeleteCard) {
-          setPendingDeleteCard(null)
-          return
-        }
-        if (pendingBackwardMove) {
-          setPendingBackwardMove(null)
-          return
-        }
-        if (quickCreateOpen) {
-          setQuickCreateOpen(false)
-          return
-        }
-        if (selectedCard) {
-          setSelectedCard(null)
-          return
-        }
-        if (editorMenuOpen) {
-          setEditorMenuOpen(false)
-        }
-      }
-
-      if (hasModifier && event.key.toLowerCase() === 'k' && currentPage === 'board') {
-        event.preventDefault()
-        searchRef.current?.focus()
-      }
-
-      if (
-        hasModifier &&
-        event.key.toLowerCase() === 'n' &&
-        currentPage === 'board' &&
-        state.activeRole.mode === 'manager' &&
-        activePortfolio
-      ) {
-        event.preventDefault()
-        setQuickCreateValue(getQuickCreateDefaults(activePortfolio, state.settings))
-        setQuickCreateOpen(true)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    activePortfolio,
-    currentPage,
-    editorMenuOpen,
-    pendingBackwardMove,
+  useAppEffects({
+    state,
+    setState,
+    authEnabled,
+    authStatus,
+    accessStatus,
+    localFallbackStateRef,
+    remoteHydratedRef,
+    remoteSaveTimerRef,
+    remoteSyncErrorShown,
+    setRemoteSyncErrorShown,
+    setSyncStatus,
+    setLastSyncedAt,
+    replaceState,
+    showToast,
+    toast,
+    setToast,
+    copyState,
+    setCopyState,
+    setNowMs,
     pendingDeleteCard,
+    setPendingDeleteCard,
+    pendingBackwardMove,
+    setPendingBackwardMove,
     quickCreateOpen,
+    setQuickCreateOpen,
     selectedCard,
-    state.activeRole.mode,
-    state.settings,
-  ])
-
-  useEffect(() => {
-    const input = importInputRef.current
-    if (!input) {
-      return
-    }
-
-    function handleChange(event: Event) {
-      const target = event.target as HTMLInputElement
-      const file = target.files?.[0]
-      if (!file) {
-        return
-      }
-
-      void file.text().then((text) => {
-        try {
-          const parsed = coerceAppState(JSON.parse(text))
-          const nextPortfolio =
-            parsed.portfolios.find((portfolio) => portfolio.id === parsed.activePortfolioId) ??
-            parsed.portfolios[0] ??
-            null
-          setState(parsed)
-          setBoardFilters(getDefaultBoardFilters(nextPortfolio))
-          setSettingsPortfolioId(parsed.activePortfolioId)
-          setSelectedCard(null)
-          setToast({
-            message: 'Board data imported',
-            tone: 'green',
-          })
-        } catch {
-          setToast({
-            message: 'Import failed. Please use a valid export file.',
-            tone: 'red',
-          })
-        } finally {
-          target.value = ''
-        }
-      })
-    }
-
-    input.addEventListener('change', handleChange)
-    return () => input.removeEventListener('change', handleChange)
-  }, [])
+    setSelectedCard,
+    editorMenuOpen,
+    setEditorMenuOpen,
+    currentPage,
+    searchRef,
+    activePortfolio,
+    roleMode: state.activeRole.mode,
+    settings: state.settings,
+    setQuickCreateValue,
+    importInputRef,
+  })
 
   function showToast(message: string, tone: ToastTone) {
     setToast({ message, tone })

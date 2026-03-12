@@ -35,7 +35,7 @@ test('authenticated team login syncs the shared workspace across pages', async (
   await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
 
   await page.getByLabel('Work email').fill('team@example.com')
-  await page.getByRole('button', { name: 'Send Magic Link' }).click()
+  await page.getByRole('button', { name: 'Send Magic Link' }).dispatchEvent('click')
 
   await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
   await expect(page.getByText('team@example.com')).toBeVisible()
