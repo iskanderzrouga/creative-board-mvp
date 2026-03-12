@@ -2,6 +2,31 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Card Archive Workflow Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added the missing manager-facing `Archive` action to `src/components/CardDetailPanel.tsx`, using the existing `archivedAt` model instead of leaving archive as a hidden state transition.
+- Kept the existing `Unarchive` path in the same control so managers can round-trip cards in and out of the archived state from the detail panel.
+- Expanded `e2e/card-crud.spec.ts` with the remaining archive/unarchive browser flow from `CODEX-PLAN.md`.
+- Verified end to end that archiving hides the card from the default board, `Show archived` reveals it again, and unarchiving returns it to the active board flow.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another explicit phase 9 card workflow gap from `CODEX-PLAN.md` is now closed, and archive/unarchive is no longer an implicit backend-only capability.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` work from the last local workflow gaps into the final production deployment and regression checklist.
+
 ### CODEX-PLAN Execution: Settings CRUD And Import/Export Regression Pass
 
 Status: In progress

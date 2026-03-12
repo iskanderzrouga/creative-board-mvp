@@ -699,9 +699,17 @@ export function CardDetailPanel({
               <strong>{getRevisionCount(card)}</strong>
             </label>
           </div>
-          {card.archivedAt && canEdit ? (
-            <button type="button" className="ghost-button" onClick={() => onSave({ archivedAt: null })}>
-              Unarchive
+          {canEdit ? (
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() =>
+                onSave({
+                  archivedAt: card.archivedAt ? null : new Date().toISOString(),
+                })
+              }
+            >
+              {card.archivedAt ? 'Unarchive' : 'Archive'}
             </button>
           ) : null}
         </section>
