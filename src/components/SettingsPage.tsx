@@ -21,7 +21,6 @@ import {
   type Portfolio,
   type RoleMode,
   type SettingTab,
-  type WorkingDay,
 } from '../board'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
@@ -84,8 +83,22 @@ export function SettingsPage({
   const settingsPortfolio =
     state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
     state.portfolios[0]
+  const intlWithSupportedValues = Intl as typeof Intl & {
+    supportedValuesOf?: (key: 'timeZone') => string[]
+  }
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
   const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(null)
+  const teamRoleOptions = Array.from(
+    new Set(
+      ['Manager', 'Editor', 'Designer', 'Launch Ops', ...state.portfolios.flatMap((portfolio) =>
+        portfolio.team.map((member) => member.role),
+      )].filter(Boolean),
+    ),
+  ).sort((left, right) => left.localeCompare(right))
+  const timezoneOptions =
+    typeof intlWithSupportedValues.supportedValuesOf === 'function'
+      ? intlWithSupportedValues.supportedValuesOf('timeZone')
+      : ['UTC', 'Asia/Bangkok', 'America/New_York', 'Europe/London']
   const workspaceEditorOptions = Array.from(
     new Set(
       state.portfolios.flatMap((portfolio) =>
@@ -615,6 +628,7 @@ export function SettingsPage({
               {settingsPortfolio.team.map((member, memberIndex) => (
                 <div key={`${settingsPortfolio.id}-${member.id}-${memberIndex}`} className="settings-row team-row">
                   <input
+                    aria-label={`${member.name} team member name`}
                     value={member.name}
                     onChange={(event) =>
                       updatePortfolio(settingsPortfolio.id, (currentPortfolio) =>
@@ -622,7 +636,8 @@ export function SettingsPage({
                       )
                     }
                   />
-                  <input
+                  <select
+                    aria-label={`${member.name} role`}
                     value={member.role}
                     onChange={(event) => {
                       const nextRole = event.target.value
@@ -642,11 +657,18 @@ export function SettingsPage({
                         ...currentPortfolio,
                         team: currentPortfolio.team.map((item, index) =>
                           index === memberIndex ? { ...item, role: nextRole } : item,
-                        ),
+                          ),
                       }))
                     }}
-                  />
+                  >
+                    {teamRoleOptions.map((roleOption) => (
+                      <option key={roleOption} value={roleOption}>
+                        {roleOption}
+                      </option>
+                    ))}
+                  </select>
                   <input
+                    aria-label={`${member.name} weekly hours`}
                     type="number"
                     min={0}
                     value={member.weeklyHours ?? ''}
@@ -662,6 +684,7 @@ export function SettingsPage({
                     }
                   />
                   <input
+                    aria-label={`${member.name} hours per day`}
                     type="number"
                     min={0}
                     step={0.5}
@@ -677,27 +700,38 @@ export function SettingsPage({
                       }))
                     }
                   />
+                  <div className="working-days-grid" aria-label={`${member.name} working days`}>
+                    {WORKING_DAYS.map((day) => (
+                      <label key={day} className="working-day-toggle">
+                        <input
+                          type="checkbox"
+                          aria-label={`${member.name} works ${day}`}
+                          checked={member.workingDays.includes(day)}
+                          onChange={(event) =>
+                            updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
+                              ...currentPortfolio,
+                              team: currentPortfolio.team.map((item, index) =>
+                                index === memberIndex
+                                  ? {
+                                      ...item,
+                                      workingDays: WORKING_DAYS.filter((workingDay) =>
+                                        workingDay === day
+                                          ? event.target.checked
+                                          : item.workingDays.includes(workingDay),
+                                      ),
+                                    }
+                                  : item,
+                              ),
+                            }))
+                          }
+                        />
+                        <span>{day}</span>
+                      </label>
+                    ))}
+                  </div>
                   <input
-                    value={member.workingDays.join(', ')}
-                    onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex
-                            ? {
-                                ...item,
-                                workingDays: event.target.value
-                                  .split(',')
-                                  .map((day) => day.trim())
-                                  .filter((day): day is WorkingDay => WORKING_DAYS.includes(day as WorkingDay)),
-                              }
-                            : item,
-                        ),
-                      }))
-                    }
-                    placeholder="Mon, Tue, Wed, Thu, Fri"
-                  />
-                  <input
+                    aria-label={`${member.name} timezone`}
+                    list="timezone-options"
                     value={member.timezone}
                     onChange={(event) =>
                       updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
@@ -710,6 +744,7 @@ export function SettingsPage({
                     placeholder="Asia/Bangkok"
                   />
                   <input
+                    aria-label={`${member.name} WIP cap`}
                     type="number"
                     min={0}
                     value={member.wipCap ?? ''}
@@ -725,6 +760,7 @@ export function SettingsPage({
                   <label className="toggle-row compact">
                     <input
                       type="checkbox"
+                      aria-label={`${member.name} active status`}
                       checked={member.active}
                       onChange={(event) =>
                         updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
@@ -756,6 +792,11 @@ export function SettingsPage({
                   </button>
                 </div>
               ))}
+              <datalist id="timezone-options">
+                {timezoneOptions.map((timezone) => (
+                  <option key={timezone} value={timezone} />
+                ))}
+              </datalist>
             </div>
 
             <button

@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Team Settings Control Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Replaced the free-text team role field in settings with a real role dropdown populated from the current workspace role set plus the core defaults.
+- Replaced the comma-separated working-days input with explicit Mon-Sun checkbox toggles so schedule changes no longer rely on manual text formatting.
+- Replaced the free-text timezone field with a timezone autocomplete backed by a `datalist` sourced from `Intl.supportedValuesOf('timeZone')` when available.
+- Added labels to the new team settings controls so they are easier to target in tests and clearer for assistive technologies.
+- Expanded `e2e/settings.spec.ts` so the settings coverage now also checks the structured role control, working-day toggles, and timezone field on seeded team members.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- The remaining settings work in `CODEX-PLAN.md` is steadily moving from free-form prototype inputs toward production-safe controls, with browser coverage now exercising the updated team table behavior.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` settings validation items, especially cross-field validation and the final rollout/regression checklist.
+
 ### CODEX-PLAN Execution: Settings Coverage + Webhook Cleanup Pass
 
 Status: In progress

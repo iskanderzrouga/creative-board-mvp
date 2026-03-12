@@ -67,6 +67,11 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
     'https://example.com/global-webhook',
   )
   await expect(page.getByRole('button', { name: 'Test', exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Team & Roles' }).click()
+  await expect(page.getByLabel('Naomi role')).toHaveValue('Manager')
+  await expect(page.getByLabel('Naomi works Mon')).toBeChecked()
+  await expect(page.getByLabel('Naomi timezone')).toHaveValue(/.+/)
 })
 
 test('workspace access new entries default to editor and require a linked editor', async ({

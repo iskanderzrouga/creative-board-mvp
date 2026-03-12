@@ -114,7 +114,7 @@ button {
 .new-card-form select,
 .slide-panel input,
 .slide-panel select,
-.settings-row input,
+.settings-row input:not([type='checkbox']),
 .settings-row select,
 .frameio-row input,
 .comment-composer input,
@@ -1259,7 +1259,7 @@ button {
   letter-spacing: 0.5px;
 }
 
-.settings-row input,
+.settings-row input:not([type='checkbox']),
 .settings-row select {
   min-height: 34px;
   padding: 0 10px;
@@ -2592,6 +2592,32 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+}
+
+.working-days-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.working-day-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.working-day-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
 }
 
 .placeholder-card {
