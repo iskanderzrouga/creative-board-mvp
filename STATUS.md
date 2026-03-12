@@ -358,3 +358,30 @@ Verification:
 Next step:
 
 - Move out of the phase 2 extraction target and continue into the later `CODEX-PLAN.md` items, starting with the remaining design-system/CSS cleanup and the UX/accessibility passes.
+
+### CODEX-PLAN Execution: Phase 3 Styling System Pass 1
+
+Status: In progress
+
+What I learned:
+
+- The broad phase 3 requirements were already partially in place after the security and refactor passes, but a lot of the stylesheet still relied on repeated literal colors for the same concepts like info, success, warning, danger, glass surfaces, and shell borders.
+- The highest-value cleanup was not a visual redesign. It was making the current visual language consistent enough that the later UX and accessibility phases can reuse it without adding more one-off CSS.
+- The app had two shell backgrounds, multiple glass-panel variants, and several status-pill families that were visually related but technically disconnected, which made the file harder to evolve safely.
+
+What changed:
+
+- Expanded the CSS token layer in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css) with semantic surface, shell, status, and text variables for glass panels, shell borders, success/warning/danger/info states, and shared gradients.
+- Rewired the app shell, auth shell, sidebar, session/search chrome, status pills, warning badges, workload states, and modal shells in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css) to use those tokens instead of repeated hardcoded literals.
+- Deduplicated the repeated backdrop treatment by introducing a shared page background token and applying it to both the main app frame and the auth entry experience in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css).
+- Kept the earlier phase 3 improvements in place and extended them, including the removal of global `transition: all`, global `:focus-visible`, reduced-motion handling, and the Firefox scrollbar normalization in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css).
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Continue into the remaining phase 4 and phase 6 interaction work from `CODEX-PLAN.md`, starting with the auth/access UX edges and the modal/accessibility refinements that now have a cleaner styling base to build on.
