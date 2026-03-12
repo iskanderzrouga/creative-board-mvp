@@ -77,6 +77,7 @@ export function useWorkspaceSession({
   const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null)
   const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(null)
   const [accessCheckAttempt, setAccessCheckAttempt] = useState(0)
+  const [signOutPending, setSignOutPending] = useState(false)
 
   const resetRemoteSessionRef = useRef(resetRemoteSession)
   const closeEditorMenuRef = useRef(closeEditorMenu)
@@ -493,6 +494,8 @@ export function useWorkspaceSession({
   }
 
   async function handleSignOut() {
+    setSignOutPending(true)
+
     try {
       await signOutOfSupabase()
       setAuthSession(null)
@@ -503,6 +506,8 @@ export function useWorkspaceSession({
       showToast('Signed out', 'blue')
     } catch {
       showToast('Could not sign out right now.', 'red')
+    } finally {
+      setSignOutPending(false)
     }
   }
 
@@ -534,6 +539,7 @@ export function useWorkspaceSession({
     loginPending,
     loginInfoMessage,
     loginErrorMessage,
+    signOutPending,
     handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,

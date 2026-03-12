@@ -4,6 +4,7 @@ interface AccessGateProps {
   title?: string
   description?: string
   onRetry?: () => void
+  signOutPending?: boolean
   onSignOut: () => void
 }
 
@@ -13,6 +14,7 @@ export function AccessGate({
   title = 'Access needed',
   description = 'Your sign-in worked, but this account still needs workspace access from a manager before the shared board can open.',
   onRetry,
+  signOutPending = false,
   onSignOut,
 }: AccessGateProps) {
   return (
@@ -35,8 +37,13 @@ export function AccessGate({
               Retry
             </button>
           ) : null}
-          <button type="button" className="ghost-button" onClick={onSignOut}>
-            Sign out
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={signOutPending}
+            onClick={onSignOut}
+          >
+            {signOutPending ? 'Signing out...' : 'Sign out'}
           </button>
         </div>
       </div>

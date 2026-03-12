@@ -1,6 +1,7 @@
 interface AccessVerificationGateProps {
   email: string
   timedOut: boolean
+  signOutPending?: boolean
   onRetry: () => void
   onSignOut: () => void
 }
@@ -8,6 +9,7 @@ interface AccessVerificationGateProps {
 export function AccessVerificationGate({
   email,
   timedOut,
+  signOutPending = false,
   onRetry,
   onSignOut,
 }: AccessVerificationGateProps) {
@@ -37,8 +39,13 @@ export function AccessVerificationGate({
             <button type="button" className="primary-button" onClick={onRetry}>
               Retry check
             </button>
-            <button type="button" className="ghost-button" onClick={onSignOut}>
-              Sign out
+            <button
+              type="button"
+              className="ghost-button"
+              disabled={signOutPending}
+              onClick={onSignOut}
+            >
+              {signOutPending ? 'Signing out...' : 'Sign out'}
             </button>
           </div>
         ) : null}

@@ -6,6 +6,7 @@ import {
 } from './supabase'
 
 const WORKSPACE_STATE_TABLE = 'workspace_state'
+const E2E_REMOTE_DELAY_KEY = 'editors-board-e2e-remote-delay-ms'
 
 interface WorkspaceStateRow {
   state: unknown
@@ -96,6 +97,16 @@ function isE2ERemoteMode() {
   return hasBrowser() && window.localStorage.getItem('editors-board-e2e-auth-mode') === 'enabled'
 }
 
+function getE2ERemoteDelayMs() {
+  if (!hasBrowser()) {
+    return 0
+  }
+
+  const raw = window.localStorage.getItem(E2E_REMOTE_DELAY_KEY)
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
 export function isRemotePersistenceConfigured() {
   return getSupabaseClient() !== null || isE2ERemoteMode()
 }
@@ -104,6 +115,11 @@ export async function loadOrCreateRemoteAppState(
   fallbackState: AppState,
 ): Promise<RemoteAppStateResult> {
   if (isE2ERemoteMode()) {
+    const delayMs = getE2ERemoteDelayMs()
+    if (delayMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, delayMs))
+    }
+
     const stored = getStoredE2ERemoteState()
     if (stored) {
       return {

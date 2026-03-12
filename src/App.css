@@ -476,6 +476,12 @@ button {
   background: var(--surface-tint);
 }
 
+.column-ghost-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .primary-button {
   display: inline-flex;
   align-items: center;
@@ -2041,6 +2047,106 @@ button {
   color: var(--danger-text);
 }
 
+.remote-loading-frame {
+  background: var(--page-backdrop);
+}
+
+.remote-loading-sidebar {
+  width: 240px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 32px 20px;
+  border-right: 1px solid var(--line-shell);
+  background: var(--surface-glass);
+  box-shadow: 4px 0 20px rgba(15, 23, 42, 0.04);
+}
+
+.remote-loading-sidebar h2,
+.remote-loading-sidebar p,
+.remote-loading-copy {
+  margin: 0;
+}
+
+.remote-loading-sidebar h2 {
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.remote-loading-sidebar p,
+.remote-loading-copy {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.remote-loading-page {
+  gap: 16px;
+}
+
+.remote-loading-toolbar {
+  align-items: start;
+}
+
+.remote-loading-stats {
+  gap: 10px;
+  min-height: 56px;
+}
+
+.remote-loading-chip {
+  width: 140px;
+  height: 20px;
+  border-radius: 999px;
+}
+
+.remote-loading-columns {
+  display: grid;
+  grid-template-columns: repeat(3, 272px);
+  gap: 8px;
+  align-items: start;
+}
+
+.remote-loading-column {
+  background: rgba(226, 232, 240, 0.8);
+}
+
+.remote-loading-title {
+  width: 120px;
+  height: 18px;
+  border-radius: 999px;
+}
+
+.remote-loading-card {
+  height: 132px;
+  border-radius: 18px;
+}
+
+.remote-loading-card.short {
+  height: 96px;
+}
+
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    rgba(203, 213, 225, 0.56) 0%,
+    rgba(241, 245, 249, 0.92) 50%,
+    rgba(203, 213, 225, 0.56) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s linear infinite;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
 .manager-filter-bar,
 .editor-summary-bar,
 .stats-bar {
@@ -2920,6 +3026,20 @@ button {
 }
 
 @media (max-width: 900px) {
+  .app-frame.remote-loading-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .remote-loading-sidebar {
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line-shell);
+  }
+
+  .remote-loading-columns {
+    grid-template-columns: 1fr;
+  }
+
   .page-shell {
     padding: 16px;
   }
@@ -2966,5 +3086,45 @@ button {
   .quick-create-actions .primary-button,
   .quick-create-actions .ghost-button {
     width: 100%;
+  }
+}
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  .sidebar-hover-zone,
+  .session-toolbar,
+  .search-shell,
+  .panel-overlay,
+  .slide-panel,
+  .quick-create-modal,
+  .confirm-dialog-overlay,
+  .confirm-dialog {
+    display: none !important;
+  }
+
+  .app-frame,
+  .main-shell,
+  .page-shell {
+    background: #ffffff !important;
+    box-shadow: none !important;
+  }
+
+  .board-scroll,
+  .stage-column-content {
+    overflow: visible !important;
+  }
+
+  .board-grid,
+  .remote-loading-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stage-column {
+    height: auto;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

@@ -36,6 +36,7 @@ import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
 import { QuickCreateModal } from './components/QuickCreateModal'
+import { RemoteLoadingShell } from './components/RemoteLoadingShell'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { SyncStatusPill } from './components/SyncStatusPill'
@@ -184,6 +185,7 @@ function App() {
     loginPending,
     loginInfoMessage,
     loginErrorMessage,
+    signOutPending,
     handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
@@ -327,8 +329,13 @@ function App() {
       <div className="session-toolbar">
         <SyncStatusPill syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} />
         <span className="session-email">{authSession.email}</span>
-        <button type="button" className="ghost-button" onClick={handleSignOut}>
-          Sign out
+        <button
+          type="button"
+          className="ghost-button"
+          disabled={signOutPending}
+          onClick={handleSignOut}
+        >
+          {signOutPending ? 'Signing out...' : 'Sign out'}
         </button>
       </div>
     ) : null
@@ -1079,6 +1086,25 @@ function App() {
   if (
     authEnabled &&
     authStatus === 'signed-in' &&
+    accessStatus === 'granted' &&
+    authSession &&
+    syncStatus === 'loading'
+  ) {
+    return (
+      <>
+        <RemoteLoadingShell
+          email={authSession.email}
+          signOutPending={signOutPending}
+          onSignOut={handleSignOut}
+        />
+        {toastView}
+      </>
+    )
+  }
+
+  if (
+    authEnabled &&
+    authStatus === 'signed-in' &&
     authSession &&
     (accessStatus === 'checking' || accessCheckTimedOut)
   ) {
@@ -1087,6 +1113,7 @@ function App() {
         <AccessVerificationGate
           email={authSession.email}
           timedOut={accessCheckTimedOut}
+          signOutPending={signOutPending}
           onRetry={handleRetryAccessCheck}
           onSignOut={handleSignOut}
         />
@@ -1116,6 +1143,7 @@ function App() {
               : undefined
           }
           onRetry={accessStatus === 'error' ? handleRetryAccessCheck : undefined}
+          signOutPending={signOutPending}
           onSignOut={handleSignOut}
         />
         {toastView}

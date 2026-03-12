@@ -2,6 +2,33 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Phase 10 Release Polish Pass 1
+
+Status: In progress
+
+What I changed in this pass:
+
+- Added a dedicated remote-loading shell so authenticated users now see an intentional loading state while the shared workspace hydrates, instead of briefly landing on stale local content.
+- Added sign-out pending handling across the authenticated toolbar and access gates, so the UI now disables the action and shows `Signing out...` while the session is clearing.
+- Added E2E-only remote load delay support so the new loading state can be verified reliably in browser tests without changing production behavior.
+- Added print styles that strip the interactive shell and let the main board columns print more cleanly.
+- Hardened the lint config by ignoring generated `playwright-report`, `test-results`, and other build/test artifact folders.
+- Added a new Playwright spec at `e2e/loading-signout.spec.ts` that verifies the loading shell appears for authenticated remote startup and that sign-out returns the app to the `Team access` gate.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Browser coverage expanded from 8 Playwright tests to 9 Playwright tests, and the new pass directly covers the plan’s loading-shell and sign-out flow.
+
+Next step:
+
+- Continue phase 10 and the remaining plan items with more release polish around settings/admin flows and then the final production rollout checklist.
+
 ### CODEX-PLAN Execution: Phase 9 Coverage Pass 2
 
 Status: In progress
