@@ -493,3 +493,31 @@ Verification:
 Next step:
 
 - Move out of the remaining accessibility polish and into the later `CODEX-PLAN.md` hardening phases, especially sync resilience and state/version safety.
+
+### CODEX-PLAN Execution: Phase 7 Sync Hardening Pass 1
+
+Status: In progress
+
+What I learned:
+
+- The current sync flow was already functional, but it still had a few fragility points that showed up immediately once I started tightening it: local persistence was writing on every state change, remote saves failed fast with no retry window, and the app did not refresh shared state when a tab became active again.
+- Debouncing local persistence was the right direction, but it also exposed a real quick-reload edge where a pending local write could be lost if the page reloaded before the debounce finished.
+- This phase benefits from working in small slices. A modest retry/resync layer improves real-world resilience now, while the heavier optimistic-locking and database-versioning changes can still come in later plan passes.
+
+What changed:
+
+- Debounced browser-local persistence in [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts) so rapid state changes no longer write to local storage on every render tick.
+- Added a flush-on-pagehide/unload safeguard in [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts) so quick reloads still preserve the latest local state even with the debounce in place.
+- Added remote save retries with short backoff delays in [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts) so transient Supabase sync hiccups get a few chances to recover before the app falls back to an error state.
+- Added a visibility-based shared-state refresh in [`src/hooks/useAppEffects.ts`](/Users/iskanderzrouga/Desktop/Editors Board/src/hooks/useAppEffects.ts), so returning to an open tab can pull newer remote workspace state and announce the refresh to the user.
+- Updated [`src/App.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.tsx) to pass the sync metadata that the hardening logic now needs.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run build` passed.
+- `npm run test` passed.
+
+Next step:
+
+- Continue phase 7 from `CODEX-PLAN.md` with the heavier state/version integrity work, especially optimistic locking, server-owned sync metadata, and broader migration safety.

@@ -373,6 +373,8 @@ function App() {
     localFallbackStateRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
+    syncStatus,
+    lastSyncedAt,
     remoteSyncErrorShown,
     setRemoteSyncErrorShown,
     setSyncStatus,

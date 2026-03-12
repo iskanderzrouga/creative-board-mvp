@@ -29,6 +29,10 @@ type AccessStatus = 'disabled' | 'checking' | 'granted' | 'denied' | 'error'
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
+const LOCAL_PERSIST_DEBOUNCE_MS = 200
+const REMOTE_SAVE_DEBOUNCE_MS = 800
+const REMOTE_SAVE_RETRY_DELAYS_MS = [0, 1200, 3000]
+
 interface ToastState {
   message: string
   tone: ToastTone
@@ -66,6 +70,8 @@ interface UseAppEffectsOptions {
   localFallbackStateRef: MutableRefObject<AppState>
   remoteHydratedRef: MutableRefObject<boolean>
   remoteSaveTimerRef: MutableRefObject<number | null>
+  syncStatus: SyncStatus
+  lastSyncedAt: string | null
   remoteSyncErrorShown: boolean
   setRemoteSyncErrorShown: Dispatch<SetStateAction<boolean>>
   setSyncStatus: Dispatch<SetStateAction<SyncStatus>>
@@ -105,6 +111,8 @@ export function useAppEffects({
   localFallbackStateRef,
   remoteHydratedRef,
   remoteSaveTimerRef,
+  syncStatus,
+  lastSyncedAt,
   remoteSyncErrorShown,
   setRemoteSyncErrorShown,
   setSyncStatus,
@@ -136,6 +144,7 @@ export function useAppEffects({
 }: UseAppEffectsOptions) {
   const replaceStateRef = useRef(replaceState)
   const showToastRef = useRef(showToast)
+  const localPersistTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     replaceStateRef.current = replaceState
@@ -146,8 +155,39 @@ export function useAppEffects({
   }, [showToast])
 
   useEffect(() => {
-    persistAppState(state)
+    if (localPersistTimerRef.current !== null) {
+      window.clearTimeout(localPersistTimerRef.current)
+    }
+
+    localPersistTimerRef.current = window.setTimeout(() => {
+      persistAppState(state)
+    }, LOCAL_PERSIST_DEBOUNCE_MS)
+
+    return () => {
+      if (localPersistTimerRef.current !== null) {
+        window.clearTimeout(localPersistTimerRef.current)
+        localPersistTimerRef.current = null
+      }
+    }
   }, [state])
+
+  useEffect(() => {
+    function flushPendingLocalState() {
+      if (localPersistTimerRef.current !== null) {
+        window.clearTimeout(localPersistTimerRef.current)
+        localPersistTimerRef.current = null
+        persistAppState(localFallbackStateRef.current)
+      }
+    }
+
+    window.addEventListener('pagehide', flushPendingLocalState)
+    window.addEventListener('beforeunload', flushPendingLocalState)
+
+    return () => {
+      window.removeEventListener('pagehide', flushPendingLocalState)
+      window.removeEventListener('beforeunload', flushPendingLocalState)
+    }
+  }, [localFallbackStateRef])
 
   useEffect(() => {
     localFallbackStateRef.current = state
@@ -221,34 +261,64 @@ export function useAppEffects({
       return
     }
 
+    let cancelled = false
+    let retryTimerId: number | null = null
+
     if (remoteSaveTimerRef.current !== null) {
       window.clearTimeout(remoteSaveTimerRef.current)
     }
 
     setSyncStatus('syncing')
     remoteSaveTimerRef.current = window.setTimeout(() => {
-      void saveRemoteAppState(state)
-        .then((updatedAt) => {
-          setLastSyncedAt(updatedAt)
-          setSyncStatus(updatedAt ? 'synced' : 'local')
-          setRemoteSyncErrorShown(false)
-        })
-        .catch(() => {
-          setSyncStatus('error')
-          if (!remoteSyncErrorShown) {
-            setRemoteSyncErrorShown(true)
-            setToast({
-              message:
-                'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
-              tone: 'amber',
-            })
-          }
-        })
-    }, 800)
+      remoteSaveTimerRef.current = null
+
+      const attemptSave = (attemptIndex: number) => {
+        void saveRemoteAppState(state)
+          .then((updatedAt) => {
+            if (cancelled) {
+              return
+            }
+
+            setLastSyncedAt(updatedAt)
+            setSyncStatus(updatedAt ? 'synced' : 'local')
+            setRemoteSyncErrorShown(false)
+          })
+          .catch(() => {
+            if (cancelled) {
+              return
+            }
+
+            const nextDelay = REMOTE_SAVE_RETRY_DELAYS_MS[attemptIndex + 1]
+            if (nextDelay !== undefined) {
+              retryTimerId = window.setTimeout(() => {
+                attemptSave(attemptIndex + 1)
+              }, nextDelay)
+              return
+            }
+
+            setSyncStatus('error')
+            if (!remoteSyncErrorShown) {
+              setRemoteSyncErrorShown(true)
+              setToast({
+                message:
+                  'Changes were saved locally, but the Supabase sync failed. Check your auth session and public key.',
+                tone: 'amber',
+              })
+            }
+          })
+      }
+
+      attemptSave(0)
+    }, REMOTE_SAVE_DEBOUNCE_MS)
 
     return () => {
+      cancelled = true
       if (remoteSaveTimerRef.current !== null) {
         window.clearTimeout(remoteSaveTimerRef.current)
+        remoteSaveTimerRef.current = null
+      }
+      if (retryTimerId !== null) {
+        window.clearTimeout(retryTimerId)
       }
     }
   }, [
@@ -274,6 +344,62 @@ export function useAppEffects({
 
     return () => window.clearTimeout(timer)
   }, [setToast, toast])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !remoteHydratedRef.current) {
+      return
+    }
+
+    let cancelled = false
+
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState !== 'visible' ||
+        syncStatus === 'syncing' ||
+        remoteSaveTimerRef.current !== null
+      ) {
+        return
+      }
+
+      void loadOrCreateRemoteAppState(localFallbackStateRef.current)
+        .then((result) => {
+          if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === lastSyncedAt) {
+            return
+          }
+
+          replaceStateRef.current(result.state)
+          setLastSyncedAt(result.lastSyncedAt)
+          setSyncStatus('synced')
+          setRemoteSyncErrorShown(false)
+          showToastRef.current('Shared workspace refreshed.', 'blue')
+        })
+        .catch(() => {
+          if (cancelled) {
+            return
+          }
+
+          setSyncStatus('error')
+        })
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [
+    accessStatus,
+    authEnabled,
+    authStatus,
+    lastSyncedAt,
+    localFallbackStateRef,
+    remoteHydratedRef,
+    remoteSaveTimerRef,
+    setLastSyncedAt,
+    setRemoteSyncErrorShown,
+    setSyncStatus,
+    syncStatus,
+  ])
 
   useEffect(() => {
     if (!copyState) {
