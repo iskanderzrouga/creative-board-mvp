@@ -2331,6 +2331,12 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
 
   const allowedKeys = new Set<keyof Card>()
   if (viewer.editorName === card.owner) {
+    allowedKeys.add('title')
+    allowedKeys.add('hook')
+    allowedKeys.add('angle')
+    allowedKeys.add('audience')
+    allowedKeys.add('brief')
+    allowedKeys.add('attachments')
     allowedKeys.add('frameioLink')
   }
   if (isLaunchOpsRole(viewer.memberRole)) {

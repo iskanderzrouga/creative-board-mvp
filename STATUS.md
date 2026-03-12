@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Editor And Observer Workflow Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Expanded the card update permission guard in `src/board.ts` so owner editors can update their own content fields without gaining manager-only access.
+- Kept manager-only controls protected: editors still cannot change assignment, due date, archive state, deletion, or other admin metadata.
+- Updated `src/components/CardDetailPanel.tsx` so owner editors can edit their own title, hook, angle, audience, brief, and links, while observer and manager behavior stays distinct.
+- Added browser coverage in `e2e/roles-filters.spec.ts` to verify that editors can update owned card content and move their own card forward one stage, while observers stay read-only in the detail panel.
+- Updated `src/board.test.ts` to reflect the new owner-editor permission model and keep the manager-only metadata boundary under unit-test coverage.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another phase 11 workflow expectation from `CODEX-PLAN.md` is now real in the product: editors can edit their own card details, and the suite now exercises both editor and observer behavior directly.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` work from the last local gaps into the final production deployment and regression checklist.
+
 ### CODEX-PLAN Execution: Card Archive Workflow Pass
 
 Status: In progress

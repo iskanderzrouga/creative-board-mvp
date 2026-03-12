@@ -21,6 +21,33 @@ async function createCardAndOpenDetail(page: Page, title: string) {
   await expect(page.getByLabel('Card title')).toHaveValue(title)
 }
 
+async function dragLocatorToTarget(page: Page, source: ReturnType<Page['locator']>, target: ReturnType<Page['locator']>) {
+  await source.scrollIntoViewIfNeeded()
+  await target.scrollIntoViewIfNeeded()
+
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  const viewport = page.viewportSize()
+
+  if (!sourceBox || !targetBox || !viewport) {
+    throw new Error('Missing drag source or target box')
+  }
+
+  const sourceX = Math.min(sourceBox.x + sourceBox.width / 2, viewport.width - 16)
+  const sourceY = Math.min(sourceBox.y + Math.min(sourceBox.height / 2, 32), viewport.height - 16)
+  const targetX = Math.min(targetBox.x + targetBox.width / 2, viewport.width - 16)
+  const targetY = Math.min(targetBox.y + Math.min(targetBox.height / 2, 48), viewport.height - 16)
+
+  await source.hover()
+  await page.mouse.move(sourceX, sourceY)
+  await page.mouse.down()
+  await page.waitForTimeout(50)
+  await page.mouse.move(sourceX + 16, sourceY + 16, { steps: 8 })
+  await page.mouse.move(targetX, targetY, { steps: 24 })
+  await page.mouse.up()
+  await page.waitForTimeout(250)
+}
+
 test('role switching keeps manager-only actions locked to managers', async ({ page }) => {
   await openFreshApp(page)
 
@@ -108,4 +135,54 @@ test('blocked card filter isolates blocked work and can be reset', async ({ page
   await page.getByRole('button', { name: 'Reset filters' }).click()
   await expect(getCardButton(page, /TC0022 LongLasting/)).toBeVisible()
   await expect(getCardButton(page, /Phase 9 blocked filter card/)).toBeVisible()
+})
+
+test('editor can update owned card content and move it forward one stage', async ({ page }) => {
+  await openFreshApp(page)
+
+  await page.getByRole('button', { name: 'Expand sidebar' }).click()
+  await page.locator('.sidebar-role-stack').getByRole('button', { name: 'Editor role' }).click()
+  await page.locator('.sidebar-editor-menu').getByRole('button', { name: 'Daniel T', exact: true }).click()
+  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: /PX0020 PRICE \/ Color/ }).click()
+  const titleInput = page.getByLabel('Card title')
+  await expect(titleInput).toHaveValue('PX0020 PRICE / Color')
+  await titleInput.fill('PX0020 Editor Updated')
+  await page.getByRole('button', { name: 'Details' }).click()
+
+  await page.getByPlaceholder('Link label').fill('Editor note')
+  await page.getByPlaceholder('https://').fill('https://example.com/editor-note')
+  await page.getByRole('button', { name: 'Add link' }).click()
+  await expect(page.getByText('Editor note')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Close card detail panel' }).click()
+  await expect(page.getByRole('button', { name: /PX0020 Editor Updated/ })).toBeVisible()
+
+  const briefedLane = page.getByRole('group', { name: 'Briefed lane for Daniel T' })
+  const inProductionLane = page.getByRole('group', { name: 'In Production lane for Daniel T' })
+  await dragLocatorToTarget(
+    page,
+    briefedLane.getByRole('button', { name: /PX0020 Editor Updated/ }),
+    inProductionLane.getByRole('button').first(),
+  )
+
+  await expect(page.locator('.toast').filter({ hasText: /→ In Production/ })).toHaveCount(1)
+  await expect(inProductionLane.getByRole('button', { name: /PX0020 Editor Updated/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+})
+
+test('observer card detail stays read-only', async ({ page }) => {
+  await openFreshApp(page)
+
+  await page.getByRole('button', { name: 'Expand sidebar' }).click()
+  await page.locator('.sidebar-role-stack').getByRole('button', { name: 'Observer role' }).click()
+  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+  await page.getByRole('button', { name: /PX0020 PRICE \/ Color/ }).click({ force: true })
+
+  await expect(page.getByLabel('Card title')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Archive', exact: true })).toHaveCount(0)
+  await expect(page.getByPlaceholder('Link label')).toHaveCount(0)
+  await expect(page.getByPlaceholder('Leave feedback or an update...')).toHaveCount(0)
 })

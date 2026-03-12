@@ -497,7 +497,7 @@ describe('board integrity helpers', () => {
     ).toBe(portfolio)
   })
 
-  it('allows editors to update their own Frame.io link but not protected fields', () => {
+  it('allows editors to update their own content fields but not manager-only metadata', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]
     const sourceCard = portfolio.cards.find((card) => card.owner)
@@ -524,14 +524,26 @@ describe('board integrity helpers', () => {
       'https://frame.io/review/test-card',
     )
 
+    const titleUpdated = applyCardUpdates(
+      portfolio,
+      state.settings,
+      sourceCard!.id,
+      { title: 'Edited title' },
+      'Naomi',
+      '2026-03-12T14:10:00Z',
+      editorViewer,
+    )
+
+    expect(titleUpdated.cards.find((card) => card.id === sourceCard!.id)?.title).toBe('Edited title')
+
     expect(
       applyCardUpdates(
         portfolio,
         state.settings,
         sourceCard!.id,
-        { title: 'Edited title' },
+        { dueDate: '2026-03-20' },
         'Naomi',
-        '2026-03-12T14:10:00Z',
+        '2026-03-12T14:15:00Z',
         editorViewer,
       ),
     ).toBe(portfolio)

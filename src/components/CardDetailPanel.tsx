@@ -171,12 +171,15 @@ export function CardDetailPanel({
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
-  const canEdit = viewerMode === 'manager'
+  const canManage = viewerMode === 'manager'
+  const isOwnedEditor = viewerMode === 'editor' && viewerName === card.owner
+  const canEditOwnedContent = canManage || isOwnedEditor
   const isLaunchOpsViewer = viewerMode === 'editor' && isLaunchOpsRole(viewerMemberRole)
-  const canComment = viewerMode === 'manager' || isLaunchOpsViewer || viewerName === card.owner
-  const canEditFrameio = viewerMode === 'manager' || viewerName === card.owner
-  const canSetBlocked = viewerMode === 'manager' || isLaunchOpsViewer
-  const canClearBlocked = viewerMode === 'manager'
+  const canComment = canManage || isLaunchOpsViewer || viewerName === card.owner
+  const canEditFrameio = canManage || isOwnedEditor
+  const canEditLinks = canManage || isOwnedEditor
+  const canSetBlocked = canManage || isLaunchOpsViewer
+  const canClearBlocked = canManage
   const canClearOwner = card.stage === 'Backlog'
   const dueStatus = getDueStatus(card, nowMs)
   const taskType = getTaskTypeById(settings, card.taskTypeId)
@@ -277,7 +280,7 @@ export function CardDetailPanel({
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
-            {canEdit ? (
+            {canEditOwnedContent ? (
               <input
                 id={titleId}
                 className="panel-title-input"
@@ -319,7 +322,7 @@ export function CardDetailPanel({
           </div>
 
           <div className="panel-header-actions">
-            {canEdit ? (
+            {canManage ? (
               <button type="button" className="ghost-button danger-outline" onClick={onRequestDelete}>
                 Delete
               </button>
@@ -478,7 +481,7 @@ export function CardDetailPanel({
           <div className="metadata-grid">
             <label>
               <span>Brand</span>
-              {canEdit ? (
+              {canManage ? (
                 <select value={card.brand} onChange={(event) => onSave({ brand: event.target.value })}>
                   {portfolio.brands.map((brand) => (
                     <option key={brand.name} value={brand.name}>
@@ -492,7 +495,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Product</span>
-              {canEdit ? (
+              {canManage ? (
                 <select value={card.product} onChange={(event) => onSave({ product: event.target.value })}>
                   {(getBrandByName(portfolio, card.brand)?.products ?? []).map((product) => (
                     <option key={product} value={product}>
@@ -506,7 +509,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Platform</span>
-              {canEdit ? (
+              {canManage ? (
                 <select
                   value={card.platform}
                   onChange={(event) => onSave({ platform: event.target.value as Card['platform'] })}
@@ -523,7 +526,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Task Type</span>
-              {canEdit ? (
+              {canManage ? (
                 <select value={card.taskTypeId} onChange={(event) => handleTaskTypeChange(event.target.value)}>
                   {getTaskTypeGroups(settings).map((group) => (
                     <optgroup key={group.category} label={group.category}>
@@ -541,7 +544,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Original Estimate</span>
-              {canEdit ? (
+              {canManage ? (
                 <input
                   type="number"
                   min={1}
@@ -554,7 +557,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Revision Estimate</span>
-              {canEdit && card.revisionEstimatedHours !== null ? (
+              {canManage && card.revisionEstimatedHours !== null ? (
                 <div className="inline-hours-field">
                   <input
                     type="number"
@@ -585,7 +588,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Funnel Stage</span>
-              {canEdit ? (
+              {canManage ? (
                 <select
                   value={card.funnelStage}
                   onChange={(event) => onSave({ funnelStage: event.target.value as Card['funnelStage'] })}
@@ -602,7 +605,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Hook</span>
-              {canEdit ? (
+              {canEditOwnedContent ? (
                 <input
                   value={hookDraft}
                   onChange={(event) => setHookDraft(event.target.value)}
@@ -614,7 +617,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Angle</span>
-              {canEdit ? (
+              {canEditOwnedContent ? (
                 <input
                   value={angleDraft}
                   onChange={(event) => setAngleDraft(event.target.value)}
@@ -626,7 +629,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Audience</span>
-              {canEdit ? (
+              {canEditOwnedContent ? (
                 <input
                   value={audienceDraft}
                   onChange={(event) => setAudienceDraft(event.target.value)}
@@ -638,7 +641,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Assigned to</span>
-              {canEdit ? (
+              {canManage ? (
                 <select value={card.owner ?? ''} onChange={(event) => onSave({ owner: event.target.value || null })}>
                   {canClearOwner ? <option value="">Unassigned</option> : null}
                   {getEditorOptions(portfolio).map((member) => (
@@ -653,7 +656,7 @@ export function CardDetailPanel({
             </label>
             <label>
               <span>Due Date</span>
-              {canEdit ? (
+              {canManage ? (
                 <input
                   type="date"
                   value={card.dueDate ?? ''}
@@ -699,7 +702,7 @@ export function CardDetailPanel({
               <strong>{getRevisionCount(card)}</strong>
             </label>
           </div>
-          {canEdit ? (
+          {canManage ? (
             <button
               type="button"
               className="ghost-button"
@@ -729,7 +732,7 @@ export function CardDetailPanel({
                 ))}
               </div>
             </div>
-          ) : canEdit ? (
+          ) : canManage ? (
             <div className="drive-actions">
               <button
                 type="button"
@@ -770,7 +773,11 @@ export function CardDetailPanel({
           className="panel-section"
         >
           <div className="section-rule-title">Brief</div>
-          <RichTextEditor value={card.brief} onChange={(next) => onSave({ brief: next })} readOnly={!canEdit} />
+          <RichTextEditor
+            value={card.brief}
+            onChange={(next) => onSave({ brief: next })}
+            readOnly={!canEditOwnedContent}
+          />
         </section>
 
         <section
@@ -807,7 +814,7 @@ export function CardDetailPanel({
                     <span className="link-label">{attachment.label}</span>
                     <span className="link-url">{attachment.url}</span>
                   </a>
-                  {canEdit ? (
+                  {canEditLinks ? (
                     <button
                       type="button"
                       className="clear-link"
@@ -825,7 +832,7 @@ export function CardDetailPanel({
             )}
           </div>
 
-          {canEdit ? (
+          {canEditLinks ? (
             <div className="add-link-form">
               <input
                 value={linkLabel}
