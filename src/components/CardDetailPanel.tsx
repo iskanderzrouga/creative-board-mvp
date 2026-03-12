@@ -53,6 +53,20 @@ interface CardDetailPanelProps {
   onRequestDelete: () => void
 }
 
+const COMMENT_PREVIEW_COUNT = 10
+const ACTIVITY_PREVIEW_COUNT = 5
+const CARD_DETAIL_SECTIONS = [
+  { id: 'details', label: 'Details' },
+  { id: 'naming', label: 'Naming' },
+  { id: 'metadata', label: 'Metadata' },
+  { id: 'brief', label: 'Brief' },
+  { id: 'links', label: 'Links' },
+  { id: 'comments', label: 'Comments' },
+  { id: 'activity', label: 'Activity' },
+] as const
+
+type CardDetailSectionId = (typeof CARD_DETAIL_SECTIONS)[number]['id']
+
 const COMPLETION_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
   weekday: 'short',
   month: 'short',
@@ -128,10 +142,20 @@ export function CardDetailPanel({
 }: CardDetailPanelProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLElement | null>(null)
+  const sectionRefs = useRef<Record<CardDetailSectionId, HTMLElement | null>>({
+    details: null,
+    naming: null,
+    metadata: null,
+    brief: null,
+    links: null,
+    comments: null,
+    activity: null,
+  })
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
+  const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
   const canEdit = viewerMode === 'manager'
   const isLaunchOpsViewer = viewerMode === 'editor' && isLaunchOpsRole(viewerMemberRole)
@@ -144,6 +168,11 @@ export function CardDetailPanel({
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
   const daysSinceBriefed = getDaysSinceBriefed(card, nowMs)
+  const visibleComments = showAllComments ? card.comments : card.comments.slice(-COMMENT_PREVIEW_COUNT)
+  const hiddenCommentCount = Math.max(0, card.comments.length - COMMENT_PREVIEW_COUNT)
+  const visibleActivity = showAllActivity
+    ? card.activityLog
+    : card.activityLog.slice(0, ACTIVITY_PREVIEW_COUNT)
 
   useModalAccessibility(panelRef, true)
 
@@ -168,6 +197,23 @@ export function CardDetailPanel({
         reason: blockedDraft.trim(),
         at: new Date().toISOString(),
       },
+    })
+  }
+
+  function scrollToSection(sectionId: CardDetailSectionId) {
+    const target = sectionRefs.current[sectionId]
+    if (!target) {
+      return
+    }
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    target.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start',
     })
   }
 
@@ -242,7 +288,27 @@ export function CardDetailPanel({
           </div>
         </div>
 
-        <section className="panel-section">
+        <nav className="panel-section-nav" aria-label="Card detail sections">
+          <div className="panel-section-nav-list">
+            {CARD_DETAIL_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className="panel-section-nav-button"
+                onClick={() => scrollToSection(section.id)}
+              >
+                {section.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        <section
+          ref={(node) => {
+            sectionRefs.current.details = node
+          }}
+          className="panel-section"
+        >
           <div className="block-toggle-row">
             <div>
               <span className="section-rule-title">Blocked</span>
@@ -320,7 +386,12 @@ export function CardDetailPanel({
           </div>
         </section>
 
-        <section className="panel-section">
+        <section
+          ref={(node) => {
+            sectionRefs.current.naming = node
+          }}
+          className="panel-section"
+        >
           <div className="panel-section-title">Naming</div>
           <div className="copy-field">
             <div>
@@ -350,7 +421,12 @@ export function CardDetailPanel({
           </div>
         </section>
 
-        <section className="panel-section">
+        <section
+          ref={(node) => {
+            sectionRefs.current.metadata = node
+          }}
+          className="panel-section"
+        >
           <div className="panel-section-title">Metadata</div>
           <div className="metadata-grid">
             <label>
@@ -620,12 +696,22 @@ export function CardDetailPanel({
           )}
         </section>
 
-        <section className="panel-section">
+        <section
+          ref={(node) => {
+            sectionRefs.current.brief = node
+          }}
+          className="panel-section"
+        >
           <div className="section-rule-title">Brief</div>
           <RichTextEditor value={card.brief} onChange={(next) => onSave({ brief: next })} readOnly={!canEdit} />
         </section>
 
-        <section className="panel-section">
+        <section
+          ref={(node) => {
+            sectionRefs.current.links = node
+          }}
+          className="panel-section"
+        >
           <div className="section-rule-title">Links</div>
           <div className="frameio-row">
             <span className="frameio-label">Frame.io</span>
@@ -710,13 +796,18 @@ export function CardDetailPanel({
           ) : null}
         </section>
 
-        <section className="panel-section">
+        <section
+          ref={(node) => {
+            sectionRefs.current.comments = node
+          }}
+          className="panel-section"
+        >
           <div className="section-rule-title">Comments</div>
           <div className="comment-list">
             {card.comments.length === 0 ? (
               <div className="muted-copy">No comments yet.</div>
             ) : (
-              card.comments.map((comment) => (
+              visibleComments.map((comment) => (
                 <div key={`${comment.timestamp}-${comment.text}`} className="comment-card">
                   <div className="comment-meta">
                     <strong>{comment.author}</strong>
@@ -727,6 +818,15 @@ export function CardDetailPanel({
               ))
             )}
           </div>
+          {hiddenCommentCount > 0 ? (
+            <button
+              type="button"
+              className="clear-link"
+              onClick={() => setShowAllComments((open) => !open)}
+            >
+              {showAllComments ? `Show recent ${COMMENT_PREVIEW_COUNT}` : `Show older (${hiddenCommentCount})`}
+            </button>
+          ) : null}
           {canComment ? (
             <div className="comment-composer">
               <input
@@ -757,10 +857,15 @@ export function CardDetailPanel({
           ) : null}
         </section>
 
-        <section className="panel-section">
+        <section
+          ref={(node) => {
+            sectionRefs.current.activity = node
+          }}
+          className="panel-section"
+        >
           <div className="section-rule-title">Activity</div>
           <div className="activity-list">
-            {(showAllActivity ? card.activityLog : card.activityLog.slice(0, 5)).map((activity) => (
+            {visibleActivity.map((activity) => (
               <div key={activity.id} className="activity-item">
                 <div className="activity-meta">
                   <strong>{activity.actor}</strong>
@@ -770,7 +875,7 @@ export function CardDetailPanel({
               </div>
             ))}
           </div>
-          {card.activityLog.length > 5 ? (
+          {card.activityLog.length > ACTIVITY_PREVIEW_COUNT ? (
             <button type="button" className="clear-link" onClick={() => setShowAllActivity((open) => !open)}>
               {showAllActivity ? 'Show less' : `Show all (${card.activityLog.length})`}
             </button>

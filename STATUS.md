@@ -580,3 +580,31 @@ Verification:
 Next step:
 
 - Continue phase 8 from `CODEX-PLAN.md` with the remaining feature-completeness items in the card detail experience, especially comments/activity pagination and section navigation, then move into the deeper test-coverage and release-polish phases.
+
+### CODEX-PLAN Execution: Phase 8 Card Detail Pass 2
+
+Status: In progress
+
+What I learned:
+
+- The remaining phase 8 UI gaps in the card detail panel were small enough to land cleanly after the business-logic work: they were mostly about navigation and information density, not another deep data-model change.
+- Comments needed a slightly different pattern than activity. Activity already had a compact toggle, while comments needed the reverse treatment: keep the newest context visible by default and only expand older discussion on demand.
+
+What changed:
+
+- Added a sticky section mini-nav to [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx) with jump links for Details, Naming, Metadata, Brief, Links, Comments, and Activity.
+- Added scroll targets for the major detail-panel sections in [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx), so the mini-nav can move through the panel without relying on browser hash navigation.
+- Updated comments in [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx) to show only the most recent 10 entries by default, with a `Show older` toggle to expand the full thread and a `Show recent 10` way back down.
+- Kept the existing activity toggle pattern but normalized the rendering path in [`src/components/CardDetailPanel.tsx`](/Users/iskanderzrouga/Desktop/Editors Board/src/components/CardDetailPanel.tsx) so both comments and activity now have clearer, explicit preview states.
+- Added the new sticky nav styling and scroll spacing in [`src/App.css`](/Users/iskanderzrouga/Desktop/Editors Board/src/App.css), including pill-style section buttons and section scroll margins so jump targets are not hidden behind the sticky nav.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test:unit` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Next step:
+
+- Finish the remaining phase 8 and phase 9 plan items, starting with broader automated coverage for the newer card-detail and workflow behaviors, then continue into the release-polish and deployment phases.

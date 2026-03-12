@@ -852,6 +852,36 @@ button {
   padding: 20px 20px 12px;
 }
 
+.panel-section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0 20px 12px;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.panel-section-nav-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.panel-section-nav-button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel-section-nav-button:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-subtle);
+}
+
 .close-icon-button {
   width: 32px;
   height: 32px;
@@ -881,6 +911,7 @@ button {
   display: grid;
   gap: 12px;
   padding: 12px 20px 20px;
+  scroll-margin-top: 84px;
 }
 
 .panel-section-title {
