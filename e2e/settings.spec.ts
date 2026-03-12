@@ -113,3 +113,92 @@ test('workspace access new entries default to editor and require a linked editor
   await addButton.click()
   await expect(page.locator('input[type="email"][value="editor@example.com"]')).toBeVisible()
 })
+
+test('settings can add and remove brands and team members', async ({ page }) => {
+  await openFreshLocalApp(page)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Portfolios' }).click()
+  await page.getByRole('button', { name: '+ Add Brand' }).click()
+
+  const newBrandRow = page.locator('.brand-row').last()
+  await newBrandRow.locator('input').nth(0).fill('Plan Coverage Brand')
+  await newBrandRow.locator('input').nth(1).fill('PC')
+  await newBrandRow.locator('input').nth(2).fill('Coverage Product')
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Plan Coverage Brand', exact: true })).toBeVisible()
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
+  const savedBrandRow = page.locator('.brand-row').filter({
+    has: page.locator('input[value="Plan Coverage Brand"]'),
+  })
+  await savedBrandRow.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete brand' }).click()
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Plan Coverage Brand', exact: true })).toHaveCount(0)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Team & Roles' }).click()
+  await page.getByRole('button', { name: '+ Add team member' }).click()
+
+  const newMemberRow = page.locator('.team-row').last()
+  await newMemberRow.locator('input').nth(0).fill('Plan Coverage Editor')
+  await expect(newMemberRow.locator('select').nth(0)).toHaveValue('Editor')
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toBeVisible()
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Team & Roles' }).click()
+  const savedMemberRow = page.locator('.team-row').filter({
+    has: page.locator('input[aria-label="Plan Coverage Editor team member name"]'),
+  })
+  await savedMemberRow.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete member' }).click()
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toHaveCount(0)
+})
+
+test('data export and import round-trip restores saved board state', async ({ page }, testInfo) => {
+  await openFreshLocalApp(page)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
+  await page.getByRole('button', { name: '+ Add Brand' }).click()
+
+  const brandRow = page.locator('.brand-row').last()
+  await brandRow.locator('input').nth(0).fill('Roundtrip Brand')
+  await brandRow.locator('input').nth(1).fill('RT')
+
+  await page.getByRole('button', { name: 'Data' }).click()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export board data' }).click()
+  const download = await downloadPromise
+  const exportPath = testInfo.outputPath('creative-board-data.json')
+  await download.saveAs(exportPath)
+
+  await page.getByRole('button', { name: 'Portfolios' }).click()
+  const roundtripRow = page.locator('.brand-row').filter({
+    has: page.locator('input[value="Roundtrip Brand"]'),
+  })
+  await roundtripRow.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete brand' }).click()
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Roundtrip Brand', exact: true })).toHaveCount(0)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'Data' }).click()
+  await expect(page.locator('input[type="file"]')).toHaveCount(1)
+  await page.waitForTimeout(100)
+  await page.locator('input[type="file"]').setInputFiles(exportPath)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Roundtrip Brand', exact: true })).toBeVisible()
+})

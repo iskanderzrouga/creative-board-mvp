@@ -426,6 +426,7 @@ function App() {
     activePortfolio,
     roleMode: state.activeRole.mode,
     settings: state.settings,
+    settingsTab,
     setQuickCreateValue,
     importInputRef,
   })

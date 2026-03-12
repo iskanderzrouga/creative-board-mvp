@@ -2,6 +2,32 @@
 
 ## March 12, 2026
 
+### CODEX-PLAN Execution: Settings CRUD And Import/Export Regression Pass
+
+Status: In progress
+
+What I changed in this pass:
+
+- Expanded `e2e/settings.spec.ts` to cover the remaining phase 9 settings flows from `CODEX-PLAN.md`: add/remove brand, add/remove team member, and export/import round-trip recovery.
+- Verified that adding a brand updates the board filter surface immediately and that deleting a no-card brand removes it cleanly through the in-app confirmation dialog.
+- Verified that adding a team member updates the board owner filter immediately and that deleting a no-card member succeeds through the settings confirmation flow.
+- Added a browser-level export/import round-trip test that exports board data, removes the new brand, then re-imports the saved JSON and confirms the brand is restored.
+- Fixed a real import bug in `src/hooks/useAppEffects.ts`: the file-input change listener was not reattaching when the Settings `Data` tab mounted because the hidden input is conditionally rendered. The import effect now reruns when `settingsTab` changes, so imports work reliably from the Data screen.
+
+Verification:
+
+- `npm run lint` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+
+Current progress signal:
+
+- Another explicit phase 9 gap from `CODEX-PLAN.md` is now closed, and the Data tab import/export workflow is functioning end to end instead of being only nominally wired.
+
+Next step:
+
+- Continue the remaining `CODEX-PLAN.md` work with the last local workflow gaps and then move into the final production deployment and regression checklist.
+
 ### CODEX-PLAN Execution: Drag Workflow Regression Coverage Pass
 
 Status: In progress

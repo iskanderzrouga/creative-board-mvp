@@ -17,6 +17,7 @@ import {
   type Portfolio,
   type QuickCreateInput,
   type RoleMode,
+  type SettingTab,
   type StageId,
 } from '../board'
 import {
@@ -94,6 +95,7 @@ interface UseAppEffectsOptions {
   activePortfolio: Portfolio | null
   roleMode: RoleMode
   settings: GlobalSettings
+  settingsTab: SettingTab
   setQuickCreateValue: Dispatch<SetStateAction<QuickCreateInput>>
   importInputRef: RefObject<HTMLInputElement | null>
 }
@@ -135,6 +137,7 @@ export function useAppEffects({
   activePortfolio,
   roleMode,
   settings,
+  settingsTab,
   setQuickCreateValue,
   importInputRef,
 }: UseAppEffectsOptions) {
@@ -512,5 +515,5 @@ export function useAppEffects({
 
     input.addEventListener('change', handleChange)
     return () => input.removeEventListener('change', handleChange)
-  }, [importInputRef, setSelectedCard])
+  }, [importInputRef, setSelectedCard, settingsTab])
 }
