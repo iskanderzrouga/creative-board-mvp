@@ -196,7 +196,7 @@ export function getScopeLabel(
   }
 
   if (access.roleMode === 'contributor') {
-    return 'Own cards only'
+    return 'Assigned cards only'
   }
 
   const scopeMode = getEffectiveScopeMode(access)
@@ -229,7 +229,7 @@ export function getScopeLabel(
     })
     .filter((value): value is string => Boolean(value))
 
-  return scopeLabels.length > 0 ? scopeLabels.join(' • ') : 'Selected brands'
+  return scopeLabels.length > 0 ? scopeLabels.join(' • ') : 'Specific brands'
 }
 
 export function getEffectiveAccessSummary(

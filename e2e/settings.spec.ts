@@ -51,7 +51,7 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   await openFreshLocalApp(page)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
 
   const amberWarningInput = page.getByLabel('Amber warning at days')
   await expect(amberWarningInput).toHaveValue('3')
@@ -68,7 +68,7 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   ).toBeVisible()
   await expect(redMinInput).toHaveValue('90')
 
-  await page.getByRole('button', { name: 'Structure' }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
   await expect(page.getByLabel('BrandLab Drive webhook URL')).toBeVisible()
 
   await page.getByLabel('BrandLab Drive webhook URL').fill('https://example.com/brandlab-webhook')
@@ -98,36 +98,43 @@ test('workspace access new entries default to manager and contributors require W
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('button', { name: 'Access' }).click()
 
-  const newWorkspaceAccessCard = page.locator('.workspace-access-card').last()
-  const roleSelect = newWorkspaceAccessCard.getByLabel(/^Access level for /)
-  const emailInput = newWorkspaceAccessCard.getByLabel('Work email')
-  const addButton = newWorkspaceAccessCard.getByRole('button', { name: 'Add access' })
+  await page.getByRole('button', { name: 'Add person' }).click()
 
-  await expect(roleSelect).toHaveValue('manager')
+  const accessDrawer = page.locator('.slide-panel.is-open')
+  const emailInput = accessDrawer.getByLabel('Work email')
+  const addButton = accessDrawer.getByRole('button', { name: 'Add person' })
+
+  await expect(accessDrawer.getByRole('heading', { name: 'Add person' })).toBeVisible()
   await expect(addButton).toBeDisabled()
 
   await emailInput.fill('contributor@example.com')
+  await expect(
+    accessDrawer.locator('.workspace-access-choice-card.is-selected').filter({ hasText: 'Manager' }),
+  ).toHaveCount(1)
+  await expect(addButton).toBeEnabled()
+
+  await accessDrawer
+    .locator('.workspace-access-choice-card')
+    .filter({ hasText: 'Contributor' })
+    .click()
   await expect(addButton).toBeDisabled()
 
-  await roleSelect.selectOption('contributor')
-  await expect(addButton).toBeDisabled()
-
-  await newWorkspaceAccessCard.getByLabel('Works as for contributor@example.com').selectOption({
+  await accessDrawer.getByLabel('Teammate profile for contributor@example.com').selectOption({
     label: 'Daniel T',
   })
   await expect(addButton).toBeEnabled()
 
   await addButton.click()
-  await expect(page.locator('.workspace-access-card').filter({ hasText: 'contributor@example.com' })).toBeVisible()
+  await expect(page.locator('.workspace-access-table-row').filter({ hasText: 'contributor@example.com' })).toBeVisible()
 })
 
 test('settings can add and remove brands and team members', async ({ page }) => {
   await openFreshLocalApp(page)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Structure' }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
   await page.getByRole('button', { name: '+ Add Brand' }).click()
 
   const newBrandRow = page.locator('.brand-row').last()
@@ -139,7 +146,7 @@ test('settings can add and remove brands and team members', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Plan Coverage Brand', exact: true })).toBeVisible()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Structure' }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
   const savedBrandRow = page.locator('.brand-row').filter({
     has: page.locator('input[value="Plan Coverage Brand"]'),
   })
@@ -153,9 +160,8 @@ test('settings can add and remove brands and team members', async ({ page }) => 
   await page.getByRole('button', { name: 'People' }).click()
   await page.getByRole('button', { name: '+ Add teammate profile' }).click()
 
-  const newMemberRow = page.locator('.team-row').last()
-  await newMemberRow.locator('input').nth(0).fill('Plan Coverage Editor')
-  await expect(newMemberRow.locator('select').nth(0)).toHaveValue('Editor')
+  await page.getByLabel('New Member team member name').fill('Plan Coverage Editor')
+  await expect(page.getByLabel('Plan Coverage Editor role')).toHaveValue('Editor')
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toBeVisible()
@@ -176,21 +182,21 @@ test('data export and import round-trip restores saved board state', async ({ pa
   await openFreshLocalApp(page)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Structure' }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
   await page.getByRole('button', { name: '+ Add Brand' }).click()
 
   const brandRow = page.locator('.brand-row').last()
   await brandRow.locator('input').nth(0).fill('Roundtrip Brand')
   await brandRow.locator('input').nth(1).fill('RT')
 
-  await page.getByRole('button', { name: 'Data & Admin' }).click()
+  await page.getByRole('button', { name: 'Data' }).click()
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export board data' }).click()
   const download = await downloadPromise
   const exportPath = testInfo.outputPath('creative-board-data.json')
   await download.saveAs(exportPath)
 
-  await page.getByRole('button', { name: 'Structure' }).click()
+  await page.getByRole('button', { name: 'Portfolios' }).click()
   const roundtripRow = page.locator('.brand-row').filter({
     has: page.locator('input[value="Roundtrip Brand"]'),
   })
@@ -201,7 +207,7 @@ test('data export and import round-trip restores saved board state', async ({ pa
   await expect(page.getByRole('button', { name: 'Roundtrip Brand', exact: true })).toHaveCount(0)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Data & Admin' }).click()
+  await page.getByRole('button', { name: 'Data' }).click()
   await expect(page.locator('input[type="file"]')).toHaveCount(1)
   await page.waitForTimeout(100)
   await page.locator('input[type="file"]').setInputFiles(exportPath)
@@ -221,7 +227,7 @@ test('importing corrupt JSON shows an error and keeps the current board state', 
   writeFileSync(invalidImportPath, '{"portfolios": [', 'utf8')
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Data & Admin' }).click()
+  await page.getByRole('button', { name: 'Data' }).click()
   await expect(page.locator('input[type="file"]')).toHaveCount(1)
   await page.waitForTimeout(100)
   await page.locator('input[type="file"]').setInputFiles(invalidImportPath)

@@ -214,7 +214,7 @@ export function useWorkspaceSession({
         if (access.roleMode === 'contributor' && !access.editorName) {
           setAccessStatus('error')
           setAccessErrorMessage(
-            'This contributor login is missing its Works as teammate profile. Ask your workspace owner to update Access.',
+            'This contributor login is missing its teammate profile. Ask your workspace owner to update Access.',
           )
           return
         }

@@ -409,7 +409,7 @@ function App() {
 
         {state.activeRole.mode === 'contributor' ? (
           <label className="local-mode-field">
-            <span>Works as</span>
+            <span>Teammate profile</span>
             <select
               aria-label="Local demo contributor identity"
               value={state.activeRole.editorId ?? editorOptions[0]?.id ?? ''}

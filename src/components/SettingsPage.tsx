@@ -94,73 +94,57 @@ export function SettingsPage({
   onWorkspaceAccessDelete,
   showToast,
 }: SettingsPageProps) {
-  const SETTINGS_TAB_HELP_TEXT: Record<SettingTab, string> = {
-    general: 'Configure the workspace name, defaults, thresholds, and local demo access behavior.',
-    portfolios: 'Manage the business hierarchy: portfolios, brands, products, and Drive settings.',
-    team: 'Define the teammate profiles that appear inside the workflow: editor, designer, developer, launch ops, and manager.',
-    access: 'Control who can sign in, what they can see, and which teammate profile a contributor uses on the board.',
-    'task-library': 'Define task types, revision reasons, and the workflow rules that shape card creation and movement.',
-    capacity: 'Set utilization thresholds. Green, yellow, and red bands appear in Analytics and Workload views.',
-    integrations: 'Store external service settings used by your workflow and keep them aligned with deployment.',
-    data: 'Export your board data as JSON for backup. Import to restore. Fresh start keeps structure but clears operational clutter.',
-  }
   const SETTINGS_TAB_META: Record<
     SettingTab,
     {
       eyebrow: string
       summary: string
-      guidance: string
     }
   > = {
     general: {
-      eyebrow: 'Workspace defaults',
-      summary: 'Set the operating defaults that shape how the workspace feels every day.',
-      guidance: 'Use this page for global rules only. If a change belongs to portfolios, people, or permissions, keep it in those dedicated pages.',
+      eyebrow: 'General',
+      summary: 'Configure workspace defaults, thresholds, and local demo behavior.',
     },
     portfolios: {
-      eyebrow: 'Business structure',
-      summary: 'Model the real hierarchy: portfolios at the top, then brands, then products.',
-      guidance: 'Treat this as your source of truth for what the business sells. Work cards should inherit from this structure, not redefine it.',
+      eyebrow: 'Structure',
+      summary: 'Manage the business hierarchy: portfolios, brands, products, and Drive structure.',
     },
     team: {
-      eyebrow: 'People on the board',
-      summary: 'Create teammate profiles for the people who actually do the work inside the workflow.',
-      guidance: 'This page is about job function, capacity, and availability. Sign-in permissions belong in Access.',
+      eyebrow: 'People',
+      summary: 'Create teammate profiles for the people who do the work on the board. Sign-in access lives in Access.',
     },
     access: {
-      eyebrow: 'Permissions and visibility',
-      summary: 'Decide who can enter the product, what they can see, and whether they act as a contributor on the board.',
-      guidance: 'Show the result of each permission clearly. A good access system explains the outcome, not just the raw config.',
+      eyebrow: 'Access',
+      summary: 'Control who can sign in, what they can see, and how they interact with the board.',
     },
     'task-library': {
-      eyebrow: 'Workflow rules',
-      summary: 'Define the task language, revision reasons, and workflow structure your team uses repeatedly.',
-      guidance: 'Keep the system opinionated here so card creation stays fast and reporting stays consistent later.',
+      eyebrow: 'Workflow',
+      summary: 'Define task types, revision reasons, and workflow rules that keep work creation consistent.',
     },
     capacity: {
-      eyebrow: 'Utilization thresholds',
-      summary: 'Set the workload limits that power capacity health across analytics and planning.',
-      guidance: 'These thresholds should stay stable. Change them only when the business operating model actually changes.',
+      eyebrow: 'Capacity',
+      summary: 'Set utilization thresholds that power workload health in analytics and planning.',
     },
     integrations: {
-      eyebrow: 'Connected tools',
-      summary: 'Store the external endpoints and future integrations that connect the board to the rest of your stack.',
-      guidance: 'Keep this page operational and boring. Every field here should map to a real external dependency.',
+      eyebrow: 'Integrations',
+      summary: 'Store the external endpoints and settings that connect the board to the rest of your stack.',
     },
     data: {
-      eyebrow: 'Recovery and cleanup',
-      summary: 'Export, import, and reset workspace data without losing the parts of the system you still want to keep.',
-      guidance: 'Use Fresh start when operations should reset but the business structure should survive.',
+      eyebrow: 'Admin',
+      summary: 'Export, import, and reset workspace data while keeping the structure you still need.',
     },
   }
   const SETTINGS_NAV_GROUPS: Array<{
     title: string
-    tabs: SettingTab[]
+    tab: Exclude<SettingTab, 'general'>
   }> = [
-    { title: 'Workspace', tabs: ['general'] },
-    { title: 'Core model', tabs: ['portfolios', 'team', 'access'] },
-    { title: 'Operations', tabs: ['task-library', 'capacity', 'integrations'] },
-    { title: 'Admin', tabs: ['data'] },
+    { title: 'Structure', tab: 'portfolios' },
+    { title: 'People', tab: 'team' },
+    { title: 'Access', tab: 'access' },
+    { title: 'Workflow', tab: 'task-library' },
+    { title: 'Capacity', tab: 'capacity' },
+    { title: 'Integrations', tab: 'integrations' },
+    { title: 'Admin', tab: 'data' },
   ]
   const activeTabMeta = SETTINGS_TAB_META[settingsTab]
   const settingsPortfolio =
@@ -185,6 +169,20 @@ export function SettingsPage({
       ),
     ),
   ).sort((left, right) => left.localeCompare(right))
+  const peopleRows = state.portfolios
+    .flatMap((portfolio) =>
+      portfolio.team.map((member, memberIndex) => ({
+        portfolio,
+        member,
+        memberIndex,
+      })),
+    )
+    .sort((left, right) => {
+      const portfolioComparison = left.portfolio.name.localeCompare(right.portfolio.name)
+      return portfolioComparison !== 0
+        ? portfolioComparison
+        : left.member.name.localeCompare(right.member.name)
+    })
 
   function updatePortfolio(portfolioId: string, updater: (portfolio: Portfolio) => Portfolio) {
     onStateChange((current) => ({
@@ -368,51 +366,41 @@ export function SettingsPage({
           ← Back to Board
         </button>
         <div className="settings-sidebar-meta">
-          <span className="settings-sidebar-eyebrow">Workspace settings</span>
+          <span className="settings-sidebar-eyebrow">Settings</span>
           <strong className="settings-sidebar-name">{state.settings.general.appName}</strong>
           <p className="settings-sidebar-description">
-            Keep structure, people, permissions, workflow, and cleanup separated so each page answers one question clearly.
+            Structure, people, access, workflow, and cleanup each live in a dedicated page.
           </p>
         </div>
         <div className="settings-tab-list">
+          <button
+            type="button"
+            className={`settings-tab settings-tab-standalone ${settingsTab === 'general' ? 'is-active' : ''}`}
+            onClick={() => onTabChange('general')}
+          >
+            <span className="settings-tab-label">{SETTINGS_TAB_LABELS.general}</span>
+          </button>
           {SETTINGS_NAV_GROUPS.map((group) => (
             <div key={group.title} className="settings-nav-group">
               <span className="settings-nav-caption">{group.title}</span>
-              {group.tabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`settings-tab ${settingsTab === tab ? 'is-active' : ''}`}
-                  onClick={() => onTabChange(tab)}
-                >
-                  <span className="settings-tab-label">{SETTINGS_TAB_LABELS[tab]}</span>
-                  <span className="settings-tab-copy">{SETTINGS_TAB_META[tab].eyebrow}</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                className={`settings-tab ${settingsTab === group.tab ? 'is-active' : ''}`}
+                onClick={() => onTabChange(group.tab)}
+              >
+                <span className="settings-tab-label">{SETTINGS_TAB_LABELS[group.tab]}</span>
+              </button>
             </div>
           ))}
         </div>
       </div>
 
       <div className="settings-page-content">
-        <PageHeader title="Settings" rightContent={headerUtilityContent} />
+        <PageHeader title={SETTINGS_TAB_LABELS[settingsTab]} rightContent={headerUtilityContent} />
 
-        <section className="settings-intro-card">
-          <div className="settings-intro-copy">
-            <span className="settings-intro-eyebrow">{activeTabMeta.eyebrow}</span>
-            <h2>{SETTINGS_TAB_LABELS[settingsTab]}</h2>
-            <p>{SETTINGS_TAB_HELP_TEXT[settingsTab]}</p>
-          </div>
-          <div className="settings-intro-grid">
-            <div className="settings-intro-panel">
-              <strong>What belongs here</strong>
-              <p>{activeTabMeta.summary}</p>
-            </div>
-            <div className="settings-intro-panel">
-              <strong>How to use it well</strong>
-              <p>{activeTabMeta.guidance}</p>
-            </div>
-          </div>
+        <section className="settings-intro-card settings-intro-card-compact">
+          <span className="settings-intro-eyebrow">{activeTabMeta.eyebrow}</span>
+          <p>{activeTabMeta.summary}</p>
         </section>
 
         {settingsTab === 'general' ? (
@@ -451,7 +439,7 @@ export function SettingsPage({
 
                   {localRole.mode === 'contributor' ? (
                     <label>
-                      <span>Works as</span>
+                      <span>Teammate profile</span>
                       <select
                         aria-label="Local demo contributor identity"
                         value={localRole.editorId ?? localEditorOptions[0]?.id ?? ''}
@@ -814,248 +802,249 @@ export function SettingsPage({
 
         {settingsTab === 'team' ? (
           <div className="settings-stack">
-            <div className="portfolio-tab-strip">
-              {state.portfolios.map((portfolio) => (
-                <button
-                  key={portfolio.id}
-                  type="button"
-                  className={`filter-pill ${settingsPortfolio.id === portfolio.id ? 'is-active is-all' : ''}`}
-                  onClick={() => onSettingsPortfolioChange(portfolio.id)}
-                >
-                  {portfolio.name}
-                </button>
-              ))}
-            </div>
-
-            <div className="settings-section-header">
-              <h3>People</h3>
-              <p className="muted-copy">
-                These teammate profiles define who appears inside the workflow. This page is about
-                people on the board, not sign-in permissions.
-              </p>
-            </div>
-
-            <div className="settings-explainer-card">
-              <strong>People are not permissions</strong>
-              <p>
-                Use People to define teammate profiles like editor, designer, developer, launch
-                ops, and manager. Access is handled separately, so you do not have to overload one
-                field to mean both job function and permission level.
-              </p>
-            </div>
-
-            <div className="settings-table full-table">
-              <div className="settings-row settings-head team-head">
-                <span>Name</span>
-                <span>Role</span>
-                <span>Weekly Hours</span>
-                <span>Hours/Day</span>
-                <span>Working Days</span>
-                <span>Timezone</span>
-                <span>WIP Cap</span>
-                <span>Status</span>
-                <span />
+            <div className="settings-block">
+              <div className="settings-block-header settings-inline-header">
+                <div className="settings-section-header">
+                  <h3>People</h3>
+                  <p className="muted-copy">
+                    These teammate profiles define who does the work on the board. Sign-in access
+                    lives in Access.
+                  </p>
+                </div>
+                <div className="settings-inline-actions">
+                  <label className="settings-inline-field">
+                    <span>Add to</span>
+                    <select
+                      aria-label="Portfolio for new teammate profile"
+                      value={settingsPortfolio.id}
+                      onChange={(event) => onSettingsPortfolioChange(event.target.value)}
+                    >
+                      {state.portfolios.map((portfolio) => (
+                        <option key={portfolio.id} value={portfolio.id}>
+                          {portfolio.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() =>
+                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
+                        ...currentPortfolio,
+                        team: [
+                          ...currentPortfolio.team,
+                          {
+                            id: `member-${Date.now()}`,
+                            name: 'New Member',
+                            role: 'Editor',
+                            weeklyHours: currentPortfolio.team.some((member) => member.weeklyHours)
+                              ? currentPortfolio.team.find((member) => member.weeklyHours)?.weeklyHours ?? 40
+                              : 40,
+                            hoursPerDay: 8,
+                            workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+                            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+                            wipCap: 3,
+                            active: true,
+                          },
+                        ],
+                      }))
+                    }
+                  >
+                    + Add teammate profile
+                  </button>
+                </div>
               </div>
-              {settingsPortfolio.team.map((member, memberIndex) => (
-                <div key={`${settingsPortfolio.id}-${member.id}-${memberIndex}`} className="settings-row team-row">
-                  <input
-                    aria-label={`${member.name} team member name`}
-                    value={member.name}
-                    onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) =>
-                        renameTeamMemberInPortfolio(currentPortfolio, memberIndex, event.target.value),
-                      )
-                    }
-                  />
-                  <select
-                    aria-label={`${member.name} role`}
-                    value={member.role}
-                    onChange={(event) => {
-                      const nextRole = event.target.value
-                      const removingLastManager =
-                        member.role.toLowerCase().includes('manager') &&
-                        !nextRole.toLowerCase().includes('manager') &&
-                        settingsPortfolio.team.filter(
-                          (item, index) => index !== memberIndex && item.role.toLowerCase().includes('manager'),
-                        ).length === 0
 
-                      if (removingLastManager) {
-                        showToast('At least one manager is required.', 'amber')
-                        return
-                      }
-
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex ? { ...item, role: nextRole } : item,
-                          ),
-                      }))
-                    }}
-                  >
-                    {teamRoleOptions.map((roleOption) => (
-                      <option key={roleOption} value={roleOption}>
-                        {roleOption}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    aria-label={`${member.name} weekly hours`}
-                    type="number"
-                    min={0}
-                    value={member.weeklyHours ?? ''}
-                    onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex
-                            ? { ...item, weeklyHours: event.target.value ? Number(event.target.value) : null }
-                            : item,
-                        ),
-                      }))
-                    }
-                  />
-                  <input
-                    aria-label={`${member.name} hours per day`}
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={member.hoursPerDay ?? ''}
-                    onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex
-                            ? { ...item, hoursPerDay: event.target.value ? Number(event.target.value) : null }
-                            : item,
-                        ),
-                      }))
-                    }
-                  />
-                  <div className="working-days-grid" aria-label={`${member.name} working days`}>
-                    {WORKING_DAYS.map((day) => (
-                      <label key={day} className="working-day-toggle">
-                        <input
-                          type="checkbox"
-                          aria-label={`${member.name} works ${day}`}
-                          checked={member.workingDays.includes(day)}
-                          onChange={(event) =>
-                            updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                              ...currentPortfolio,
-                              team: currentPortfolio.team.map((item, index) =>
-                                index === memberIndex
-                                  ? {
-                                      ...item,
-                                      workingDays: WORKING_DAYS.filter((workingDay) =>
-                                        workingDay === day
-                                          ? event.target.checked
-                                          : item.workingDays.includes(workingDay),
-                                      ),
-                                    }
-                                  : item,
-                              ),
-                            }))
-                          }
-                        />
-                        <span>{day}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <select
-                    aria-label={`${member.name} timezone`}
-                    value={member.timezone}
-                    onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex ? { ...item, timezone: event.target.value } : item,
-                        ),
-                      }))
-                    }
-                  >
-                    {timezoneOptions.map((timezone) => (
-                      <option key={timezone} value={timezone}>
-                        {timezone}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    aria-label={`${member.name} WIP cap`}
-                    type="number"
-                    min={0}
-                    value={member.wipCap ?? ''}
-                    onChange={(event) =>
-                      updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                        ...currentPortfolio,
-                        team: currentPortfolio.team.map((item, index) =>
-                          index === memberIndex ? { ...item, wipCap: event.target.value ? Number(event.target.value) : null } : item,
-                        ),
-                      }))
-                    }
-                  />
-                  <label className="toggle-row compact">
+              <div className="settings-table full-table">
+                <div className="settings-row settings-head team-head">
+                  <span>Portfolio</span>
+                  <span>Name</span>
+                  <span>Role</span>
+                  <span>Weekly Hours</span>
+                  <span>Hours/Day</span>
+                  <span>Working Days</span>
+                  <span>Timezone</span>
+                  <span>WIP Cap</span>
+                  <span>Status</span>
+                  <span />
+                </div>
+                {peopleRows.map(({ portfolio, member, memberIndex }) => (
+                  <div key={`${portfolio.id}-${member.id}-${memberIndex}`} className="settings-row team-row">
+                    <div className="settings-read-cell">{portfolio.name}</div>
                     <input
-                      type="checkbox"
-                      aria-label={`${member.name} active status`}
-                      checked={member.active}
+                      aria-label={`${member.name} team member name`}
+                      value={member.name}
                       onChange={(event) =>
-                        updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
+                        updatePortfolio(portfolio.id, (currentPortfolio) =>
+                          renameTeamMemberInPortfolio(currentPortfolio, memberIndex, event.target.value),
+                        )
+                      }
+                    />
+                    <select
+                      aria-label={`${member.name} role`}
+                      value={member.role}
+                      onChange={(event) => {
+                        const nextRole = event.target.value
+                        const removingLastManager =
+                          member.role.toLowerCase().includes('manager') &&
+                          !nextRole.toLowerCase().includes('manager') &&
+                          portfolio.team.filter(
+                            (item, index) => index !== memberIndex && item.role.toLowerCase().includes('manager'),
+                          ).length === 0
+
+                        if (removingLastManager) {
+                          showToast('At least one manager is required.', 'amber')
+                          return
+                        }
+
+                        updatePortfolio(portfolio.id, (currentPortfolio) => ({
                           ...currentPortfolio,
                           team: currentPortfolio.team.map((item, index) =>
-                            index === memberIndex ? { ...item, active: event.target.checked } : item,
+                            index === memberIndex ? { ...item, role: nextRole } : item,
+                          ),
+                        }))
+                      }}
+                    >
+                      {teamRoleOptions.map((roleOption) => (
+                        <option key={roleOption} value={roleOption}>
+                          {roleOption}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label={`${member.name} weekly hours`}
+                      type="number"
+                      min={0}
+                      value={member.weeklyHours ?? ''}
+                      onChange={(event) =>
+                        updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                          ...currentPortfolio,
+                          team: currentPortfolio.team.map((item, index) =>
+                            index === memberIndex
+                              ? { ...item, weeklyHours: event.target.value ? Number(event.target.value) : null }
+                              : item,
                           ),
                         }))
                       }
                     />
-                  </label>
-                  <button
-                    type="button"
-                    className="clear-link danger-link"
-                    onClick={() => {
-                      const blocker = getTeamMemberRemovalBlocker(settingsPortfolio, memberIndex)
-                      if (blocker) {
-                        showToast(blocker, 'amber')
-                        return
+                    <input
+                      aria-label={`${member.name} hours per day`}
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={member.hoursPerDay ?? ''}
+                      onChange={(event) =>
+                        updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                          ...currentPortfolio,
+                          team: currentPortfolio.team.map((item, index) =>
+                            index === memberIndex
+                              ? { ...item, hoursPerDay: event.target.value ? Number(event.target.value) : null }
+                              : item,
+                          ),
+                        }))
                       }
-                      setPendingSettingsDelete({
-                        kind: 'member',
-                        portfolioId: settingsPortfolio.id,
-                        memberIndex,
-                      })
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
+                    />
+                    <div className="working-days-grid" aria-label={`${member.name} working days`}>
+                      {WORKING_DAYS.map((day) => (
+                        <label key={day} className="working-day-toggle">
+                          <input
+                            type="checkbox"
+                            aria-label={`${member.name} works ${day}`}
+                            checked={member.workingDays.includes(day)}
+                            onChange={(event) =>
+                              updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                ...currentPortfolio,
+                                team: currentPortfolio.team.map((item, index) =>
+                                  index === memberIndex
+                                    ? {
+                                        ...item,
+                                        workingDays: WORKING_DAYS.filter((workingDay) =>
+                                          workingDay === day
+                                            ? event.target.checked
+                                            : item.workingDays.includes(workingDay),
+                                        ),
+                                      }
+                                    : item,
+                                ),
+                              }))
+                            }
+                          />
+                          <span>{day}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <select
+                      aria-label={`${member.name} timezone`}
+                      value={member.timezone}
+                      onChange={(event) =>
+                        updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                          ...currentPortfolio,
+                          team: currentPortfolio.team.map((item, index) =>
+                            index === memberIndex ? { ...item, timezone: event.target.value } : item,
+                          ),
+                        }))
+                      }
+                    >
+                      {timezoneOptions.map((timezone) => (
+                        <option key={timezone} value={timezone}>
+                          {timezone}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label={`${member.name} WIP cap`}
+                      type="number"
+                      min={0}
+                      value={member.wipCap ?? ''}
+                      onChange={(event) =>
+                        updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                          ...currentPortfolio,
+                          team: currentPortfolio.team.map((item, index) =>
+                            index === memberIndex
+                              ? { ...item, wipCap: event.target.value ? Number(event.target.value) : null }
+                              : item,
+                          ),
+                        }))
+                      }
+                    />
+                    <label className="toggle-row compact">
+                      <input
+                        type="checkbox"
+                        aria-label={`${member.name} active status`}
+                        checked={member.active}
+                        onChange={(event) =>
+                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                            ...currentPortfolio,
+                            team: currentPortfolio.team.map((item, index) =>
+                              index === memberIndex ? { ...item, active: event.target.checked } : item,
+                            ),
+                          }))
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="clear-link danger-link"
+                      onClick={() => {
+                        const blocker = getTeamMemberRemovalBlocker(portfolio, memberIndex)
+                        if (blocker) {
+                          showToast(blocker, 'amber')
+                          return
+                        }
+                        setPendingSettingsDelete({
+                          kind: 'member',
+                          portfolioId: portfolio.id,
+                          memberIndex,
+                        })
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() =>
-                updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                  ...currentPortfolio,
-                  team: [
-                    ...currentPortfolio.team,
-                    {
-                      id: `member-${Date.now()}`,
-                      name: 'New Member',
-                      role: 'Editor',
-                      weeklyHours: currentPortfolio.team.some((member) => member.weeklyHours)
-                        ? currentPortfolio.team.find((member) => member.weeklyHours)?.weeklyHours ?? 40
-                        : 40,
-                      hoursPerDay: 8,
-                      workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-                      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-                      wipCap: 3,
-                      active: true,
-                    },
-                  ],
-                }))
-              }
-            >
-              + Add teammate profile
-            </button>
           </div>
         ) : null}
 

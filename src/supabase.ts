@@ -456,7 +456,7 @@ export async function upsertWorkspaceAccessEntry(entry: {
   }
 
   if (entry.roleMode === 'contributor' && !entry.editorName?.trim()) {
-    throw new Error('Contributors need a teammate profile in Works as.')
+    throw new Error('Contributors need a teammate profile.')
   }
 
   if (isE2ESupabaseMode()) {

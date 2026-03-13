@@ -546,14 +546,14 @@ const BRAND_PALETTES = [
 
 export const ALL_PORTFOLIOS_ID = 'all-portfolios'
 export const SETTINGS_TAB_LABELS: Record<SettingTab, string> = {
-  general: 'Workspace',
-  portfolios: 'Structure',
+  general: 'General',
+  portfolios: 'Portfolios',
   team: 'People',
   access: 'Access',
-  'task-library': 'Workflow',
+  'task-library': 'Task library',
   capacity: 'Capacity',
   integrations: 'Integrations',
-  data: 'Data & Admin',
+  data: 'Data',
 }
 
 function roundToTenths(value: number) {
