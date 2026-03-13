@@ -94,7 +94,7 @@ test('timed out access verification shows retry and different-email recovery', a
   await expect(page.getByRole('heading', { name: 'Checking access' })).toBeVisible()
   await expect(
     page.getByText(
-      'Retry the check, try a different email, or contact your workspace manager if this account should already be approved.',
+      'Retry the check, try a different email, or contact your workspace owner if this account should already be approved.',
     ),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Retry check' })).toBeVisible()

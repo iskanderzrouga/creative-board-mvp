@@ -55,12 +55,14 @@ function getPageIcon(page: AppPage): PageIcon {
 
 function getRoleLabel(mode: ActiveRole['mode']) {
   switch (mode) {
+    case 'owner':
+      return 'Owner'
     case 'manager':
       return 'Manager'
-    case 'editor':
-      return 'Editor'
-    case 'observer':
-      return 'Observer'
+    case 'contributor':
+      return 'Contributor'
+    case 'viewer':
+      return 'Viewer'
   }
 }
 
@@ -87,18 +89,18 @@ function SidebarComponent({
     { page: 'board', disabled: false },
     {
       page: 'analytics',
-      disabled: role.mode === 'editor',
-      tooltip: role.mode === 'editor' ? 'Manager and Observer only' : undefined,
+      disabled: role.mode === 'contributor',
+      tooltip: role.mode === 'contributor' ? 'Owner, Manager, and Viewer only' : undefined,
     },
     {
       page: 'workload',
-      disabled: role.mode === 'editor',
-      tooltip: role.mode === 'editor' ? 'Manager and Observer only' : undefined,
+      disabled: role.mode === 'contributor',
+      tooltip: role.mode === 'contributor' ? 'Owner, Manager, and Viewer only' : undefined,
     },
     {
       page: 'settings',
-      disabled: role.mode !== 'manager',
-      tooltip: role.mode !== 'manager' ? 'Manager only' : undefined,
+      disabled: role.mode !== 'owner',
+      tooltip: role.mode !== 'owner' ? 'Owner only' : undefined,
     },
   ]
   const avatarSource = userName || userSecondaryLabel || 'User'

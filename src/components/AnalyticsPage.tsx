@@ -184,11 +184,11 @@ export function AnalyticsPage({
       <section>
         <h2 className="dashboard-section-title">Team Capacity Grid</h2>
         {dashboard.teamGrid.length === 0 ? (
-          <div className="dashboard-placeholder">No team members found.</div>
+          <div className="dashboard-placeholder">No teammate profiles found.</div>
         ) : (
           <div className="dashboard-table">
             <div className="dashboard-table-row dashboard-table-head analytics-team-grid">
-              <span>Editor</span>
+              <span>Teammate</span>
               <span>Portfolio</span>
               <span>Active</span>
               <span>Utilization</span>
@@ -205,7 +205,7 @@ export function AnalyticsPage({
                 <button
                   type="button"
                   className="table-link"
-                  data-label="Editor"
+                  data-label="Teammate"
                   onClick={() => onOpenEditorBoard(row.portfolioId, row.editorName)}
                 >
                   {row.editorName}
@@ -357,7 +357,7 @@ export function AnalyticsPage({
               </div>
             </div>
             <div className="revision-card">
-              <strong>Editors with highest revision rates (last 30 days)</strong>
+              <strong>Teammates with highest revision rates (last 30 days)</strong>
               <div className="revision-list">
                 {dashboard.editorRevisionRates.length > 0 ? (
                   dashboard.editorRevisionRates.map((item, index) => (

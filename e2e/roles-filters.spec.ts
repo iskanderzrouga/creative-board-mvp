@@ -10,12 +10,16 @@ async function openFreshApp(page: Page) {
   await page.reload()
 }
 
-async function setLocalRole(page: Page, mode: 'manager' | 'editor' | 'observer', editorName?: string) {
+async function setLocalRole(
+  page: Page,
+  mode: 'owner' | 'manager' | 'contributor' | 'viewer',
+  editorName?: string,
+) {
   await page.getByLabel('Local demo role').selectOption(mode)
 
-  if (mode === 'editor' && editorName) {
-    await expect(page.getByLabel('Local demo editor lane')).toBeVisible()
-    await page.getByLabel('Local demo editor lane').selectOption({ label: editorName })
+  if (mode === 'contributor' && editorName) {
+    await expect(page.getByLabel('Local demo contributor identity')).toBeVisible()
+    await page.getByLabel('Local demo contributor identity').selectOption({ label: editorName })
   }
 }
 
@@ -57,7 +61,9 @@ async function dragLocatorToTarget(page: Page, source: ReturnType<Page['locator'
   await page.waitForTimeout(250)
 }
 
-test('role switching keeps manager-only actions locked to managers', async ({ page }) => {
+test('role switching keeps owner-only settings locked down while contributor focus stays narrow', async ({
+  page,
+}) => {
   await openFreshApp(page)
 
   const sidebarNav = page.locator('.sidebar-nav')
@@ -73,14 +79,14 @@ test('role switching keeps manager-only actions locked to managers', async ({ pa
   await sidebarNav.getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
 
-  await setLocalRole(page, 'observer')
+  await setLocalRole(page, 'viewer')
   await expect(settingsNav).toBeDisabled()
   await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
 
   await analyticsNav.click()
   await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible()
 
-  await setLocalRole(page, 'editor', 'Daniel T')
+  await setLocalRole(page, 'contributor', 'Daniel T')
 
   await expect(settingsNav).toBeDisabled()
   await expect(analyticsNav).toBeDisabled()
@@ -144,10 +150,10 @@ test('blocked card filter isolates blocked work and can be reset', async ({ page
   await expect(getCardButton(page, /Phase 9 blocked filter card/)).toBeVisible()
 })
 
-test('editor can update owned card content and move it forward one stage', async ({ page }) => {
+test('contributor can update owned card content and move it forward one stage', async ({ page }) => {
   await openFreshApp(page)
 
-  await setLocalRole(page, 'editor', 'Daniel T')
+  await setLocalRole(page, 'contributor', 'Daniel T')
   await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
 
   await page.getByRole('button', { name: /PX0020 PRICE \/ Color/ }).click()
@@ -177,10 +183,10 @@ test('editor can update owned card content and move it forward one stage', async
   await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
 })
 
-test('launch ops can move ready cards to live', async ({ page }) => {
+test('contributor in launch ops can move ready cards to live', async ({ page }) => {
   await openFreshApp(page)
 
-  await setLocalRole(page, 'editor', 'Ivan')
+  await setLocalRole(page, 'contributor', 'Ivan')
 
   await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
   await expect(page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true })).toBeDisabled()
@@ -194,10 +200,10 @@ test('launch ops can move ready cards to live', async ({ page }) => {
   await expect(liveLane.getByRole('button', { name: /TC0020 LongLasting/ })).toBeVisible()
 })
 
-test('observer card detail stays read-only', async ({ page }) => {
+test('viewer card detail stays read-only', async ({ page }) => {
   await openFreshApp(page)
 
-  await setLocalRole(page, 'observer')
+  await setLocalRole(page, 'viewer')
   await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
   await page.getByRole('button', { name: /PX0020 PRICE \/ Color/ }).click({ force: true })
 

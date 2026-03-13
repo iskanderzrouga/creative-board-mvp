@@ -26,6 +26,7 @@ import {
   isLikelyEmail,
   type BackwardMoveFormState,
 } from './appHelpers'
+import { getScopedPortfolios } from './accessHelpers'
 import { AccessGate } from './components/AccessGate'
 import { AccessVerificationGate } from './components/AccessVerificationGate'
 import { AnalyticsPage } from './components/AnalyticsPage'
@@ -232,27 +233,37 @@ function App() {
     isLikelyEmail,
   })
 
-  const activePortfolio = getActivePortfolio(state)
+  const scopedPortfolios = useMemo(
+    () => (authEnabled ? getScopedPortfolios(state.portfolios, workspaceAccess) : state.portfolios),
+    [authEnabled, state.portfolios, workspaceAccess],
+  )
+  const activePortfolioView =
+    scopedPortfolios.find((portfolio) => portfolio.id === state.activePortfolioId) ??
+    scopedPortfolios[0] ??
+    null
+  const activePortfolioSource =
+    state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const currentPage = getCurrentPage(state)
-  const editorOptions = activePortfolio ? getEditorOptions(activePortfolio) : []
-  const currentEditor = activePortfolio
-    ? getTeamMemberById(activePortfolio, state.activeRole.editorId)
+  const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
+  const currentEditor = activePortfolioSource
+    ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
     : null
   const isLaunchOpsActive =
-    state.activeRole.mode === 'editor' && isLaunchOpsRole(currentEditor?.role ?? null)
+    state.activeRole.mode === 'contributor' && isLaunchOpsRole(currentEditor?.role ?? null)
   const viewerContext = useMemo<ViewerContext>(
     () => ({
       mode: state.activeRole.mode,
-      editorName: state.activeRole.mode === 'editor' ? currentEditor?.name ?? null : null,
-      memberRole: state.activeRole.mode === 'editor' ? currentEditor?.role ?? null : null,
+      editorName: state.activeRole.mode === 'contributor' ? currentEditor?.name ?? null : null,
+      memberRole: state.activeRole.mode === 'contributor' ? currentEditor?.role ?? null : null,
+      visibleBrandNames: activePortfolioView?.brands.map((brand) => brand.name) ?? [],
     }),
-    [currentEditor?.name, currentEditor?.role, state.activeRole.mode],
+    [activePortfolioView?.brands, currentEditor?.name, currentEditor?.role, state.activeRole.mode],
   )
-  const attention = getAttentionSummary(activePortfolio, state.settings, nowMs)
+  const attention = getAttentionSummary(activePortfolioView, state.settings, nowMs)
   const searchBaseCards =
-    activePortfolio && currentPage === 'board'
+    activePortfolioView && currentPage === 'board'
       ? getVisibleCards(
-          activePortfolio,
+          activePortfolioView,
           viewerContext,
           { ...boardFilters, searchQuery: '' },
           state.settings,
@@ -260,19 +271,21 @@ function App() {
         ).filter((card) => !card.archivedAt)
       : []
   const visibleBoardCards =
-    activePortfolio && currentPage === 'board'
-      ? getVisibleCards(activePortfolio, viewerContext, boardFilters, state.settings, nowMs)
+    activePortfolioView && currentPage === 'board'
+      ? getVisibleCards(activePortfolioView, viewerContext, boardFilters, state.settings, nowMs)
       : []
   const columns = useMemo(
     () =>
-      activePortfolio && currentPage === 'board'
-        ? getVisibleColumns(activePortfolio, viewerContext, boardFilters, state.settings, nowMs, {
-            showEmptyGroupedSections: dragCardId !== null && state.activeRole.mode === 'manager',
+      activePortfolioView && currentPage === 'board'
+        ? getVisibleColumns(activePortfolioView, viewerContext, boardFilters, state.settings, nowMs, {
+            showEmptyGroupedSections:
+              dragCardId !== null &&
+              (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'),
             manuallyExpandedStages: expandedStages,
           })
         : [],
     [
-      activePortfolio,
+      activePortfolioView,
       boardFilters,
       currentPage,
       dragCardId,
@@ -284,8 +297,8 @@ function App() {
     ],
   )
   const stats =
-    activePortfolio && currentPage === 'board'
-      ? getBoardStats(activePortfolio, viewerContext, boardFilters, state.settings, nowMs)
+    activePortfolioView && currentPage === 'board'
+      ? getBoardStats(activePortfolioView, viewerContext, boardFilters, state.settings, nowMs)
       : null
   const hasActiveBoardFilters = Boolean(
     boardFilters.searchQuery.trim() ||
@@ -294,28 +307,39 @@ function App() {
       boardFilters.stuckOnly ||
       boardFilters.blockedOnly ||
       boardFilters.showArchived ||
-      boardFilters.brandNames.length !== (activePortfolio?.brands.length ?? 0),
+      boardFilters.brandNames.length !== (activePortfolioView?.brands.length ?? 0),
   )
   const summaryOwner =
-    state.activeRole.mode === 'editor' && !isLaunchOpsActive
+    state.activeRole.mode === 'contributor' && !isLaunchOpsActive
       ? viewerContext.editorName
       : boardFilters.ownerNames.length === 1
         ? boardFilters.ownerNames[0]
         : null
   const summary =
-    activePortfolio && currentPage === 'board' && summaryOwner
+    activePortfolioView && currentPage === 'board' && summaryOwner
       ? getEditorSummary(
-          activePortfolio,
+          activePortfolioView,
           summaryOwner,
           boardFilters.brandNames.length > 0
             ? boardFilters.brandNames
-            : activePortfolio.brands.map((brand) => brand.name),
+            : activePortfolioView.brands.map((brand) => brand.name),
           state.settings,
         )
       : null
+  const scopedState = useMemo<AppState>(
+    () => ({
+      ...state,
+      portfolios: scopedPortfolios,
+      activePortfolioId: activePortfolioView?.id ?? '',
+    }),
+    [activePortfolioView?.id, scopedPortfolios, state],
+  )
 
   const activeSelectedPortfolio = selectedCard
     ? state.portfolios.find((portfolio) => portfolio.id === selectedCard.portfolioId) ?? null
+    : null
+  const activeSelectedPortfolioView = selectedCard
+    ? scopedPortfolios.find((portfolio) => portfolio.id === selectedCard.portfolioId) ?? null
     : null
   const selectedCardData = selectedCard
     ? activeSelectedPortfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
@@ -331,15 +355,15 @@ function App() {
         ?.cards.find((card) => card.id === pendingDeleteCard.cardId) ?? null
     : null
   const activeDragCard =
-    activePortfolio && dragCardId
-      ? activePortfolio.cards.find((card) => card.id === dragCardId) ?? null
+    activePortfolioView && dragCardId
+      ? activePortfolioView.cards.find((card) => card.id === dragCardId) ?? null
       : null
   const lockedRole =
-    workspaceAccess?.roleMode === 'editor'
+    workspaceAccess?.roleMode === 'contributor'
       ? {
-          mode: 'editor' as const,
+          mode: 'contributor' as const,
           editorId:
-            activePortfolio?.team.find((member) => member.name === workspaceAccess.editorName)?.id ??
+            activePortfolioSource?.team.find((member) => member.name === workspaceAccess.editorName)?.id ??
             null,
         }
       : workspaceAccess
@@ -370,27 +394,28 @@ function App() {
               setRole({
                 mode: event.target.value as ActiveRole['mode'],
                 editorId:
-                  event.target.value === 'editor'
+                  event.target.value === 'contributor'
                     ? editorOptions[0]?.id ?? state.activeRole.editorId
-                    : state.activeRole.editorId,
+                    : null,
               })
             }
           >
+            <option value="owner">Owner</option>
             <option value="manager">Manager</option>
-            <option value="editor">Editor</option>
-            <option value="observer">Observer</option>
+            <option value="contributor">Contributor</option>
+            <option value="viewer">Viewer</option>
           </select>
         </label>
 
-        {state.activeRole.mode === 'editor' ? (
+        {state.activeRole.mode === 'contributor' ? (
           <label className="local-mode-field">
-            <span>Editor lane</span>
+            <span>Works as</span>
             <select
-              aria-label="Local demo editor lane"
+              aria-label="Local demo contributor identity"
               value={state.activeRole.editorId ?? editorOptions[0]?.id ?? ''}
               onChange={(event) =>
                 setRole({
-                  mode: 'editor',
+                  mode: 'contributor',
                   editorId: event.target.value || null,
                 })
               }
@@ -490,13 +515,61 @@ function App() {
     setEditorMenuOpen,
     currentPage,
     searchRef,
-    activePortfolio,
+    activePortfolio: activePortfolioView,
     roleMode: state.activeRole.mode,
     settings: state.settings,
     settingsTab,
     setQuickCreateValue,
     importInputRef,
   })
+
+  useEffect(() => {
+    if (activePortfolioView || scopedPortfolios.length === 0) {
+      return
+    }
+
+    const nextPortfolioId = scopedPortfolios[0]?.id
+    if (!nextPortfolioId) {
+      return
+    }
+
+    setState((current) =>
+      current.activePortfolioId === nextPortfolioId
+        ? current
+        : {
+            ...current,
+            activePortfolioId: nextPortfolioId,
+          },
+    )
+  }, [activePortfolioView, scopedPortfolios])
+
+  useEffect(() => {
+    const availableBrandNames = activePortfolioView?.brands.map((brand) => brand.name) ?? []
+    const availableBrandSet = new Set(availableBrandNames)
+
+    setBoardFilters((current) => {
+      const nextBrandNames =
+        current.brandNames.length === 0
+          ? availableBrandNames
+          : current.brandNames.filter((brandName) => availableBrandSet.has(brandName))
+
+      const normalizedBrandNames =
+        nextBrandNames.length > 0 || availableBrandNames.length === 0
+          ? nextBrandNames
+          : availableBrandNames
+
+      const sameBrandSelection =
+        normalizedBrandNames.length === current.brandNames.length &&
+        normalizedBrandNames.every((brandName, index) => brandName === current.brandNames[index])
+
+      return sameBrandSelection
+        ? current
+        : {
+            ...current,
+            brandNames: normalizedBrandNames,
+          }
+    })
+  }, [activePortfolioView])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -631,17 +704,25 @@ function App() {
   }
 
   function switchToPortfolio(portfolioId: string) {
-    const portfolio = state.portfolios.find((item) => item.id === portfolioId) ?? state.portfolios[0]
+    const portfolioView =
+      scopedPortfolios.find((item) => item.id === portfolioId) ?? scopedPortfolios[0] ?? null
+    const portfolio =
+      state.portfolios.find((item) => item.id === portfolioView?.id) ??
+      state.portfolios.find((item) => item.id === portfolioId) ??
+      state.portfolios[0]
+    if (!portfolio || !portfolioView) {
+      return
+    }
     setState((current) => ({
       ...current,
       activePortfolioId: portfolio.id,
     }))
-    setBoardFilters(getDefaultBoardFilters(portfolio))
+    setBoardFilters(getDefaultBoardFilters(portfolioView))
     setSettingsPortfolioId(portfolio.id)
     if (touchSidebarEnabled) {
       setTouchSidebarOpen(false)
     }
-    if (state.activeRole.mode === 'editor') {
+    if (state.activeRole.mode === 'contributor') {
       const nextEditor = getEditorOptions(portfolio)[0]
       setState((current) => ({
         ...current,
@@ -655,13 +736,7 @@ function App() {
   }
 
   function setPage(page: AppPage) {
-    if (page === 'analytics' && state.activeRole.mode === 'editor') {
-      return
-    }
-    if (page === 'settings' && state.activeRole.mode !== 'manager') {
-      return
-    }
-    if (page === 'workload' && state.activeRole.mode === 'editor') {
+    if (getAllowedPageForRole(page, state.activeRole.mode) !== page) {
       return
     }
 
@@ -673,7 +748,7 @@ function App() {
   }
 
   function focusBoardAttention() {
-    if (!attention.hasAttention || !activePortfolio) {
+    if (!attention.hasAttention || !activePortfolioView) {
       return
     }
 
@@ -724,9 +799,10 @@ function App() {
     }
 
     let resolvedEditorId = nextRole.editorId
-    if (nextRole.mode === 'editor' && activePortfolio) {
+    if (nextRole.mode === 'contributor' && activePortfolioSource) {
       const nextEditor =
-        getTeamMemberById(activePortfolio, nextRole.editorId) ?? getEditorOptions(activePortfolio)[0]
+        getTeamMemberById(activePortfolioSource, nextRole.editorId) ??
+        getEditorOptions(activePortfolioSource)[0]
       resolvedEditorId = nextEditor?.id ?? null
     }
     setState((current) => ({
@@ -735,18 +811,7 @@ function App() {
         ...nextRole,
         editorId: resolvedEditorId,
       },
-      activePage:
-        nextRole.mode === 'observer'
-          ? current.activePage === 'settings'
-            ? 'board'
-            : current.activePage
-          : nextRole.mode === 'manager'
-            ? current.activePage === 'analytics'
-              ? 'board'
-              : current.activePage
-            : current.activePage === 'analytics' || current.activePage === 'settings'
-              ? 'board'
-              : current.activePage,
+      activePage: getAllowedPageForRole(current.activePage, nextRole.mode),
     }))
     setEditorMenuOpen(false)
   }
@@ -756,22 +821,22 @@ function App() {
   }
 
   function handleQuickCreate(openDetail: boolean) {
-    if (!activePortfolio) {
+    if (!activePortfolioView) {
       return
     }
 
-    const actor = getActorName(activePortfolio)
+    const actor = getActorName(activePortfolioView)
     let card: Card
 
     try {
-      card = createCardFromQuickInput(activePortfolio, state.settings, quickCreateValue, actor)
+      card = createCardFromQuickInput(activePortfolioView, state.settings, quickCreateValue, actor)
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'That card could not be created.', 'red')
       return
     }
 
     let created = false
-    updatePortfolio(activePortfolio.id, (portfolio) => {
+    updatePortfolio(activePortfolioView.id, (portfolio) => {
       const nextPortfolio = addCardToPortfolio(portfolio, card, viewerContext)
       created = nextPortfolio !== portfolio
       return nextPortfolio
@@ -783,12 +848,12 @@ function App() {
     }
 
     setQuickCreateOpen(false)
-    setQuickCreateValue(getQuickCreateDefaults(activePortfolio, state.settings))
+    setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
     showToast(`${card.id} created`, 'green')
 
     if (openDetail) {
       setSelectedCard({
-        portfolioId: activePortfolio.id,
+        portfolioId: activePortfolioView.id,
         cardId: card.id,
       })
     }
@@ -977,7 +1042,7 @@ function App() {
   }
 
   function validateBoardDrop(cardId: string, targetLane: LaneModel | null) {
-    if (!activePortfolio || !targetLane || targetLane.stage === 'Archived') {
+    if (!activePortfolioView || !targetLane || targetLane.stage === 'Archived') {
       return {
         valid: false,
         message: 'That drop zone is not available.',
@@ -986,7 +1051,7 @@ function App() {
     }
 
     const validationMessage = getCardMoveValidationMessage(
-      activePortfolio,
+      activePortfolioView,
       viewerContext,
       cardId,
       targetLane.stage as StageId,
@@ -1088,7 +1153,7 @@ function App() {
     )
     const validation = validateBoardDrop(cardId, target?.lane ?? null)
 
-    if (!activePortfolio || !target || !validation.valid) {
+    if (!activePortfolioView || !target || !validation.valid) {
       clearBoardDragState()
       if (!validation.valid && validation.message) {
         showToast(validation.message, validation.tone)
@@ -1096,7 +1161,7 @@ function App() {
       return
     }
 
-    const card = activePortfolio.cards.find((item) => item.id === cardId)
+    const card = activePortfolioView.cards.find((item) => item.id === cardId)
     if (!card) {
       clearBoardDragState()
       return
@@ -1125,9 +1190,9 @@ function App() {
     const isBackwardMove = STAGES.indexOf(target.lane.stage as StageId) < STAGES.indexOf(card.stage)
     clearBoardDragState()
 
-    if (isBackwardMove && state.activeRole.mode !== 'observer') {
+    if (isBackwardMove && state.activeRole.mode !== 'viewer') {
       setPendingBackwardMove({
-        portfolioId: activePortfolio.id,
+        portfolioId: activePortfolioView.id,
         cardId: card.id,
         destinationStage: target.lane.stage as StageId,
         destinationOwner: nextOwner,
@@ -1139,7 +1204,7 @@ function App() {
     }
 
     applyMove(
-      activePortfolio.id,
+      activePortfolioView.id,
       card.id,
       target.lane.stage as StageId,
       nextOwner,
@@ -1149,14 +1214,17 @@ function App() {
   }
 
   function handleWorkloadDragEnd(event: DragEndEvent) {
-    if (!activePortfolio || state.activeRole.mode !== 'manager') {
+    if (
+      !activePortfolioView ||
+      (state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager')
+    ) {
       setDragCardId(null)
       return
     }
     const overId = event.over ? String(event.over.id) : null
     const memberId = overId?.replace('workload-member-', '')
-    const member = getTeamMemberById(activePortfolio, memberId ?? null)
-    const card = activePortfolio.cards.find((item) => item.id === String(event.active.id))
+    const member = getTeamMemberById(activePortfolioView, memberId ?? null)
+    const card = activePortfolioView.cards.find((item) => item.id === String(event.active.id))
     if (!member || !card) {
       setDragCardId(null)
       return
@@ -1165,7 +1233,7 @@ function App() {
       setDragCardId(null)
       return
     }
-    applyMove(activePortfolio.id, card.id, 'Briefed', member.name, 0, new Date().toISOString())
+    applyMove(activePortfolioView.id, card.id, 'Briefed', member.name, 0, new Date().toISOString())
     setDragCardId(null)
   }
 
@@ -1233,7 +1301,7 @@ function App() {
     const nextState = createFreshStartState(localFallbackStateRef.current)
     replaceState({
       ...nextState,
-      activeRole: { mode: 'manager', editorId: null },
+      activeRole: { mode: 'owner', editorId: null },
       activePage: 'settings',
     })
     setSelectedCard(null)
@@ -1270,7 +1338,7 @@ function App() {
   const toastView = <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
   function resetBoardFilters() {
-    setBoardFilters(getDefaultBoardFilters(activePortfolio))
+    setBoardFilters(getDefaultBoardFilters(activePortfolioView))
   }
 
   function dismissOnboardingBanner() {
@@ -1354,7 +1422,7 @@ function App() {
           title={accessStatus === 'error' ? 'We could not confirm access' : undefined}
           description={
             accessStatus === 'error'
-              ? 'Your sign-in worked, but the workspace access check needs another try before the shared board can open. Contact your workspace manager if the approved access list should already include this account.'
+              ? 'Your sign-in worked, but the workspace access check needs another try before the shared board can open. Contact your workspace owner if the approved access list should already include this account.'
               : undefined
           }
           onRetry={accessStatus === 'error' ? handleRetryAccessCheck : undefined}
@@ -1377,8 +1445,8 @@ function App() {
         <Sidebar
           expanded={sidebarExpanded}
           page={currentPage}
-          portfolio={activePortfolio}
-          portfolios={state.portfolios}
+          portfolio={activePortfolioView}
+          portfolios={scopedPortfolios}
           role={state.activeRole}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
@@ -1401,16 +1469,17 @@ function App() {
       <div className="main-shell">
         {localModeBanner}
 
-        {currentPage === 'board' && !activePortfolio ? (
+        {currentPage === 'board' && !activePortfolioView ? (
           <div className="page-shell">
             <PageHeader title={state.settings.general.appName} rightContent={headerUtilityContent} />
             <section className="board-empty-state" aria-live="polite">
-              <strong>Create a portfolio in Settings to get started</strong>
+              <strong>No visible portfolio is available right now</strong>
               <p>
-                The board needs at least one portfolio before cards, analytics, and workload can
-                be managed in the shared workspace.
+                This account does not have access to a visible portfolio yet. Ask your workspace
+                owner to update Access, or add work to a portfolio that matches this teammate
+                profile.
               </p>
-              {state.activeRole.mode === 'manager' ? (
+              {state.activeRole.mode === 'owner' ? (
                 <div className="board-empty-actions">
                   <button type="button" className="primary-button" onClick={() => setPage('settings')}>
                     Open settings
@@ -1421,10 +1490,10 @@ function App() {
           </div>
         ) : null}
 
-        {currentPage === 'board' && activePortfolio ? (
+        {currentPage === 'board' && activePortfolioView ? (
           <BoardPage
             title={state.settings.general.appName}
-            portfolio={activePortfolio}
+            portfolio={activePortfolioView}
             settings={state.settings}
             boardFilters={boardFilters}
             setBoardFilters={setBoardFilters}
@@ -1434,7 +1503,7 @@ function App() {
             columns={columns}
             expandedStages={expandedStages}
             setExpandedStages={setExpandedStages}
-            showOnboarding={state.activeRole.mode === 'manager' && !onboardingDismissed}
+            showOnboarding={state.activeRole.mode === 'owner' && !onboardingDismissed}
             searchCountLabel={
               boardFilters.searchQuery
                 ? getSearchCountLabel(visibleBoardCards.length, searchBaseCards.length)
@@ -1450,15 +1519,16 @@ function App() {
             nowMs={nowMs}
             sensors={sensors}
             canDragCard={(card) =>
+              state.activeRole.mode === 'owner' ||
               state.activeRole.mode === 'manager' ||
-              (state.activeRole.mode === 'editor' &&
+              (state.activeRole.mode === 'contributor' &&
                 (isLaunchOpsActive
                   ? card.stage === 'Ready'
                   : viewerContext.editorName === card.owner && canEditorDragStage(card.stage)))
             }
             onOpenCard={openCard}
             onQuickCreateOpen={() => {
-              setQuickCreateValue(getQuickCreateDefaults(activePortfolio, state.settings))
+              setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
               setQuickCreateOpen(true)
             }}
             onOpenSettings={() => setPage('settings')}
@@ -1473,7 +1543,7 @@ function App() {
 
         {currentPage === 'analytics' ? (
           <AnalyticsPage
-            state={state}
+            state={scopedState}
             nowMs={nowMs}
             headerUtilityContent={headerUtilityContent}
             onOpenCard={(portfolioId, cardId) => openCard(portfolioId, cardId)}
@@ -1492,7 +1562,7 @@ function App() {
           />
         ) : null}
 
-        {currentPage === 'workload' && activePortfolio ? (
+        {currentPage === 'workload' && activePortfolioView ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCorners}
@@ -1501,11 +1571,11 @@ function App() {
             onDragEnd={handleWorkloadDragEnd}
           >
             <WorkloadPage
-              portfolio={activePortfolio}
+              portfolio={activePortfolioView}
               settings={state.settings}
               timeframe={timeframe}
               nowMs={nowMs}
-              canAssign={state.activeRole.mode === 'manager'}
+              canAssign={state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'}
               activeDragCardId={dragCardId}
               headerUtilityContent={headerUtilityContent}
               onTimeframeChange={setTimeframe}
@@ -1551,9 +1621,9 @@ function App() {
         ) : null}
       </div>
 
-      {quickCreateOpen && activePortfolio ? (
+      {quickCreateOpen && activePortfolioView ? (
         <QuickCreateModal
-          portfolio={activePortfolio}
+          portfolio={activePortfolioView}
           settings={state.settings}
           value={quickCreateValue}
           onChange={(updates) => setQuickCreateValue((current) => ({ ...current, ...updates }))}
@@ -1587,11 +1657,11 @@ function App() {
         />
       ) : null}
 
-      {selectedCardData && activeSelectedPortfolio ? (
+      {selectedCardData && activeSelectedPortfolio && activeSelectedPortfolioView ? (
         <CardDetailPanel
           key={selectedCardData.id}
           keyId={selectedCardData.id}
-          portfolio={activeSelectedPortfolio}
+          portfolio={activeSelectedPortfolioView}
           card={selectedCardData}
           settings={state.settings}
           viewerMode={state.activeRole.mode}
@@ -1622,7 +1692,7 @@ function App() {
                   This keeps your brands, products, and workspace settings, but removes cards,
                   board people, and extra login access records.
                 </p>
-                <p>Your current manager login will be kept so you do not get locked out.</p>
+                <p>Your current owner login will be kept so you do not get locked out.</p>
                 <p>This action cannot be undone.</p>
               </>
             )

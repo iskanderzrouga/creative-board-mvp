@@ -1,5 +1,5 @@
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
-import type { RoleMode } from './board'
+import type { AccessScopeMode, PortfolioAccessScope, RoleMode } from './board'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
 const supabasePublishableKey =
@@ -29,12 +29,16 @@ export interface WorkspaceAccessState {
   email: string
   roleMode: RoleMode
   editorName: string | null
+  scopeMode: AccessScopeMode
+  scopeAssignments: PortfolioAccessScope[]
 }
 
 export interface WorkspaceAccessEntry {
   email: string
   roleMode: RoleMode
   editorName: string | null
+  scopeMode: AccessScopeMode
+  scopeAssignments: PortfolioAccessScope[]
   updatedAt: string | null
 }
 
@@ -233,12 +237,16 @@ function mapWorkspaceAccessEntry(row: {
   email: string
   role_mode: RoleMode
   editor_name: string | null
+  scope_mode: AccessScopeMode | null
+  scope_assignments: PortfolioAccessScope[] | null
   updated_at: string | null
 }) {
   return {
     email: row.email,
     roleMode: row.role_mode,
     editorName: row.editor_name,
+    scopeMode: row.scope_mode ?? 'all-portfolios',
+    scopeAssignments: row.scope_assignments ?? [],
     updatedAt: row.updated_at,
   } satisfies WorkspaceAccessEntry
 }
@@ -267,8 +275,10 @@ export async function getWorkspaceAccess() {
 
     return {
       email: session.email,
-      roleMode: 'manager' as const,
+      roleMode: 'owner' as const,
       editorName: null,
+      scopeMode: 'all-portfolios',
+      scopeAssignments: [],
     } satisfies WorkspaceAccessState
   }
 
@@ -279,7 +289,7 @@ export async function getWorkspaceAccess() {
 
   const { data, error } = await supabase
     .from('workspace_access')
-    .select('email, role_mode, editor_name')
+    .select('email, role_mode, editor_name, scope_mode, scope_assignments')
     .maybeSingle()
 
   if (error) {
@@ -294,6 +304,8 @@ export async function getWorkspaceAccess() {
     email: data.email,
     roleMode: data.role_mode as RoleMode,
     editorName: data.editor_name ?? null,
+    scopeMode: (data.scope_mode as AccessScopeMode | null) ?? 'all-portfolios',
+    scopeAssignments: (data.scope_assignments as PortfolioAccessScope[] | null) ?? [],
   } satisfies WorkspaceAccessState
 }
 
@@ -304,8 +316,10 @@ export async function listWorkspaceAccessEntries() {
       ? [
           {
             email: session.email,
-            roleMode: 'manager' as const,
+            roleMode: 'owner' as const,
             editorName: null,
+            scopeMode: 'all-portfolios',
+            scopeAssignments: [],
             updatedAt: null,
           } satisfies WorkspaceAccessEntry,
         ]
@@ -319,7 +333,7 @@ export async function listWorkspaceAccessEntries() {
 
   const { data, error } = await supabase
     .from('workspace_access')
-    .select('email, role_mode, editor_name, updated_at')
+    .select('email, role_mode, editor_name, scope_mode, scope_assignments, updated_at')
     .order('email', { ascending: true })
 
   if (error) {
@@ -333,21 +347,25 @@ export async function upsertWorkspaceAccessEntry(entry: {
   email: string
   roleMode: RoleMode
   editorName: string | null
+  scopeMode: AccessScopeMode
+  scopeAssignments: PortfolioAccessScope[]
 }) {
   const normalizedEmail = entry.email.trim().toLowerCase()
   if (!normalizedEmail) {
     throw new Error('Enter a valid work email.')
   }
 
-  if (entry.roleMode === 'editor' && !entry.editorName?.trim()) {
-    throw new Error('Editors need a board teammate assignment.')
+  if (entry.roleMode === 'contributor' && !entry.editorName?.trim()) {
+    throw new Error('Contributors need a teammate profile in Works as.')
   }
 
   if (isE2ESupabaseMode()) {
     return {
       email: normalizedEmail,
       roleMode: entry.roleMode,
-      editorName: entry.roleMode === 'editor' ? entry.editorName?.trim() ?? null : null,
+      editorName: entry.roleMode === 'contributor' ? entry.editorName?.trim() ?? null : null,
+      scopeMode: entry.scopeMode,
+      scopeAssignments: entry.scopeAssignments,
       updatedAt: new Date().toISOString(),
     } satisfies WorkspaceAccessEntry
   }
@@ -363,14 +381,16 @@ export async function upsertWorkspaceAccessEntry(entry: {
       {
         email: normalizedEmail,
         role_mode: entry.roleMode,
-        editor_name: entry.roleMode === 'editor' ? entry.editorName?.trim() ?? null : null,
+        editor_name: entry.roleMode === 'contributor' ? entry.editorName?.trim() ?? null : null,
+        scope_mode: entry.scopeMode,
+        scope_assignments: entry.scopeAssignments,
         updated_at: new Date().toISOString(),
       },
       {
         onConflict: 'email',
       },
     )
-    .select('email, role_mode, editor_name, updated_at')
+    .select('email, role_mode, editor_name, scope_mode, scope_assignments, updated_at')
     .single()
 
   if (error) {

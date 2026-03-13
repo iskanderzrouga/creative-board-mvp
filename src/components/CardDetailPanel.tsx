@@ -177,10 +177,10 @@ export function CardDetailPanel({
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
-  const canManage = viewerMode === 'manager'
-  const isOwnedEditor = viewerMode === 'editor' && viewerName === card.owner
+  const canManage = viewerMode === 'owner' || viewerMode === 'manager'
+  const isOwnedEditor = viewerMode === 'contributor' && viewerName === card.owner
   const canEditOwnedContent = canManage || isOwnedEditor
-  const isLaunchOpsViewer = viewerMode === 'editor' && isLaunchOpsRole(viewerMemberRole)
+  const isLaunchOpsViewer = viewerMode === 'contributor' && isLaunchOpsRole(viewerMemberRole)
   const canComment = canManage || isLaunchOpsViewer || viewerName === card.owner
   const canEditFrameio = canManage || isOwnedEditor
   const canEditLinks = canManage || isOwnedEditor
@@ -400,7 +400,7 @@ export function CardDetailPanel({
             {canSetBlocked ? (
               <div className="blocked-controls">
                 {isLaunchOpsViewer && card.blocked ? (
-                  <p className="muted-copy">Only managers can clear blocked status.</p>
+                  <p className="muted-copy">Only owners and managers can clear blocked status.</p>
                 ) : (
                   <>
                     <input

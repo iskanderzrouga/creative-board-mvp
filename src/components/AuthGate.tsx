@@ -39,7 +39,7 @@ export function AuthGate({
           <span className="auth-kicker">Editors Board</span>
           <h1>Team access</h1>
           <p>
-            Use your work email to request access to this workspace. If a manager has already
+            Use your work email to request access to this workspace. If the owner has already
             added that email, we will send a sign-in link and create the account automatically.
           </p>
         </div>

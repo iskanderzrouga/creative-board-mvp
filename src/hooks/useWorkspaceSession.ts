@@ -22,8 +22,10 @@ import {
 } from '../supabase'
 import {
   getActivePortfolio,
+  type AccessScopeMode,
   type ActiveRole,
   type AppState,
+  type PortfolioAccessScope,
   type RoleMode,
 } from '../board'
 
@@ -187,7 +189,7 @@ export function useWorkspaceSession({
       setAccessCheckTimedOut(true)
       setAccessStatus('error')
       setAccessErrorMessage(
-        'We could not confirm workspace access yet. Retry, try a different email, or contact your workspace manager.',
+        'We could not confirm workspace access yet. Retry, try a different email, or contact your workspace owner.',
       )
     }, accessCheckTimeoutMs)
 
@@ -204,15 +206,15 @@ export function useWorkspaceSession({
         if (!access) {
           setAccessStatus('denied')
           setAccessErrorMessage(
-            'This email is not on the approved access list. Contact your workspace manager.',
+            'This email is not on the approved access list. Contact your workspace owner.',
           )
           return
         }
 
-        if (access.roleMode === 'editor' && !access.editorName) {
+        if (access.roleMode === 'contributor' && !access.editorName) {
           setAccessStatus('error')
           setAccessErrorMessage(
-            'This editor login is missing its board identity. Ask a manager to assign a board teammate in Login Access.',
+            'This contributor login is missing its Works as teammate profile. Ask your workspace owner to update Access.',
           )
           return
         }
@@ -229,7 +231,7 @@ export function useWorkspaceSession({
         setAccessCheckTimedOut(false)
         setAccessStatus('error')
         setAccessErrorMessage(
-          'Workspace access could not be verified right now. Retry, try a different email, or contact your workspace manager.',
+          'Workspace access could not be verified right now. Retry, try a different email, or contact your workspace owner.',
         )
       })
 
@@ -248,7 +250,7 @@ export function useWorkspaceSession({
       const nextRoleBase = getRoleFromWorkspaceAccess(workspaceAccess, current.activeRole)
       const currentPortfolio = getActivePortfolio(current)
       const resolvedEditorId =
-        workspaceAccess.roleMode === 'editor'
+        workspaceAccess.roleMode === 'contributor'
           ? currentPortfolio?.team.find((member) => member.name === workspaceAccess.editorName)?.id ??
             null
           : nextRoleBase.editorId
@@ -280,7 +282,7 @@ export function useWorkspaceSession({
       !authEnabled ||
       authStatus !== 'signed-in' ||
       accessStatus !== 'granted' ||
-      workspaceAccess?.roleMode !== 'manager'
+      workspaceAccess?.roleMode !== 'owner'
     ) {
       setWorkspaceAccessEntries([])
       setWorkspaceAccessStatus('idle')
@@ -318,6 +320,8 @@ export function useWorkspaceSession({
     email: string
     roleMode: RoleMode
     editorName: string | null
+    scopeMode: AccessScopeMode
+    scopeAssignments: PortfolioAccessScope[]
     previousEmail?: string
   }) {
     const normalizedEmail = entry.email.trim().toLowerCase()
@@ -329,15 +333,15 @@ export function useWorkspaceSession({
 
     if (workspaceAccess?.email === previousEmail && normalizedEmail !== previousEmail) {
       showToast(
-        'Ask another manager to change the email on your own signed-in workspace account.',
+        'Ask another owner to change the email on your own signed-in workspace account.',
         'amber',
       )
       return
     }
 
-    if (workspaceAccess?.email === normalizedEmail && entry.roleMode !== 'manager') {
+    if (workspaceAccess?.email === normalizedEmail && entry.roleMode !== 'owner') {
       showToast(
-        'Keep your own workspace account as a manager, or another manager will need to change it.',
+        'Keep your own workspace account as an owner, or another owner will need to change it.',
         'amber',
       )
       return
@@ -387,6 +391,7 @@ export function useWorkspaceSession({
         error instanceof Error ? error.message : 'Could not save login access.',
       )
       showToast('Could not save login access.', 'red')
+      throw error
     } finally {
       setWorkspaceAccessPendingEmail(null)
     }
@@ -399,7 +404,7 @@ export function useWorkspaceSession({
     }
 
     if (workspaceAccess?.email === normalizedEmail) {
-      showToast('You cannot remove your own manager access from this screen.', 'amber')
+      showToast('You cannot remove your own owner access from this screen.', 'amber')
       return
     }
 
@@ -542,7 +547,7 @@ export function useWorkspaceSession({
               normalizedMessage.includes('user not found') ||
               normalizedMessage.includes('signup') ||
               normalizedMessage.includes('sign up')
-          ? 'This email is not on the approved access list. Contact your workspace manager to get access.'
+          ? 'This email is not on the approved access list. Contact your workspace owner to get access.'
           : message,
       )
     } finally {

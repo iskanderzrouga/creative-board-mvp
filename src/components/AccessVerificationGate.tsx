@@ -31,7 +31,7 @@ export function AccessVerificationGate({
           <strong>{email}</strong>
           <span>
             {timedOut
-              ? 'This is taking longer than expected. Retry the check, try a different email, or contact your workspace manager if this account should already be approved.'
+              ? 'This is taking longer than expected. Retry the check, try a different email, or contact your workspace owner if this account should already be approved.'
               : 'Confirming your role and workspace access...'}
           </span>
         </div>

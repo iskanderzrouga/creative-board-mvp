@@ -53,7 +53,7 @@ interface BoardPageProps {
   searchCountLabel?: string
   searchRef: RefObject<HTMLInputElement | null>
   headerUtilityContent?: ReactNode
-  activeRoleMode: 'manager' | 'editor' | 'observer'
+  activeRoleMode: 'owner' | 'manager' | 'contributor' | 'viewer'
   dragCardId: string | null
   dragOverLaneId: string | null
   blockedLaneId: string | null
@@ -131,7 +131,7 @@ export function BoardPage({
         searchRef={searchRef}
         rightContent={
           <>
-            {activeRoleMode === 'manager' ? (
+            {activeRoleMode === 'owner' || activeRoleMode === 'manager' ? (
               <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
                 + Add card
               </button>
@@ -146,8 +146,8 @@ export function BoardPage({
           <div className="onboarding-copy">
             <strong>Start with the shared workspace basics</strong>
             <p>
-              Confirm team access in Settings, then add the first backlog cards so editors,
-              analytics, and workload views stay aligned from day one.
+              Set up your structure, people, and access in Settings, then add the first backlog
+              cards so contributors, analytics, and workload stay aligned from day one.
             </p>
           </div>
           <div className="onboarding-actions">
@@ -187,7 +187,7 @@ export function BoardPage({
         </section>
       ) : null}
 
-      {activeRoleMode !== 'editor' ? (
+      {activeRoleMode !== 'contributor' ? (
         <section className="manager-filter-bar">
           <div className="manager-filter-cluster">
             <span className="filter-group-label">Brand</span>
@@ -240,7 +240,7 @@ export function BoardPage({
           <span className="filter-group-divider" aria-hidden="true" />
 
           <div className="manager-filter-cluster">
-            <span className="filter-group-label">Editor</span>
+            <span className="filter-group-label">Teammate</span>
             <div className="manager-editor-pills">
               {getEditorOptions(portfolio).map((member) => (
                 <button
@@ -375,16 +375,16 @@ export function BoardPage({
                     ? 'Clear the current filters or search to bring cards back into view.'
                     : hasBoardCards
                       ? 'Adjust the current role or filters, or open an existing card from another view.'
-                      : activeRoleMode === 'manager'
+                      : activeRoleMode === 'owner' || activeRoleMode === 'manager'
                         ? 'Add a first card to the backlog so the shared workflow has something to track.'
-                        : 'A manager can add the first backlog card to start the shared workflow.'}
+                        : 'An owner or manager can add the first backlog card to start the shared workflow.'}
                 </p>
                 <div className="board-empty-actions">
                   {hasActiveFilters ? (
                     <button type="button" className="primary-button" onClick={onResetFilters}>
                       Reset filters
                     </button>
-                  ) : activeRoleMode === 'manager' ? (
+                  ) : activeRoleMode === 'owner' || activeRoleMode === 'manager' ? (
                     <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
                       Add first card
                     </button>
@@ -440,7 +440,9 @@ export function BoardPage({
                             isHovered={hovered}
                             isBlocked={isBlocked}
                             dragActive={dragCardId !== null}
-                            allowEmptyHint={activeRoleMode === 'manager'}
+                            allowEmptyHint={
+                              activeRoleMode === 'owner' || activeRoleMode === 'manager'
+                            }
                           >
                             <SortableContext
                               items={lane.cards.map((card) => card.id)}
@@ -478,8 +480,8 @@ export function BoardPage({
                         }
                       >
                         {expandedStages.includes(column.id as StageId)
-                          ? 'Hide empty editors'
-                          : `+${column.hiddenEditorCount} editors`}
+                          ? 'Hide empty teammates'
+                          : `+${column.hiddenEditorCount} teammates`}
                       </button>
                     ) : null}
                   </div>

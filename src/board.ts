@@ -6,7 +6,7 @@ const REFERENCE_NOW_ISO = '2026-03-11T10:00:00Z'
 const DEFAULT_WORKDAY_END_MINUTES = 18 * 60
 
 export const STORAGE_KEY = 'creative-board-state'
-export const STATE_VERSION = 2
+export const STATE_VERSION = 3
 
 export const STAGES = [
   'Backlog',
@@ -20,7 +20,12 @@ export const STAGES = [
 export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
 export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
 export const APP_PAGES = ['board', 'analytics', 'workload', 'settings'] as const
-export const ROLE_MODES = ['manager', 'editor', 'observer'] as const
+export const ROLE_MODES = ['owner', 'manager', 'contributor', 'viewer'] as const
+export const ACCESS_SCOPE_MODES = [
+  'all-portfolios',
+  'selected-portfolios',
+  'selected-brands',
+] as const
 export const TIMEFRAMES = ['this-week', 'next-week', 'this-month'] as const
 export const WORKING_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 export const FUNNEL_STAGES = [
@@ -52,6 +57,7 @@ export const SETTING_TABS = [
   'general',
   'portfolios',
   'team',
+  'access',
   'task-library',
   'capacity',
   'integrations',
@@ -63,6 +69,7 @@ export type GroupedStageId = (typeof GROUPED_STAGES)[number]
 export type BoardColumnId = (typeof BOARD_COLUMN_IDS)[number]
 export type AppPage = (typeof APP_PAGES)[number]
 export type RoleMode = (typeof ROLE_MODES)[number]
+export type AccessScopeMode = (typeof ACCESS_SCOPE_MODES)[number]
 export type Timeframe = (typeof TIMEFRAMES)[number]
 export type WorkingDay = (typeof WORKING_DAYS)[number]
 export type FunnelStage = (typeof FUNNEL_STAGES)[number]
@@ -251,6 +258,11 @@ export interface ActiveRole {
   editorId: string | null
 }
 
+export interface PortfolioAccessScope {
+  portfolioId: string
+  brandNames: string[]
+}
+
 export interface AppState {
   portfolios: Portfolio[]
   settings: GlobalSettings
@@ -264,6 +276,7 @@ export interface ViewerContext {
   mode: RoleMode
   editorName: string | null
   memberRole: string | null
+  visibleBrandNames: string[] | null
 }
 
 export interface BoardFilters {
@@ -533,13 +546,14 @@ const BRAND_PALETTES = [
 
 export const ALL_PORTFOLIOS_ID = 'all-portfolios'
 export const SETTINGS_TAB_LABELS: Record<SettingTab, string> = {
-  general: 'General',
-  portfolios: 'Portfolios',
-  team: 'Team & Roles',
-  'task-library': 'Task Library',
+  general: 'Workspace',
+  portfolios: 'Structure',
+  team: 'People',
+  access: 'Access',
+  'task-library': 'Workflow',
   capacity: 'Capacity',
   integrations: 'Integrations',
-  data: 'Data',
+  data: 'Data & Admin',
 }
 
 function roundToTenths(value: number) {
@@ -1768,8 +1782,8 @@ export function createSeedState(): AppState {
     },
     activePortfolioId: portfolios[0]?.id ?? '',
     activeRole: {
-      mode: 'manager',
-      editorId: 'daniel-t',
+      mode: 'owner',
+      editorId: null,
     },
     activePage: 'board',
     version: STATE_VERSION,
@@ -1975,12 +1989,30 @@ export function coerceAppState(raw: unknown): AppState {
     Array.isArray(candidate.portfolios) && candidate.portfolios[0]
       ? candidate.portfolios[0].id
       : seed.activePortfolioId
+  const candidateActiveRole =
+    candidate.activeRole && typeof candidate.activeRole === 'object'
+      ? (candidate.activeRole as { mode?: unknown; editorId?: unknown })
+      : null
   const settings = normalizeSettings(candidate.settings, fallbackPortfolioId)
   const portfolios = Array.isArray(candidate.portfolios)
     ? candidate.portfolios.map((portfolio, index) =>
         normalizePortfolio(portfolio, settings.taskLibrary, settings, index),
       )
     : seed.portfolios
+  const candidateRoleMode =
+    candidateActiveRole && typeof candidateActiveRole.mode === 'string'
+      ? candidateActiveRole.mode
+      : null
+  const normalizedRoleMode =
+    candidateRoleMode
+      ? candidateRoleMode === 'editor'
+        ? 'contributor'
+        : candidateRoleMode === 'observer'
+          ? 'viewer'
+          : candidateRoleMode === 'owner' || candidateRoleMode === 'manager'
+            ? candidateRoleMode
+            : null
+      : null
 
   return {
     portfolios,
@@ -1990,14 +2022,12 @@ export function coerceAppState(raw: unknown): AppState {
         ? candidate.activePortfolioId
         : settings.general.defaultPortfolioId,
     activeRole:
-      candidate.activeRole &&
-      typeof candidate.activeRole === 'object' &&
-      ROLE_MODES.includes(candidate.activeRole.mode as RoleMode)
+      normalizedRoleMode && ROLE_MODES.includes(normalizedRoleMode as RoleMode)
         ? {
-            mode: candidate.activeRole.mode as RoleMode,
+            mode: normalizedRoleMode as RoleMode,
             editorId:
-              typeof candidate.activeRole.editorId === 'string'
-                ? candidate.activeRole.editorId
+              typeof candidateActiveRole?.editorId === 'string'
+                ? candidateActiveRole.editorId
                 : seed.activeRole.editorId,
           }
         : seed.activeRole,
@@ -2156,7 +2186,7 @@ export function renameTeamMemberInPortfolio(
 export function getTeamMemberRemovalBlocker(portfolio: Portfolio, memberIndex: number) {
   const member = portfolio.team[memberIndex]
   if (!member) {
-    return 'That team member no longer exists.'
+    return 'That teammate profile no longer exists.'
   }
 
   if (
@@ -2343,11 +2373,11 @@ export function createCardFromQuickInput(
 }
 
 function canManageCards(viewer: ViewerContext) {
-  return viewer.mode === 'manager'
+  return viewer.mode === 'owner' || viewer.mode === 'manager'
 }
 
 function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>) {
-  if (viewer.mode === 'manager') {
+  if (viewer.mode === 'owner' || viewer.mode === 'manager') {
     return true
   }
 
@@ -2356,7 +2386,7 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     return true
   }
 
-  if (viewer.mode === 'observer') {
+  if (viewer.mode === 'viewer') {
     return false
   }
 
@@ -2435,7 +2465,7 @@ export function getVisibleCards(
   const visibleBrandNames =
     filters.brandNames.length > 0
       ? new Set(filters.brandNames)
-      : new Set(portfolio.brands.map((brand) => brand.name))
+      : new Set(viewer.visibleBrandNames ?? portfolio.brands.map((brand) => brand.name))
   const visibleOwnerNames = new Set(filters.ownerNames)
 
   return portfolio.cards.filter((card) => {
@@ -2448,13 +2478,13 @@ export function getVisibleCards(
       return false
     }
     if (
-      viewer.mode === 'editor' &&
+      viewer.mode === 'contributor' &&
       !isLaunchOpsRole(viewer.memberRole) &&
       viewer.editorName !== card.owner
     ) {
       return false
     }
-    if (viewer.mode !== 'editor' && visibleOwnerNames.size > 0 && !isBacklogCard) {
+    if (viewer.mode !== 'contributor' && visibleOwnerNames.size > 0 && !isBacklogCard) {
       if (!card.owner || !visibleOwnerNames.has(card.owner)) {
         return false
       }
@@ -2546,9 +2576,9 @@ export function getVisibleColumns(
 ) {
   const visibleCards = getVisibleCards(portfolio, viewer, filters, settings, nowMs)
   const ownerNames = getBoardOwners(portfolio)
-  const isLaunchOpsViewer = viewer.mode === 'editor' && isLaunchOpsRole(viewer.memberRole)
+  const isLaunchOpsViewer = viewer.mode === 'contributor' && isLaunchOpsRole(viewer.memberRole)
   const activeOwner =
-    viewer.mode === 'editor' && !isLaunchOpsViewer
+    viewer.mode === 'contributor' && !isLaunchOpsViewer
       ? viewer.editorName
       : filters.ownerNames.length === 1
         ? filters.ownerNames[0]
@@ -3013,11 +3043,11 @@ export function getCardMoveValidationMessage(
 
   const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? card.owner
   const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(card.stage)
-  const isLaunchOpsViewer = viewer.mode === 'editor' && isLaunchOpsRole(viewer.memberRole)
+  const isLaunchOpsViewer = viewer.mode === 'contributor' && isLaunchOpsRole(viewer.memberRole)
   const movingWithinSameSection = destinationStage === card.stage && nextOwner === card.owner
 
-  if (viewer.mode === 'observer') {
-    return 'Observer view is read-only.'
+  if (viewer.mode === 'viewer') {
+    return 'Viewer access is read-only.'
   }
 
   if (isLaunchOpsViewer) {
@@ -3032,41 +3062,41 @@ export function getCardMoveValidationMessage(
     return null
   }
 
-  if (viewer.mode === 'editor') {
+  if (viewer.mode === 'contributor') {
     if (!viewer.editorName || card.owner !== viewer.editorName) {
-      return 'Editors can only move their own cards.'
+      return 'Contributors can only move their own cards.'
     }
 
     if (destinationOwner && destinationOwner !== viewer.editorName) {
-      return 'Editors can only move cards within their own lane.'
+      return 'Contributors can only move cards within their own lane.'
     }
 
     if (!canEditorMoveStage(card.stage)) {
-      return 'Editors can only move cards between Briefed, In Production, Review, and Ready.'
+      return 'Contributors can only move cards between Briefed, In Production, Review, and Ready.'
     }
 
     if (destinationStage === 'Live') {
-      return 'Only managers can move cards to Live.'
+      return 'Only owners and managers can move cards to Live.'
     }
 
     if (destinationStage === 'Backlog') {
-      return 'Editors cannot move cards back to Backlog.'
+      return 'Contributors cannot move cards back to Backlog.'
     }
 
     if (movingWithinSameSection) {
-      return 'Only managers can reorder priority within a section.'
+      return 'Only owners and managers can reorder priority within a section.'
     }
 
     if (!isBackwardMove) {
       const nextStage = getNextStageForEditor(card.stage)
       if (!nextStage || destinationStage !== nextStage) {
-        return 'Editors can only move cards forward one stage at a time, up to Ready.'
+        return 'Contributors can only move cards forward one stage at a time, up to Ready.'
       }
     }
   }
 
   if (isGroupedStage(destinationStage) && !nextOwner) {
-    return 'Choose an editor lane to assign this card.'
+    return 'Choose a teammate lane to assign this card.'
   }
 
   if (card.stage === 'Review' && destinationStage === 'Briefed') {

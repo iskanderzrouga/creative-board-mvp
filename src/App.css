@@ -2141,17 +2141,22 @@ button {
   font-weight: 700;
 }
 
+.sidebar-user-role.role-owner {
+  background: var(--warning-surface);
+  color: var(--warning-text);
+}
+
 .sidebar-user-role.role-manager {
   background: var(--info-surface-subtle);
   color: var(--info-text);
 }
 
-.sidebar-user-role.role-editor {
+.sidebar-user-role.role-contributor {
   background: var(--success-surface);
   color: var(--success-text);
 }
 
-.sidebar-user-role.role-observer {
+.sidebar-user-role.role-viewer {
   background: var(--surface-tint);
   color: var(--muted-strong);
 }
@@ -3389,6 +3394,51 @@ button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+}
+
+.workspace-access-card {
+  gap: 16px;
+}
+
+.workspace-access-scope {
+  display: grid;
+  gap: 10px;
+}
+
+.scope-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.scope-choice-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-shell);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.scope-choice-card input {
+  margin: 0;
+}
+
+.scope-brand-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.scope-brand-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-shell);
+  border-radius: 14px;
+  background: var(--surface-subtle);
 }
 
 .board-identity-static {

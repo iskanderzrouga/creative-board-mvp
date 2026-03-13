@@ -13,7 +13,7 @@ export function AccessGate({
   email,
   message,
   title = 'Access needed',
-  description = 'Your sign-in worked, but this account still needs workspace access from a manager before the shared board can open.',
+  description = 'Your sign-in worked, but this account still needs workspace access from the owner before the shared board can open.',
   onRetry,
   onUseDifferentEmail,
   signOutPending = false,

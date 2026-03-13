@@ -1,5 +1,17 @@
 import { useState } from 'react'
-import { formatDateTime, type RoleMode } from '../board'
+import {
+  getAccessLevelLabel,
+  getEffectiveAccessSummary,
+  getScopeLabel,
+  normalizeScopeAssignments,
+} from '../accessHelpers'
+import {
+  formatDateTime,
+  type AccessScopeMode,
+  type Portfolio,
+  type PortfolioAccessScope,
+  type RoleMode,
+} from '../board'
 import { ButtonSpinner } from './ButtonSpinner'
 import { ConfirmDialog } from './ConfirmDialog'
 import type { WorkspaceAccessEntry } from '../supabase'
@@ -9,6 +21,7 @@ type WorkspaceDirectoryStatus = 'idle' | 'loading' | 'ready' | 'error'
 interface WorkspaceAccessManagerProps {
   entries: WorkspaceAccessEntry[]
   editorOptions: string[]
+  portfolios: Portfolio[]
   status: WorkspaceDirectoryStatus
   errorMessage: string | null
   pendingEmail: string | null
@@ -16,6 +29,8 @@ interface WorkspaceAccessManagerProps {
     email: string
     roleMode: RoleMode
     editorName: string | null
+    scopeMode: AccessScopeMode
+    scopeAssignments: PortfolioAccessScope[]
     previousEmail?: string
   }) => Promise<void>
   onDelete: (email: string) => Promise<void>
@@ -25,27 +40,51 @@ interface AccessDraft {
   email: string
   roleMode: RoleMode
   editorName: string
+  scopeMode: AccessScopeMode
+  scopeAssignments: PortfolioAccessScope[]
 }
 
-const WORKSPACE_ROLE_OPTIONS: Array<{
+const ACCESS_LEVEL_OPTIONS: Array<{
   value: RoleMode
+  description: string
+}> = [
+  {
+    value: 'owner',
+    description: 'Can see and manage all portfolios, settings, people, and access.',
+  },
+  {
+    value: 'manager',
+    description: 'Can manage work only inside assigned portfolio and brand scope.',
+  },
+  {
+    value: 'contributor',
+    description: 'Can see only their own cards and update the work they personally own.',
+  },
+  {
+    value: 'viewer',
+    description: 'Can open the workspace in read-only mode.',
+  },
+]
+
+const MANAGER_SCOPE_OPTIONS: Array<{
+  value: AccessScopeMode
   label: string
   description: string
 }> = [
   {
-    value: 'manager',
-    label: 'Manager',
-    description: 'Can manage cards, settings, and team access.',
+    value: 'all-portfolios',
+    label: 'All portfolios',
+    description: 'Full portfolio and brand visibility.',
   },
   {
-    value: 'editor',
-    label: 'Editor',
-    description: 'Works their assigned cards and moves them forward.',
+    value: 'selected-portfolios',
+    label: 'Selected portfolios',
+    description: 'Choose one or more portfolios. Brands inside them stay visible.',
   },
   {
-    value: 'observer',
-    label: 'Observer',
-    description: 'Can view the workspace without editing cards.',
+    value: 'selected-brands',
+    label: 'Selected brands',
+    description: 'Choose specific brands. Products under those brands stay visible automatically.',
   },
 ]
 
@@ -86,41 +125,481 @@ function getEmailValidationMessage(
   return null
 }
 
+function getRoleDescription(roleMode: RoleMode) {
+  return ACCESS_LEVEL_OPTIONS.find((option) => option.value === roleMode)?.description ?? ''
+}
+
+function createEmptyDraft(): AccessDraft {
+  return {
+    email: '',
+    roleMode: 'manager',
+    editorName: '',
+    scopeMode: 'selected-portfolios',
+    scopeAssignments: [],
+  }
+}
+
+function normalizeDraftForRole(draft: AccessDraft): AccessDraft {
+  if (draft.roleMode === 'owner') {
+    return {
+      ...draft,
+      editorName: '',
+      scopeMode: 'all-portfolios',
+      scopeAssignments: [],
+    }
+  }
+
+  if (draft.roleMode === 'contributor') {
+    return {
+      ...draft,
+      scopeMode: 'all-portfolios',
+      scopeAssignments: [],
+    }
+  }
+
+  return {
+    ...draft,
+    editorName: '',
+    scopeAssignments: normalizeScopeAssignments(draft.scopeAssignments),
+  }
+}
+
+function getValidationMessage(
+  draft: AccessDraft,
+  entries: WorkspaceAccessEntry[],
+  currentEmail?: string,
+) {
+  const emailMessage = getEmailValidationMessage(draft.email, entries, currentEmail)
+  if (emailMessage) {
+    return emailMessage
+  }
+
+  if (draft.roleMode === 'contributor' && !draft.editorName) {
+    return 'Choose a teammate profile in Works as.'
+  }
+
+  if (draft.roleMode === 'manager' || draft.roleMode === 'viewer') {
+    if (
+      draft.scopeMode === 'selected-portfolios' &&
+      normalizeScopeAssignments(draft.scopeAssignments).length === 0
+    ) {
+      return 'Choose at least one portfolio for this access level.'
+    }
+
+    if (draft.scopeMode === 'selected-brands') {
+      const selectedBrands = normalizeScopeAssignments(draft.scopeAssignments).flatMap(
+        (assignment) => assignment.brandNames,
+      )
+      if (selectedBrands.length === 0) {
+        return 'Choose at least one brand for this access level.'
+      }
+    }
+  }
+
+  return null
+}
+
 function isDirty(entry: WorkspaceAccessEntry, draft: AccessDraft) {
+  const normalizedDraft = normalizeDraftForRole(draft)
   return (
-    normalizeEmail(entry.email) !== normalizeEmail(draft.email) ||
-    entry.roleMode !== draft.roleMode ||
-    (entry.editorName ?? '') !== draft.editorName
+    normalizeEmail(entry.email) !== normalizeEmail(normalizedDraft.email) ||
+    entry.roleMode !== normalizedDraft.roleMode ||
+    (entry.editorName ?? '') !== normalizedDraft.editorName ||
+    entry.scopeMode !== normalizedDraft.scopeMode ||
+    JSON.stringify(normalizeScopeAssignments(entry.scopeAssignments)) !==
+      JSON.stringify(normalizeScopeAssignments(normalizedDraft.scopeAssignments))
   )
 }
 
-function getRoleOption(roleMode: RoleMode) {
-  return WORKSPACE_ROLE_OPTIONS.find((option) => option.value === roleMode) ?? WORKSPACE_ROLE_OPTIONS[0]!
+function getEntryDraft(entry: WorkspaceAccessEntry): AccessDraft {
+  return {
+    email: entry.email,
+    roleMode: entry.roleMode,
+    editorName: entry.editorName ?? '',
+    scopeMode: entry.scopeMode,
+    scopeAssignments: normalizeScopeAssignments(entry.scopeAssignments),
+  }
 }
 
-function getBoardIdentityHint(roleMode: RoleMode, editorName: string, hasBoardPeople: boolean) {
-  if (roleMode === 'manager') {
-    return 'No board identity needed. Managers work as managers in the app.'
+function toggleSelectedPortfolio(
+  current: PortfolioAccessScope[],
+  portfolioId: string,
+  checked: boolean,
+) {
+  const normalized = normalizeScopeAssignments(current)
+  if (checked) {
+    if (normalized.some((assignment) => assignment.portfolioId === portfolioId)) {
+      return normalized
+    }
+
+    return [...normalized, { portfolioId, brandNames: [] }]
   }
 
-  if (roleMode === 'observer') {
-    return 'No board identity needed. Observers can sign in without owning cards.'
+  return normalized.filter((assignment) => assignment.portfolioId !== portfolioId)
+}
+
+function toggleSelectedBrand(
+  current: PortfolioAccessScope[],
+  portfolioId: string,
+  brandName: string,
+  checked: boolean,
+) {
+  const nextAssignments = new Map(
+    normalizeScopeAssignments(current).map((assignment) => [
+      assignment.portfolioId,
+      new Set(assignment.brandNames),
+    ]),
+  )
+  const brandNames = nextAssignments.get(portfolioId) ?? new Set<string>()
+
+  if (checked) {
+    brandNames.add(brandName)
+    nextAssignments.set(portfolioId, brandNames)
+  } else {
+    brandNames.delete(brandName)
+    if (brandNames.size === 0) {
+      nextAssignments.delete(portfolioId)
+    } else {
+      nextAssignments.set(portfolioId, brandNames)
+    }
   }
 
-  if (!hasBoardPeople) {
-    return 'Add a board teammate above first, then come back and assign this editor.'
+  return Array.from(nextAssignments.entries()).map(([nextPortfolioId, names]) => ({
+    portfolioId: nextPortfolioId,
+    brandNames: Array.from(names).sort((left, right) => left.localeCompare(right)),
+  }))
+}
+
+function getScopePreview(draft: AccessDraft, portfolios: Portfolio[]) {
+  return getScopeLabel(
+    {
+      roleMode: draft.roleMode,
+      editorName: draft.editorName || null,
+      scopeMode: draft.scopeMode,
+      scopeAssignments: normalizeScopeAssignments(draft.scopeAssignments),
+    },
+    portfolios,
+  )
+}
+
+function ScopePicker({
+  draft,
+  portfolios,
+  onChange,
+}: {
+  draft: AccessDraft
+  portfolios: Portfolio[]
+  onChange: (draft: AccessDraft) => void
+}) {
+  if (draft.roleMode === 'owner') {
+    return (
+      <div className="workspace-access-preview">
+        <strong>Scope</strong>
+        <span>All portfolios</span>
+      </div>
+    )
   }
 
-  if (editorName) {
-    return `This person will open the board as ${editorName}.`
+  if (draft.roleMode === 'contributor') {
+    return (
+      <div className="workspace-access-preview">
+        <strong>Scope</strong>
+        <span>Own cards only</span>
+      </div>
+    )
   }
 
-  return 'Choose the board teammate this editor should work as.'
+  const normalizedAssignments = normalizeScopeAssignments(draft.scopeAssignments)
+
+  return (
+    <div className="workspace-access-scope">
+      <label>
+        <span>Scope</span>
+        <select
+          aria-label={`Scope for ${draft.email || getAccessLevelLabel(draft.roleMode)}`}
+          value={draft.scopeMode}
+          onChange={(event) =>
+            onChange({
+              ...draft,
+              scopeMode: event.target.value as AccessScopeMode,
+              scopeAssignments:
+                event.target.value === 'all-portfolios' ? [] : normalizedAssignments,
+            })
+          }
+        >
+          {MANAGER_SCOPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="field-hint">
+        {MANAGER_SCOPE_OPTIONS.find((option) => option.value === draft.scopeMode)?.description}
+      </p>
+
+      {draft.scopeMode === 'selected-portfolios' ? (
+        <div className="scope-checkbox-grid">
+          {portfolios.map((portfolio) => {
+            const checked = normalizedAssignments.some(
+              (assignment) => assignment.portfolioId === portfolio.id,
+            )
+            return (
+              <label key={portfolio.id} className="scope-choice-card">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) =>
+                    onChange({
+                      ...draft,
+                      scopeAssignments: toggleSelectedPortfolio(
+                        normalizedAssignments,
+                        portfolio.id,
+                        event.target.checked,
+                      ),
+                    })
+                  }
+                />
+                <span>{portfolio.name}</span>
+              </label>
+            )
+          })}
+        </div>
+      ) : null}
+
+      {draft.scopeMode === 'selected-brands' ? (
+        <div className="scope-brand-groups">
+          {portfolios.map((portfolio) => {
+            const selectedBrands =
+              normalizedAssignments.find((assignment) => assignment.portfolioId === portfolio.id)
+                ?.brandNames ?? []
+
+            return (
+              <div key={portfolio.id} className="scope-brand-group">
+                <strong>{portfolio.name}</strong>
+                <div className="scope-checkbox-grid">
+                  {portfolio.brands.map((brand) => (
+                    <label key={`${portfolio.id}-${brand.name}`} className="scope-choice-card">
+                      <input
+                        type="checkbox"
+                        checked={selectedBrands.includes(brand.name)}
+                        onChange={(event) =>
+                          onChange({
+                            ...draft,
+                            scopeAssignments: toggleSelectedBrand(
+                              normalizedAssignments,
+                              portfolio.id,
+                              brand.name,
+                              event.target.checked,
+                            ),
+                          })
+                        }
+                      />
+                      <span>{brand.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function WorksAsField({
+  draft,
+  editorOptions,
+  onChange,
+}: {
+  draft: AccessDraft
+  editorOptions: string[]
+  onChange: (draft: AccessDraft) => void
+}) {
+  if (draft.roleMode !== 'contributor') {
+    return (
+      <div className="board-identity-static">
+        <strong>Works as</strong>
+        <span>No teammate profile needed.</span>
+      </div>
+    )
+  }
+
+  const hasBoardPeople = editorOptions.length > 0
+
+  return (
+    <label>
+      <span>Works as</span>
+      <select
+        aria-label={`Works as for ${draft.email || 'new access row'}`}
+        value={draft.editorName}
+        disabled={!hasBoardPeople}
+        onChange={(event) =>
+          onChange({
+            ...draft,
+            editorName: event.target.value,
+          })
+        }
+      >
+        <option value="">
+          {hasBoardPeople ? 'Choose teammate profile' : 'Add a teammate in People first'}
+        </option>
+        {editorOptions.map((editorName) => (
+          <option key={editorName} value={editorName}>
+            {editorName}
+          </option>
+        ))}
+      </select>
+      <p className="field-hint">
+        {hasBoardPeople
+          ? 'Choose which teammate profile this person uses on the board.'
+          : 'People comes first. Add the teammate profile, then connect this login access row.'}
+      </p>
+    </label>
+  )
+}
+
+function AccessCard({
+  title,
+  draft,
+  entries,
+  portfolios,
+  editorOptions,
+  pendingEmail,
+  updatedAt,
+  isNew,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  title: string
+  draft: AccessDraft
+  entries: WorkspaceAccessEntry[]
+  portfolios: Portfolio[]
+  editorOptions: string[]
+  pendingEmail: string | null
+  updatedAt?: string | null
+  isNew?: boolean
+  onChange: (draft: AccessDraft) => void
+  onSave: () => void
+  onDelete?: () => void
+}) {
+  const validationMessage = getValidationMessage(draft, entries, isNew ? undefined : title)
+  const isPending =
+    pendingEmail === normalizeEmail(draft.email) || (isNew && pendingEmail === '__new__')
+  const canSave = normalizeEmail(draft.email).length > 0 && !validationMessage && !isPending
+
+  return (
+    <div className="settings-block workspace-access-card">
+      <div className="settings-block-header">
+        <div>
+          <strong>{title}</strong>
+          {updatedAt ? (
+            <p className="muted-copy">{`Last updated ${formatDateTime(updatedAt)}`}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="settings-form-grid">
+        <label>
+          <span>Work email</span>
+          <input
+            type="email"
+            aria-invalid={validationMessage ? 'true' : 'false'}
+            value={draft.email}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                email: event.target.value,
+              })
+            }
+          />
+        </label>
+
+        <label>
+          <span>Access level</span>
+          <select
+            aria-label={`Access level for ${draft.email || title}`}
+            value={draft.roleMode}
+            onChange={(event) =>
+              onChange(
+                normalizeDraftForRole({
+                  ...draft,
+                  roleMode: event.target.value as RoleMode,
+                }),
+              )
+            }
+          >
+            {ACCESS_LEVEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {getAccessLevelLabel(option.value)}
+              </option>
+            ))}
+          </select>
+          <p className="field-hint">{getRoleDescription(draft.roleMode)}</p>
+        </label>
+
+        <WorksAsField draft={draft} editorOptions={editorOptions} onChange={onChange} />
+      </div>
+
+      <ScopePicker draft={draft} portfolios={portfolios} onChange={onChange} />
+
+      <div className="workspace-access-preview">
+        <strong>Scope</strong>
+        <span>{getScopePreview(draft, portfolios)}</span>
+      </div>
+
+      <div className="workspace-access-preview">
+        <strong>Effective access</strong>
+        <span>
+          {getEffectiveAccessSummary(
+            {
+              roleMode: draft.roleMode,
+              editorName: draft.editorName || null,
+              scopeMode: draft.scopeMode,
+              scopeAssignments: normalizeScopeAssignments(draft.scopeAssignments),
+            },
+            portfolios,
+          )}
+        </span>
+      </div>
+
+      {validationMessage ? (
+        <p className="field-error" role="alert">
+          {validationMessage}
+        </p>
+      ) : null}
+
+      <div className="task-type-actions">
+        <button
+          type="button"
+          className="ghost-button"
+          disabled={!canSave}
+          onClick={onSave}
+        >
+          {isPending ? <ButtonSpinner /> : null}
+          <span>{isNew ? 'Add access' : 'Save changes'}</span>
+        </button>
+        {onDelete ? (
+          <button
+            type="button"
+            className="clear-link danger-link"
+            disabled={isPending}
+            onClick={onDelete}
+          >
+            Remove
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 export function WorkspaceAccessManager({
   entries,
   editorOptions,
+  portfolios,
   status,
   errorMessage,
   pendingEmail,
@@ -129,28 +608,17 @@ export function WorkspaceAccessManager({
 }: WorkspaceAccessManagerProps) {
   const [drafts, setDrafts] = useState<Record<string, AccessDraft>>({})
   const [pendingDeleteEmail, setPendingDeleteEmail] = useState<string | null>(null)
-  const [newEntry, setNewEntry] = useState<AccessDraft>({
-    email: '',
-    roleMode: 'editor',
-    editorName: '',
-  })
-
-  const hasBoardPeople = editorOptions.length > 0
-  const newEntryEmailMessage = getEmailValidationMessage(newEntry.email, entries)
-  const canAddNewEntry =
-    !newEntryEmailMessage &&
-    Boolean(normalizeEmail(newEntry.email)) &&
-    (newEntry.roleMode !== 'editor' || (hasBoardPeople && Boolean(newEntry.editorName)))
+  const [newEntry, setNewEntry] = useState<AccessDraft>(() => createEmptyDraft())
 
   return (
     <div className="settings-stack">
       <div className="settings-block">
         <div className="settings-block-header">
           <div>
-            <strong>Login Access</strong>
+            <strong>Access</strong>
             <p className="muted-copy">
-              Decide who can sign in to the workspace. Only editor accounts need a board identity,
-              because that tells the app whose cards they should work on.
+              Decide who can sign in, what they can see, and which teammate profile they use on
+              the board.
             </p>
           </div>
         </div>
@@ -158,325 +626,106 @@ export function WorkspaceAccessManager({
         <div className="workspace-access-explainer">
           <strong>Simple mental model</strong>
           <p>
-            Board Team Members are the people shown on the board. Login Access is sign-in
-            permission. If someone signs in as an editor, choose which board teammate they work
-            as.
+            Access level controls authority. Scope controls portfolio and brand visibility. Works
+            as connects a contributor login to a teammate profile. Products follow brand access
+            automatically.
           </p>
         </div>
 
-        {status === 'loading' ? <p className="muted-copy">Loading login access…</p> : null}
+        {status === 'loading' ? <p className="muted-copy">Loading access records…</p> : null}
         {status === 'error' && errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
-
-        <div className="settings-table full-table">
-          <div className="settings-row settings-head workspace-access-head">
-            <span>Work email</span>
-            <span>Access level</span>
-            <span>Board identity</span>
-            <span>Last updated</span>
-            <span />
-          </div>
-
-          {entries.map((entry) => {
-            const draft = drafts[entry.email] ?? {
-              email: entry.email,
-              roleMode: entry.roleMode,
-              editorName: entry.editorName ?? '',
-            }
-            const rowIsDirty = isDirty(entry, draft)
-            const emailMessage = getEmailValidationMessage(draft.email, entries, entry.email)
-            const canSaveRow =
-              rowIsDirty &&
-              !emailMessage &&
-              Boolean(normalizeEmail(draft.email)) &&
-              (draft.roleMode !== 'editor' || (hasBoardPeople && Boolean(draft.editorName)))
-
-            return (
-              <div
-                key={entry.email}
-                className={`settings-row workspace-access-row ${rowIsDirty ? 'is-dirty' : ''}`}
-              >
-                <div className="workspace-access-cell">
-                  <input
-                    type="email"
-                    aria-label="Login access email"
-                    aria-invalid={emailMessage ? 'true' : 'false'}
-                    value={draft.email}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [entry.email]: { ...draft, email: event.target.value },
-                      }))
-                    }
-                  />
-                  {emailMessage ? (
-                    <p className="field-error" role="alert">
-                      {emailMessage}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="workspace-access-cell">
-                  <select
-                    aria-label={`Login access role for ${entry.email}`}
-                    value={draft.roleMode}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [entry.email]: {
-                          ...draft,
-                          roleMode: event.target.value as RoleMode,
-                          editorName: event.target.value === 'editor' ? draft.editorName : '',
-                        },
-                      }))
-                    }
-                  >
-                    {WORKSPACE_ROLE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="field-hint">{getRoleOption(draft.roleMode).description}</p>
-                </div>
-
-                <div className="workspace-access-cell">
-                  {draft.roleMode === 'editor' ? (
-                    <>
-                      <select
-                        aria-label={`Board identity for ${entry.email}`}
-                        value={draft.editorName}
-                        disabled={!hasBoardPeople}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [entry.email]: { ...draft, editorName: event.target.value },
-                          }))
-                        }
-                      >
-                        <option value="">
-                          {hasBoardPeople ? 'Choose teammate' : 'Add a board teammate first'}
-                        </option>
-                        {editorOptions.map((editorName) => (
-                          <option key={editorName} value={editorName}>
-                            {editorName}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="field-hint">
-                        {getBoardIdentityHint(draft.roleMode, draft.editorName, hasBoardPeople)}
-                      </p>
-                    </>
-                  ) : (
-                    <div className="board-identity-static">
-                      <strong>Not needed</strong>
-                      <span>{getBoardIdentityHint(draft.roleMode, draft.editorName, hasBoardPeople)}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="workspace-access-cell workspace-access-meta">
-                  <span className="muted-copy">
-                    {entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}
-                  </span>
-                  {rowIsDirty ? <span className="dirty-indicator">Unsaved changes</span> : null}
-                </div>
-
-                <div className="task-type-actions">
-                  <button
-                    type="button"
-                    className={`${rowIsDirty ? 'primary-button' : 'ghost-button'} compact-button ${
-                      pendingEmail === entry.email ? 'is-loading' : ''
-                    }`}
-                    disabled={!canSaveRow || pendingEmail === entry.email}
-                    onClick={() =>
-                      void onSave({
-                        email: draft.email,
-                        roleMode: draft.roleMode,
-                        editorName: draft.roleMode === 'editor' ? draft.editorName : null,
-                        previousEmail: entry.email,
-                      })
-                    }
-                  >
-                    {pendingEmail === entry.email ? (
-                      <>
-                        <ButtonSpinner />
-                        <span>Saving...</span>
-                      </>
-                    ) : (
-                      'Save'
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="clear-link danger-link"
-                    disabled={pendingEmail === entry.email || pendingEmail === '__bulk__'}
-                    onClick={() => setPendingDeleteEmail(entry.email)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <div className="workspace-access-new-card">
-          <div className="settings-section-header">
-            <h3>Add Login Access</h3>
-            <p className="muted-copy">
-              Add the email first, then send that person to the login page.
-            </p>
-          </div>
-
-          <div className="workspace-access-new-grid workspace-access-row is-new">
-            <div className="workspace-access-cell">
-              <input
-                type="email"
-                aria-label="Login access email"
-                aria-invalid={newEntryEmailMessage ? 'true' : 'false'}
-                value={newEntry.email}
-                placeholder="teammate@company.com"
-                onChange={(event) =>
-                  setNewEntry((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-              />
-              {newEntryEmailMessage ? (
-                <p className="field-error" role="alert">
-                  {newEntryEmailMessage}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="workspace-access-cell">
-              <select
-                aria-label="New login access role"
-                value={newEntry.roleMode}
-                onChange={(event) =>
-                  setNewEntry((current) => ({
-                    ...current,
-                    roleMode: event.target.value as RoleMode,
-                    editorName: event.target.value === 'editor' ? current.editorName : '',
-                  }))
-                }
-              >
-                {WORKSPACE_ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <p className="field-hint">{getRoleOption(newEntry.roleMode).description}</p>
-            </div>
-
-            <div className="workspace-access-cell">
-              {newEntry.roleMode === 'editor' ? (
-                <>
-                  <select
-                    aria-label="New board identity"
-                    value={newEntry.editorName}
-                    disabled={!hasBoardPeople}
-                    onChange={(event) =>
-                      setNewEntry((current) => ({
-                        ...current,
-                        editorName: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">
-                      {hasBoardPeople ? 'Choose teammate' : 'Add a board teammate first'}
-                    </option>
-                    {editorOptions.map((editorName) => (
-                      <option key={editorName} value={editorName}>
-                        {editorName}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="field-hint">
-                    {getBoardIdentityHint(
-                      newEntry.roleMode,
-                      newEntry.editorName,
-                      hasBoardPeople,
-                    )}
-                  </p>
-                </>
-              ) : (
-                <div className="board-identity-static">
-                  <strong>Not needed</strong>
-                  <span>
-                    {getBoardIdentityHint(newEntry.roleMode, newEntry.editorName, hasBoardPeople)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="workspace-access-new-actions">
-              <button
-                type="button"
-                className={`primary-button ${pendingEmail === '__new__' ? 'is-loading' : ''}`}
-                disabled={!canAddNewEntry || pendingEmail === '__new__' || pendingEmail === '__bulk__'}
-                onClick={() =>
-                  void onSave({
-                    email: newEntry.email,
-                    roleMode: newEntry.roleMode,
-                    editorName: newEntry.roleMode === 'editor' ? newEntry.editorName : null,
-                  }).then(() =>
-                    setNewEntry({
-                      email: '',
-                      roleMode: 'editor',
-                      editorName: '',
-                    }),
-                  )
-                }
-              >
-                {pendingEmail === '__new__' ? (
-                  <>
-                    <ButtonSpinner />
-                    <span>Adding...</span>
-                  </>
-                ) : (
-                  'Add person'
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="workspace-access-preview">
-            <strong>What happens next</strong>
-            <span>
-              {newEntry.roleMode === 'manager'
-                ? 'This person will be able to manage the workspace, settings, and people.'
-                : newEntry.roleMode === 'observer'
-                  ? 'This person will be able to sign in and view the workspace without editing cards.'
-                  : hasBoardPeople
-                    ? newEntry.editorName
-                      ? `This person will sign in as ${newEntry.editorName}.`
-                      : 'Choose the board teammate this editor should work as before saving.'
-                    : 'Add a board teammate first, then create editor access.'}
-            </span>
-          </div>
-        </div>
       </div>
+
+      {entries.map((entry) => {
+        const draft = drafts[entry.email] ?? getEntryDraft(entry)
+        const rowIsDirty = isDirty(entry, draft)
+
+        return (
+          <AccessCard
+            key={entry.email}
+            title={entry.email}
+            draft={draft}
+            entries={entries}
+            portfolios={portfolios}
+            editorOptions={editorOptions}
+            pendingEmail={pendingEmail}
+            updatedAt={entry.updatedAt}
+            onChange={(nextDraft) =>
+              setDrafts((current) => ({
+                ...current,
+                [entry.email]: nextDraft,
+              }))
+            }
+            onSave={() => {
+              if (!rowIsDirty) {
+                return
+              }
+
+              const normalizedDraft = normalizeDraftForRole(draft)
+              void onSave({
+                email: normalizedDraft.email,
+                roleMode: normalizedDraft.roleMode,
+                editorName:
+                  normalizedDraft.roleMode === 'contributor'
+                    ? normalizedDraft.editorName || null
+                    : null,
+                scopeMode: normalizedDraft.scopeMode,
+                scopeAssignments: normalizeScopeAssignments(normalizedDraft.scopeAssignments),
+                previousEmail: entry.email,
+              })
+                .then(() =>
+                  setDrafts((current) => {
+                    const next = { ...current }
+                    delete next[entry.email]
+                    return next
+                  }),
+                )
+                .catch(() => undefined)
+            }}
+            onDelete={() => setPendingDeleteEmail(entry.email)}
+          />
+        )
+      })}
+
+      <AccessCard
+        title="Add access"
+        draft={newEntry}
+        entries={entries}
+        portfolios={portfolios}
+        editorOptions={editorOptions}
+        pendingEmail={pendingEmail}
+        isNew
+        onChange={setNewEntry}
+        onSave={() => {
+          const normalizedDraft = normalizeDraftForRole(newEntry)
+          void onSave({
+            email: normalizedDraft.email,
+            roleMode: normalizedDraft.roleMode,
+            editorName:
+              normalizedDraft.roleMode === 'contributor'
+                ? normalizedDraft.editorName || null
+                : null,
+            scopeMode: normalizedDraft.scopeMode,
+            scopeAssignments: normalizeScopeAssignments(normalizedDraft.scopeAssignments),
+          })
+            .then(() => setNewEntry(createEmptyDraft()))
+            .catch(() => undefined)
+        }}
+      />
 
       {pendingDeleteEmail ? (
         <ConfirmDialog
-          title="Remove login access?"
+          title="Remove access?"
           message={
             <p>
-              <strong>{pendingDeleteEmail}</strong> will no longer be able to sign in to this
-              workspace.
+              {`This will remove sign-in access for ${pendingDeleteEmail}. Cards, portfolios, and teammate profiles stay untouched.`}
             </p>
           }
           confirmLabel="Remove access"
-          pending={pendingEmail === pendingDeleteEmail}
           onCancel={() => setPendingDeleteEmail(null)}
-          onConfirm={() =>
-            void onDelete(pendingDeleteEmail).then(() => {
-              setPendingDeleteEmail(null)
-            })
-          }
+          onConfirm={() => {
+            void onDelete(pendingDeleteEmail).finally(() => setPendingDeleteEmail(null))
+          }}
         />
       ) : null}
     </div>

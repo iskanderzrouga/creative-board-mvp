@@ -15,15 +15,19 @@ async function openFreshApp(page: Page) {
   await page.reload()
 }
 
-async function setLocalRole(page: Page, mode: 'manager' | 'editor' | 'observer', editorName?: string) {
+async function setLocalRole(
+  page: Page,
+  mode: 'owner' | 'manager' | 'contributor' | 'viewer',
+  editorName?: string,
+) {
   await page.getByLabel('Local demo role').selectOption(mode)
 
-  if (mode === 'editor' && editorName) {
-    await page.getByLabel('Local demo editor lane').selectOption({ label: editorName })
+  if (mode === 'contributor' && editorName) {
+    await page.getByLabel('Local demo contributor identity').selectOption({ label: editorName })
   }
 }
 
-test('manager can create a card and the state survives reload', async ({ page }) => {
+test('owner can create a card and the state survives reload', async ({ page }) => {
   ensureArtifactsDir()
 
   await openFreshApp(page)
@@ -47,13 +51,13 @@ test('manager can create a card and the state survives reload', async ({ page })
   await expect(page.getByText('Phase 1 smoke test card')).toBeVisible()
 })
 
-test('observer can access analytics while manager-only settings stay locked down', async ({
+test('viewer can access analytics while owner-only settings stay locked down', async ({
   page,
 }) => {
   ensureArtifactsDir()
 
   await openFreshApp(page)
-  await setLocalRole(page, 'observer')
+  await setLocalRole(page, 'viewer')
 
   const settingsNav = page.getByRole('button', { name: 'Settings' })
   await expect(settingsNav).toBeDisabled()
@@ -62,7 +66,7 @@ test('observer can access analytics while manager-only settings stay locked down
   await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible()
 
   await page.screenshot({
-    path: 'artifacts/phase-1/observer-analytics.png',
+    path: 'artifacts/phase-1/viewer-analytics.png',
     fullPage: true,
   })
 })

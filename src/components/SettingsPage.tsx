@@ -17,9 +17,11 @@ import {
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
   syncPortfolioCardProducts,
+  type AccessScopeMode,
   type ActiveRole,
   type AppState,
   type Portfolio,
+  type PortfolioAccessScope,
   type RoleMode,
   type SettingTab,
   type TeamMember,
@@ -58,6 +60,8 @@ interface SettingsPageProps {
     email: string
     roleMode: RoleMode
     editorName: string | null
+    scopeMode: AccessScopeMode
+    scopeAssignments: PortfolioAccessScope[]
     previousEmail?: string
   }) => Promise<void>
   onWorkspaceAccessDelete: (email: string) => Promise<void>
@@ -91,10 +95,11 @@ export function SettingsPage({
   showToast,
 }: SettingsPageProps) {
   const SETTINGS_TAB_HELP_TEXT: Record<SettingTab, string> = {
-    general: 'Configure your workspace name, age thresholds, and auto-archive behavior.',
-    portfolios: 'Manage portfolios, brands, and the Drive webhook settings that support each workspace stream.',
-    team: 'Board Team Members are the people on the board. Login Access decides who can sign in and, for editors, which board identity they work as.',
-    'task-library': 'Define card types with default estimates and required fields. These appear in the card creation form.',
+    general: 'Configure the workspace name, defaults, thresholds, and local demo access behavior.',
+    portfolios: 'Manage the business hierarchy: portfolios, brands, products, and Drive settings.',
+    team: 'Define the teammate profiles that appear inside the workflow: editor, designer, developer, launch ops, and manager.',
+    access: 'Control who can sign in, what they can see, and which teammate profile a contributor uses on the board.',
+    'task-library': 'Define task types, revision reasons, and the workflow rules that shape card creation and movement.',
     capacity: 'Set utilization thresholds. Green, yellow, and red bands appear in Analytics and Workload views.',
     integrations: 'Store external service settings used by your workflow and keep them aligned with deployment.',
     data: 'Export your board data as JSON for backup. Import to restore. Fresh start keeps structure but clears operational clutter.',
@@ -107,7 +112,7 @@ export function SettingsPage({
   }
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
   const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(null)
-  const teamRoleOptions = ['Editor', 'Manager', 'Launch Ops', 'Designer']
+  const teamRoleOptions = ['Editor', 'Designer', 'Developer', 'Launch Ops', 'Manager']
   const timezoneOptions =
     typeof intlWithSupportedValues.supportedValuesOf === 'function'
       ? intlWithSupportedValues.supportedValuesOf('timeZone')
@@ -290,7 +295,7 @@ export function SettingsPage({
 
     return {
       title: `Delete ${member.name}?`,
-      message: <p>This removes the team member from {portfolio.name}.</p>,
+      message: <p>This removes the teammate profile from {portfolio.name}.</p>,
       confirmLabel: 'Delete member',
     }
   }
@@ -336,7 +341,7 @@ export function SettingsPage({
                 </div>
                 <div className="settings-form-grid">
                   <label>
-                    <span>Viewer role</span>
+                    <span>Local access level</span>
                     <select
                       aria-label="Local demo role"
                       value={localRole.mode}
@@ -345,34 +350,35 @@ export function SettingsPage({
                         onLocalRoleChange({
                           mode: nextMode,
                           editorId:
-                            nextMode === 'editor'
+                            nextMode === 'contributor'
                               ? localEditorOptions[0]?.id ?? localRole.editorId
-                              : localRole.editorId,
+                              : null,
                         })
                       }}
                     >
+                      <option value="owner">Owner</option>
                       <option value="manager">Manager</option>
-                      <option value="editor">Editor</option>
-                      <option value="observer">Observer</option>
+                      <option value="contributor">Contributor</option>
+                      <option value="viewer">Viewer</option>
                     </select>
                   </label>
 
-                  {localRole.mode === 'editor' ? (
+                  {localRole.mode === 'contributor' ? (
                     <label>
-                      <span>Editor lane</span>
+                      <span>Works as</span>
                       <select
-                        aria-label="Local demo editor lane"
+                        aria-label="Local demo contributor identity"
                         value={localRole.editorId ?? localEditorOptions[0]?.id ?? ''}
                         disabled={localEditorOptions.length === 0}
                         onChange={(event) =>
                           onLocalRoleChange({
-                            mode: 'editor',
+                            mode: 'contributor',
                             editorId: event.target.value || null,
                           })
                         }
                       >
                         {localEditorOptions.length === 0 ? (
-                          <option value="">No editor lanes available</option>
+                          <option value="">No teammate profiles available</option>
                         ) : null}
                         {localEditorOptions.map((member) => (
                           <option key={member.id} value={member.id}>
@@ -736,19 +742,19 @@ export function SettingsPage({
             </div>
 
             <div className="settings-section-header">
-              <h3>Board Team Members</h3>
+              <h3>People</h3>
               <p className="muted-copy">
-                These are the people who appear as lanes and owners on the board. This does not
-                control who can sign in.
+                These teammate profiles define who appears inside the workflow. This page is about
+                people on the board, not sign-in permissions.
               </p>
             </div>
 
             <div className="settings-explainer-card">
-              <strong>Two layers, two jobs</strong>
+              <strong>People are not permissions</strong>
               <p>
-                Board Team Members define the people inside the workflow. Login Access defines who
-                can enter the app. If someone signs in as an editor, assign them to one board
-                teammate below so the app knows whose cards they can act on.
+                Use People to define teammate profiles like editor, designer, developer, launch
+                ops, and manager. Access is handled separately, so you do not have to overload one
+                field to mean both job function and permission level.
               </p>
             </div>
 
@@ -962,22 +968,17 @@ export function SettingsPage({
                 }))
               }
             >
-              + Add team member
+              + Add teammate profile
             </button>
+          </div>
+        ) : null}
 
-            <hr className="settings-divider" />
-
-            <div className="settings-section-header">
-              <h3>Login Access</h3>
-              <p className="muted-copy">
-                Control who can sign in to this workspace. Each person needs an entry here to log
-                in.
-              </p>
-            </div>
-
+        {settingsTab === 'access' ? (
+          <div className="settings-stack">
             <WorkspaceAccessManager
               entries={workspaceAccessEntries}
               editorOptions={workspaceEditorOptions}
+              portfolios={state.portfolios}
               status={workspaceAccessStatus}
               errorMessage={workspaceAccessErrorMessage}
               pendingEmail={workspaceAccessPendingEmail}
@@ -1174,7 +1175,7 @@ export function SettingsPage({
             </div>
             <p className="muted-copy">
               Fresh start removes cards, board people, and extra login access records, while keeping
-              brands, products, settings, and your current manager login.
+              brands, products, settings, and your current owner login.
             </p>
           </div>
         ) : null}

@@ -33,12 +33,14 @@ const MANAGER_VIEWER: ViewerContext = {
   mode: 'manager',
   editorName: null,
   memberRole: 'Manager',
+  visibleBrandNames: null,
 }
 
-const OBSERVER_VIEWER: ViewerContext = {
-  mode: 'observer',
+const VIEWER_ACCESS: ViewerContext = {
+  mode: 'viewer',
   editorName: null,
   memberRole: null,
+  visibleBrandNames: null,
 }
 
 describe('board integrity helpers', () => {
@@ -500,9 +502,10 @@ describe('board integrity helpers', () => {
     expect(sourceCard).toBeTruthy()
 
     const editorViewer: ViewerContext = {
-      mode: 'editor',
+      mode: 'contributor',
       editorName: sourceCard!.owner,
       memberRole: 'Editor',
+      visibleBrandNames: null,
     }
 
     expect(
@@ -519,7 +522,7 @@ describe('board integrity helpers', () => {
     ).toBe(portfolio)
   })
 
-  it('allows editors to update their own content fields but not manager-only metadata', () => {
+  it('allows contributors to update their own content fields but not owner-or-manager metadata', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]
     const sourceCard = portfolio.cards.find((card) => card.owner)
@@ -527,9 +530,10 @@ describe('board integrity helpers', () => {
     expect(sourceCard).toBeTruthy()
 
     const editorViewer: ViewerContext = {
-      mode: 'editor',
+      mode: 'contributor',
       editorName: sourceCard!.owner,
       memberRole: 'Editor',
+      visibleBrandNames: null,
     }
 
     const frameioUpdated = applyCardUpdates(
@@ -586,8 +590,8 @@ describe('board integrity helpers', () => {
       '2026-03-12T14:15:00Z',
     )
 
-    expect(addCardToPortfolio(portfolio, candidate, OBSERVER_VIEWER)).toBe(portfolio)
-    expect(removeCardFromPortfolio(portfolio, portfolio.cards[0]!.id, OBSERVER_VIEWER)).toBe(portfolio)
+    expect(addCardToPortfolio(portfolio, candidate, VIEWER_ACCESS)).toBe(portfolio)
+    expect(removeCardFromPortfolio(portfolio, portfolio.cards[0]!.id, VIEWER_ACCESS)).toBe(portfolio)
   })
 
   it('validates quick-create input and falls back to a safe task type', () => {
@@ -940,9 +944,10 @@ describe('board integrity helpers', () => {
     ).toHaveLength(1)
 
     const editorViewer: ViewerContext = {
-      mode: 'editor',
+      mode: 'contributor',
       editorName: editorName ?? null,
       memberRole: 'Editor',
+      visibleBrandNames: null,
     }
     const editorVisible = getVisibleCards(
       tunedPortfolio,

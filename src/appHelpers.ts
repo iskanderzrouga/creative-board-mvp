@@ -17,14 +17,17 @@ export interface BackwardMoveFormState {
 }
 
 export function getRoleActorName(role: ActiveRole, portfolio: Portfolio | null) {
-  if (role.mode === 'manager') {
-    return 'Workspace manager'
+  if (role.mode === 'owner') {
+    return 'Workspace owner'
   }
-  if (role.mode === 'observer') {
-    return 'Observer'
+  if (role.mode === 'manager') {
+    return 'Portfolio manager'
+  }
+  if (role.mode === 'viewer') {
+    return 'Viewer'
   }
 
-  return portfolio ? getTeamMemberById(portfolio, role.editorId)?.name ?? 'Editor' : 'Editor'
+  return portfolio ? getTeamMemberById(portfolio, role.editorId)?.name ?? 'Contributor' : 'Contributor'
 }
 
 export function isLikelyEmail(value: string) {
@@ -32,13 +35,13 @@ export function isLikelyEmail(value: string) {
 }
 
 export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode) {
-  if (page === 'analytics' && roleMode === 'editor') {
+  if (page === 'analytics' && roleMode === 'contributor') {
     return 'board' as AppPage
   }
-  if (page === 'settings' && roleMode !== 'manager') {
+  if (page === 'settings' && roleMode !== 'owner') {
     return 'board' as AppPage
   }
-  if (page === 'workload' && roleMode !== 'manager' && roleMode !== 'observer') {
+  if (page === 'workload' && roleMode === 'contributor') {
     return 'board' as AppPage
   }
 
@@ -53,9 +56,9 @@ export function getRoleFromWorkspaceAccess(
     return currentRole
   }
 
-  if (access.roleMode === 'editor') {
+  if (access.roleMode === 'contributor') {
     return {
-      mode: 'editor' as const,
+      mode: 'contributor' as const,
       editorId: currentRole.editorId,
     }
   }
