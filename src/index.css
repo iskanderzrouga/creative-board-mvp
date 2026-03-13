@@ -11,8 +11,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #f4f5f7;
-  color: #172b4d;
+  background: var(--bg);
+  color: var(--text);
 }
 
 * {
@@ -27,7 +27,7 @@ body,
 
 body {
   margin: 0;
-  background: #f4f5f7;
+  background: var(--bg);
   min-width: 320px;
 }
 

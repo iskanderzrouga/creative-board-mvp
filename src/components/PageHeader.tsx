@@ -35,7 +35,7 @@ export function PageHeader({
               value={searchValue}
               aria-label="Search cards"
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search cards..."
+              placeholder="Search cards... (Cmd+K)"
             />
             {searchValue ? (
               <button

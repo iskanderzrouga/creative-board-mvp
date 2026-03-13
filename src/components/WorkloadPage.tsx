@@ -2,9 +2,11 @@ import { useMemo, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  formatDateShort,
   formatDurationShort,
   formatHours,
   getCardAgeMs,
+  getDueStatus,
   getTaskTypeById,
   getWorkloadData,
   type Card,
@@ -27,8 +29,11 @@ interface WorkloadPageProps {
   onOpenCard: (portfolioId: string, cardId: string) => void
 }
 
-function getUtilBarWidth(utilizationPct: number) {
-  return `${Math.min(utilizationPct, 100)}%`
+function getUtilizationWidths(utilizationPct: number) {
+  return {
+    baseWidth: `${Math.min(utilizationPct, 100)}%`,
+    overflowWidth: `${Math.min(Math.max(utilizationPct - 100, 0), 50)}%`,
+  }
 }
 
 function WorkloadQueueCard({
@@ -47,6 +52,7 @@ function WorkloadQueueCard({
     disabled: !canDrag,
   })
   const taskType = getTaskTypeById(settings, card.taskTypeId)
+  const dueStatus = getDueStatus(card)
 
   return (
     <button
@@ -64,7 +70,21 @@ function WorkloadQueueCard({
       <span className="queue-card-title">{card.title}</span>
       <span className="queue-card-type">{`${taskType.icon} ${taskType.name}`}</span>
       <span className="queue-card-effort">{formatHours(card.estimatedHours)}</span>
-      <span className="queue-card-age">{formatDurationShort(getCardAgeMs(card))}</span>
+      <div className="queue-card-meta">
+        <span className="queue-card-age">{formatDurationShort(getCardAgeMs(card))}</span>
+        {card.dueDate ? (
+          <span
+            className={`queue-card-due ${
+              dueStatus === 'overdue' ? 'is-overdue' : dueStatus === 'soon' ? 'is-soon' : ''
+            }`}
+          >
+            {dueStatus === 'overdue' ? (
+              <span className="queue-card-badge">OVERDUE</span>
+            ) : null}
+            {`Due ${formatDateShort(card.dueDate)}`}
+          </span>
+        ) : null}
+      </div>
     </button>
   )
 }
@@ -142,40 +162,52 @@ export function WorkloadPage({
         ) : (
           <div className="workload-grid">
             {workload.rows.map((row) => (
-              <WorkloadDropRow
-                key={row.member.id}
-                memberId={row.member.id}
-                memberName={row.member.name}
-                dragActive={activeDragCardId !== null}
-              >
-                <button
-                  type="button"
-                  className="workload-row-name"
-                  onClick={() => onOpenEditorBoard(row.member.name)}
-                >
-                  {row.member.name}
-                </button>
-                <div className="workload-row-bar">
-                  <div className="util-bar large">
-                    <span
-                      className={`util-bar-fill is-${row.utilizationTone}`}
-                      style={{ width: getUtilBarWidth(row.utilizationPct) }}
-                    />
-                  </div>
-                  <div className="workload-row-meta">
-                    <span className={`util-inline is-${row.utilizationTone}`}>
-                      {row.utilizationPct}% · {`${formatHours(row.capacityUsed)}/${formatHours(row.capacityTotal)}`}
-                    </span>
-                    {row.utilizationPct > 100 ? <span className="overload-label">OVER</span> : null}
-                    {row.partTimeLabel ? <span className="muted-copy">{row.partTimeLabel}</span> : null}
-                  </div>
-                  <div className="workload-breakdown-line">
-                    {row.breakdown.length > 0
-                      ? row.breakdown.map((item) => `${item.taskTypeName}(${formatHours(item.hours)})`).join(' + ')
-                      : 'No active cards'}
-                  </div>
-                </div>
-              </WorkloadDropRow>
+              (() => {
+                const { baseWidth, overflowWidth } = getUtilizationWidths(row.utilizationPct)
+
+                return (
+                  <WorkloadDropRow
+                    key={row.member.id}
+                    memberId={row.member.id}
+                    memberName={row.member.name}
+                    dragActive={activeDragCardId !== null}
+                  >
+                    <button
+                      type="button"
+                      className="workload-row-name"
+                      onClick={() => onOpenEditorBoard(row.member.name)}
+                    >
+                      {row.member.name}
+                    </button>
+                    <div className="workload-row-bar">
+                      <div className={`util-bar large ${row.utilizationPct > 100 ? 'is-overflowing' : ''}`}>
+                        <span
+                          className={`util-bar-fill is-${row.utilizationTone}`}
+                          style={{ width: baseWidth }}
+                        />
+                        {row.utilizationPct > 100 ? (
+                          <span className="util-bar-overflow" style={{ width: overflowWidth }} />
+                        ) : null}
+                      </div>
+                      <div className="workload-row-meta">
+                        <span className={`util-inline is-${row.utilizationTone}`}>
+                          {row.utilizationPct}% ·{' '}
+                          {`${formatHours(row.capacityUsed)}/${formatHours(row.capacityTotal)}`}
+                        </span>
+                        {row.utilizationPct > 100 ? <span className="overload-label">OVER</span> : null}
+                        {row.partTimeLabel ? <span className="muted-copy">{row.partTimeLabel}</span> : null}
+                      </div>
+                      <div className="workload-breakdown-line">
+                        {row.breakdown.length > 0
+                          ? row.breakdown
+                              .map((item) => `${item.taskTypeName}(${formatHours(item.hours)})`)
+                              .join(' + ')
+                          : 'No active cards'}
+                      </div>
+                    </div>
+                  </WorkloadDropRow>
+                )
+              })()
             ))}
           </div>
         )}

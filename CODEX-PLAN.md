@@ -422,6 +422,8 @@ Wrap radios in `<fieldset><legend>Why?</legend>...</fieldset>` and add `name="re
 
 ## Phase 5: Analytics & Workload — Make Data Useful
 
+Status: done
+
 **Goal**: Add tooltips, legends, empty states, and make charts readable.
 
 ### 5.1 Add a brand color legend
@@ -525,6 +527,8 @@ Remove `.toUpperCase()` from portfolio name. Add `text-transform: uppercase` to 
 
 ## Phase 6: CSS Cleanup & Interaction States
 
+Status: done
+
 **Goal**: Fix all missing hover/active/focus states, consolidate duplicates, add consistency.
 
 ### 6.1 Add hover state to `.primary-button`
@@ -608,6 +612,8 @@ Merge `10px→8px`, `14px→12px`, `18px→16px`, `20px→16px`, `24px→16px`.
 
 ## Phase 7: Remaining UX Polish
 
+Status: done
+
 **Goal**: Final touches to make everything feel complete.
 
 ### 7.1 Add a loading spinner for button actions
@@ -657,6 +663,8 @@ Add `useEffect` in modal components that sets `document.body.style.overflow = 'h
 ---
 
 ## Phase 8: End-to-End Workflow Test Plan
+
+Status: done
 
 **Goal**: Verify every workflow before team deployment.
 

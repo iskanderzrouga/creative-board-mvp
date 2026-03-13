@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatDateTime, type RoleMode } from '../board'
+import { ButtonSpinner } from './ButtonSpinner'
 import { ConfirmDialog } from './ConfirmDialog'
 import type { WorkspaceAccessEntry } from '../supabase'
 
@@ -218,7 +219,9 @@ export function WorkspaceAccessManager({
                 <div className="task-type-actions">
                   <button
                     type="button"
-                    className={rowIsDirty ? 'primary-button compact-button' : 'ghost-button compact-button'}
+                    className={`${rowIsDirty ? 'primary-button' : 'ghost-button'} compact-button ${
+                      pendingEmail === entry.email ? 'is-loading' : ''
+                    }`}
                     disabled={!canSaveRow || pendingEmail === entry.email}
                     onClick={() =>
                       void onSave({
@@ -229,7 +232,14 @@ export function WorkspaceAccessManager({
                       })
                     }
                   >
-                    {pendingEmail === entry.email ? 'Saving...' : 'Save'}
+                    {pendingEmail === entry.email ? (
+                      <>
+                        <ButtonSpinner />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      'Save'
+                    )}
                   </button>
                   <button
                     type="button"
@@ -322,7 +332,7 @@ export function WorkspaceAccessManager({
             <div className="workspace-access-new-actions">
               <button
                 type="button"
-                className="primary-button"
+                className={`primary-button ${pendingEmail === '__new__' ? 'is-loading' : ''}`}
                 disabled={!canAddNewEntry || pendingEmail === '__new__'}
                 onClick={() =>
                   void onSave({
@@ -338,7 +348,14 @@ export function WorkspaceAccessManager({
                   )
                 }
               >
-                {pendingEmail === '__new__' ? 'Adding...' : 'Add'}
+                {pendingEmail === '__new__' ? (
+                  <>
+                    <ButtonSpinner />
+                    <span>Adding...</span>
+                  </>
+                ) : (
+                  'Add'
+                )}
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useId, useRef, type ReactNode } from 'react'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { ButtonSpinner } from './ButtonSpinner'
 import { XIcon } from './icons/AppIcons'
 
 interface ConfirmDialogProps {
@@ -63,11 +64,20 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            className={`primary-button ${confirmTone === 'danger' ? 'danger-solid' : ''}`}
+            className={`primary-button ${confirmTone === 'danger' ? 'danger-solid' : ''} ${
+              pending ? 'is-loading' : ''
+            }`}
             disabled={pending}
             onClick={onConfirm}
           >
-            {pending ? 'Working...' : confirmLabel}
+            {pending ? (
+              <>
+                <ButtonSpinner />
+                <span>Working...</span>
+              </>
+            ) : (
+              confirmLabel
+            )}
           </button>
         </div>
       </div>

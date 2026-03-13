@@ -1,3 +1,5 @@
+import { ButtonSpinner } from './ButtonSpinner'
+
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
 
 interface AuthGateProps {
@@ -70,11 +72,18 @@ export function AuthGate({
             <div className="auth-actions">
               <button
                 type="button"
-                className="primary-button"
+                className={`primary-button ${pending ? 'is-loading' : ''}`}
                 disabled={!canSubmit || pending}
                 onClick={onSubmit}
               >
-                {pending ? 'Sending...' : 'Send Magic Link'}
+                {pending ? (
+                  <>
+                    <ButtonSpinner />
+                    <span>Sending...</span>
+                  </>
+                ) : (
+                  'Send Magic Link'
+                )}
               </button>
             </div>
 

@@ -116,7 +116,10 @@ export function QuickCreateModal({
             disabled={!value.title.trim() || !value.brand}
             onClick={() => onCreate(false)}
           >
-            Create
+            <span>Create</span>
+            <span className="button-shortcut-hint" aria-hidden="true">
+              Enter
+            </span>
           </button>
           <button
             type="button"
@@ -124,7 +127,10 @@ export function QuickCreateModal({
             disabled={!value.title.trim() || !value.brand}
             onClick={() => onCreate(true)}
           >
-            Create &amp; Open Detail →
+            <span>Create &amp; Open Detail →</span>
+            <span className="button-shortcut-hint" aria-hidden="true">
+              Shift+Enter
+            </span>
           </button>
         </div>
       </div>

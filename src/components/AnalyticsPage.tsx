@@ -18,6 +18,52 @@ interface AnalyticsPageProps {
   onOpenEditorBoard: (portfolioId: string, ownerName: string) => void
 }
 
+function getOverviewProgressTone(onTrackRatio: number) {
+  if (onTrackRatio >= 0.75) {
+    return 'green'
+  }
+
+  if (onTrackRatio >= 0.5) {
+    return 'yellow'
+  }
+
+  return 'red'
+}
+
+function getBrandLegendItems(state: AppState) {
+  const brandMap = new Map<string, string>()
+
+  state.portfolios.forEach((portfolio) => {
+    portfolio.brands.forEach((brand) => {
+      if (!brandMap.has(brand.name)) {
+        brandMap.set(brand.name, brand.color)
+      }
+    })
+  })
+
+  return Array.from(brandMap.entries()).map(([name, color]) => ({
+    name,
+    color,
+  }))
+}
+
+function BrandLegend({ items }: { items: Array<{ name: string; color: string }> }) {
+  if (items.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="brand-legend" aria-label="Brand color legend">
+      {items.map((item) => (
+        <span key={item.name} className="brand-legend-item">
+          <span className="brand-dot" style={{ background: item.color }} aria-hidden="true" />
+          <span>{item.name}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export function AnalyticsPage({
   state,
   nowMs,
@@ -32,44 +78,50 @@ export function AnalyticsPage({
   )
   const [expandedStage, setExpandedStage] = useState<StageId | null>(null)
   const maxThroughput = Math.max(...dashboard.throughput.map((week) => week.total), 0)
+  const brandLegendItems = useMemo(() => getBrandLegendItems(state), [state])
 
   return (
-    <div className="page-shell">
+    <div className="page-shell analytics-page">
       <PageHeader title="Analytics" rightContent={headerUtilityContent} />
 
       <section>
         <h2 className="dashboard-section-title">Portfolio Overview</h2>
-        <div className="overview-grid">
-          {dashboard.overviewCards.map((portfolio) => (
-            <button
-              key={portfolio.portfolioId}
-              type="button"
-              className="overview-card"
-              onClick={() => onOpenPortfolioBoard(portfolio.portfolioId)}
-            >
-              <strong>{portfolio.name.toUpperCase()}</strong>
-              <span>{portfolio.activeCards} active cards</span>
-              <div className="overview-progress">
-                <div
-                  className="overview-progress-fill"
-                  style={{ width: `${Math.round(portfolio.onTrackRatio * 100)}%` }}
-                />
-              </div>
-              <span>{Math.round(portfolio.onTrackRatio * 100)}% on track</span>
-              <span>
-                {portfolio.stuckCount} stuck · {portfolio.atCapacityCount} at capacity
-              </span>
-              <span>
-                Brands:{' '}
-                {portfolio.brandBreakdown.map((item) => `${item.brand} (${item.count})`).join(' ')}
-              </span>
-            </button>
-          ))}
-        </div>
+        {dashboard.overviewCards.length === 0 ? (
+          <div className="dashboard-placeholder">No portfolios configured.</div>
+        ) : (
+          <div className="overview-grid">
+            {dashboard.overviewCards.map((portfolio) => (
+              <button
+                key={portfolio.portfolioId}
+                type="button"
+                className="overview-card"
+                onClick={() => onOpenPortfolioBoard(portfolio.portfolioId)}
+              >
+                <strong>{portfolio.name}</strong>
+                <span>{portfolio.activeCards} active cards</span>
+                <div className="overview-progress">
+                  <div
+                    className={`overview-progress-fill is-${getOverviewProgressTone(portfolio.onTrackRatio)}`}
+                    style={{ width: `${Math.round(portfolio.onTrackRatio * 100)}%` }}
+                  />
+                </div>
+                <span>{Math.round(portfolio.onTrackRatio * 100)}% on track</span>
+                <span>
+                  {portfolio.stuckCount} stuck · {portfolio.atCapacityCount} at capacity
+                </span>
+                <span>
+                  Brands:{' '}
+                  {portfolio.brandBreakdown.map((item) => `${item.brand} (${item.count})`).join(' ')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
         <h2 className="dashboard-section-title">Pipeline Funnel</h2>
+        <BrandLegend items={brandLegendItems} />
         <div className="funnel-row">
           {dashboard.funnel.map((bucket) => (
             <button
@@ -85,6 +137,7 @@ export function AnalyticsPage({
                 {bucket.segments.map((segment) => (
                   <span
                     key={`${bucket.stage}-${segment.brand}`}
+                    title={`${segment.brand}: ${segment.count} cards`}
                     style={{
                       flex: segment.count,
                       background: segment.color,
@@ -130,42 +183,51 @@ export function AnalyticsPage({
 
       <section>
         <h2 className="dashboard-section-title">Team Capacity Grid</h2>
-        <div className="dashboard-table">
-          <div className="dashboard-table-row dashboard-table-head analytics-team-grid">
-            <span>Editor</span>
-            <span>Portfolio</span>
-            <span>Active</span>
-            <span>Utilization</span>
-            <span>Capacity</span>
-            <span>Workload</span>
-            <span>Avg Cycle Time</span>
-            <span>Revisions</span>
-          </div>
-          {dashboard.teamGrid.map((row, index) => (
-            <div
-              key={`${row.portfolioId}-${row.editorId}`}
-              className={`dashboard-table-row analytics-team-grid ${index % 2 === 1 ? 'is-alt' : ''}`}
-            >
-              <button
-                type="button"
-                className="table-link"
-                onClick={() => onOpenEditorBoard(row.portfolioId, row.editorName)}
-              >
-                {row.editorName}
-              </button>
-              <span>{row.portfolioName}</span>
-              <span>{row.active}</span>
-              <span className={`util-inline is-${row.utilizationTone}`}>
-                {row.utilizationPct}%
-                <span className={`status-dot is-${row.utilizationTone}`} aria-hidden="true" />
-              </span>
-              <span>{`${formatHours(row.usedHours)}/${formatHours(row.totalHours)}`}</span>
-              <span>{`~${row.workloadDays}d`}</span>
-              <span>{row.avgCycleTime ? `${row.avgCycleTime}d` : '—'}</span>
-              <span>{row.avgRevisionsPerCard ? `${row.avgRevisionsPerCard}/card` : '—'}</span>
+        {dashboard.teamGrid.length === 0 ? (
+          <div className="dashboard-placeholder">No team members found.</div>
+        ) : (
+          <div className="dashboard-table">
+            <div className="dashboard-table-row dashboard-table-head analytics-team-grid">
+              <span>Editor</span>
+              <span>Portfolio</span>
+              <span>Active</span>
+              <span>Utilization</span>
+              <span>Capacity</span>
+              <span>Workload</span>
+              <span>Avg Cycle Time (all time)</span>
+              <span>Revisions</span>
             </div>
-          ))}
-        </div>
+            {dashboard.teamGrid.map((row, index) => (
+              <div
+                key={`${row.portfolioId}-${row.editorId}`}
+                className={`dashboard-table-row analytics-team-grid ${index % 2 === 1 ? 'is-alt' : ''}`}
+              >
+                <button
+                  type="button"
+                  className="table-link"
+                  data-label="Editor"
+                  onClick={() => onOpenEditorBoard(row.portfolioId, row.editorName)}
+                >
+                  {row.editorName}
+                </button>
+                <span data-label="Portfolio">{row.portfolioName}</span>
+                <span data-label="Active">{row.active}</span>
+                <span data-label="Utilization" className={`util-inline is-${row.utilizationTone}`}>
+                  {row.utilizationPct}%
+                  <span className={`status-dot is-${row.utilizationTone}`} aria-hidden="true" />
+                </span>
+                <span data-label="Capacity">{`${formatHours(row.usedHours)}/${formatHours(row.totalHours)}`}</span>
+                <span data-label="Workload">{`~${row.workloadDays}d`}</span>
+                <span data-label="Avg Cycle Time (all time)">
+                  {row.avgCycleTime ? `${row.avgCycleTime}d` : '—'}
+                </span>
+                <span data-label="Revisions">
+                  {row.avgRevisionsPerCard ? `${row.avgRevisionsPerCard}/card` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
@@ -201,60 +263,77 @@ export function AnalyticsPage({
 
       <section>
         <h2 className="dashboard-section-title">Throughput</h2>
+        <BrandLegend items={brandLegendItems} />
         {dashboard.throughput.every((week) => week.total === 0) ? (
           <div className="dashboard-placeholder">
             Throughput data will appear as cards move through the pipeline.
           </div>
         ) : (
-          <div className="throughput-chart">
-            {dashboard.throughput.map((week) => (
-              <div key={week.label} className="throughput-column">
-                <div className="throughput-bar">
-                  {week.segments.map((segment) => (
-                    <span
-                      key={`${week.label}-${segment.brand}`}
-                      style={{
-                        height: `${(segment.count / Math.max(maxThroughput, 1)) * 100}%`,
-                        background: segment.color,
-                      }}
-                    />
-                  ))}
+          <div className="throughput-chart-shell">
+            <div className="throughput-chart-meta">
+              <span className="throughput-axis-label">{`${maxThroughput} max cards`}</span>
+              <span className="muted-copy">Last 8 weeks</span>
+            </div>
+            <div className="throughput-chart">
+              {dashboard.throughput.map((week) => (
+                <div key={week.label} className="throughput-column">
+                  <span className="throughput-total">{week.total}</span>
+                  <div className="throughput-bar">
+                    {week.segments.map((segment) => (
+                      <span
+                        key={`${week.label}-${segment.brand}`}
+                        title={`${segment.brand}: ${segment.count} cards`}
+                        style={{
+                          height: `${(segment.count / Math.max(maxThroughput, 1)) * 100}%`,
+                          background: segment.color,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span>{week.label}</span>
                 </div>
-                <span>{week.label}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </section>
 
       <section>
         <h2 className="dashboard-section-title">Brand Health Summary</h2>
-        <div className="dashboard-table">
-          <div className="dashboard-table-row dashboard-table-head brand-health-grid">
-            <span>Brand</span>
-            <span>Active</span>
-            <span>Stuck</span>
-            <span>In Production</span>
-            <span>Avg Cycle Time</span>
-            <span>Last Shipped</span>
-          </div>
-          {dashboard.brandHealth.map((row, index) => (
-            <div
-              key={`${row.portfolioId}-${row.brand}`}
-              className={`dashboard-table-row brand-health-grid ${index % 2 === 1 ? 'is-alt' : ''}`}
-            >
-              <span className="brand-health-name">
-                <span className="brand-dot" style={{ background: row.color }} />
-                {row.brand}
-              </span>
-              <span>{row.active}</span>
-              <span>{row.stuck}</span>
-              <span>{row.inProduction}</span>
-              <span>{row.avgCycleTime ? `${row.avgCycleTime}d` : '—'}</span>
-              <span>{row.lastShipped ? formatDateShort(row.lastShipped) : '—'}</span>
+        {dashboard.brandHealth.length === 0 ? (
+          <div className="dashboard-placeholder">No brand data available.</div>
+        ) : (
+          <div className="dashboard-table">
+            <div className="dashboard-table-row dashboard-table-head brand-health-grid">
+              <span>Brand</span>
+              <span>Active</span>
+              <span>Stuck</span>
+              <span>In Production</span>
+              <span>Avg Cycle Time (30 days)</span>
+              <span>Last Shipped</span>
             </div>
-          ))}
-        </div>
+            {dashboard.brandHealth.map((row, index) => (
+              <div
+                key={`${row.portfolioId}-${row.brand}`}
+                className={`dashboard-table-row brand-health-grid ${index % 2 === 1 ? 'is-alt' : ''}`}
+              >
+                <span data-label="Brand" className="brand-health-name">
+                  <span className="brand-dot" style={{ background: row.color }} />
+                  {row.brand}
+                </span>
+                <span data-label="Active">{row.active}</span>
+                <span data-label="Stuck">{row.stuck}</span>
+                <span data-label="In Production">{row.inProduction}</span>
+                <span data-label="Avg Cycle Time (30 days)">
+                  {row.avgCycleTime ? `${row.avgCycleTime}d` : '—'}
+                </span>
+                <span data-label="Last Shipped">
+                  {row.lastShipped ? formatDateShort(row.lastShipped) : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>

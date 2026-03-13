@@ -144,6 +144,15 @@ function App() {
   const [compactLayout, setCompactLayout] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
   )
+  const [touchSidebarEnabled, setTouchSidebarEnabled] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.innerWidth > 768 &&
+        ((typeof window.matchMedia === 'function' &&
+          window.matchMedia('(hover: none) and (pointer: coarse)').matches) ||
+          window.navigator.maxTouchPoints > 0)
+      : false,
+  )
+  const [touchSidebarOpen, setTouchSidebarOpen] = useState(false)
   const [editorMenuOpen, setEditorMenuOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingTab>('general')
   const [settingsPortfolioId, setSettingsPortfolioId] = useState(() => loadAppState().activePortfolioId)
@@ -492,15 +501,33 @@ function App() {
       return
     }
 
-    const mediaQuery = window.matchMedia('(max-width: 768px)')
-    const updateCompactLayout = (matches: boolean) => setCompactLayout(matches)
+    const compactQuery = window.matchMedia('(max-width: 768px)')
+    const touchQuery = window.matchMedia('(hover: none) and (pointer: coarse)')
 
-    updateCompactLayout(mediaQuery.matches)
+    const updateLayoutState = () => {
+      const isCompact = compactQuery.matches
+      const allowTouchSidebar = !isCompact && (touchQuery.matches || window.navigator.maxTouchPoints > 0)
 
-    const handleChange = (event: MediaQueryListEvent) => updateCompactLayout(event.matches)
-    mediaQuery.addEventListener('change', handleChange)
+      setCompactLayout(isCompact)
+      setTouchSidebarEnabled(allowTouchSidebar)
 
-    return () => mediaQuery.removeEventListener('change', handleChange)
+      if (!allowTouchSidebar) {
+        setTouchSidebarOpen(false)
+      }
+    }
+
+    updateLayoutState()
+
+    const handleCompactChange = () => updateLayoutState()
+    const handleTouchChange = () => updateLayoutState()
+
+    compactQuery.addEventListener('change', handleCompactChange)
+    touchQuery.addEventListener('change', handleTouchChange)
+
+    return () => {
+      compactQuery.removeEventListener('change', handleCompactChange)
+      touchQuery.removeEventListener('change', handleTouchChange)
+    }
   }, [])
 
   useEffect(() => {
@@ -609,6 +636,9 @@ function App() {
     }))
     setBoardFilters(getDefaultBoardFilters(portfolio))
     setSettingsPortfolioId(portfolio.id)
+    if (touchSidebarEnabled) {
+      setTouchSidebarOpen(false)
+    }
     if (state.activeRole.mode === 'editor') {
       const nextEditor = getEditorOptions(portfolio)[0]
       setState((current) => ({
@@ -662,6 +692,9 @@ function App() {
 
   function handleSidebarPageChange(page: AppPage) {
     setPage(page)
+    if (touchSidebarEnabled) {
+      setTouchSidebarOpen(false)
+    }
     if (page === 'board') {
       focusBoardAttention()
     }
@@ -1208,7 +1241,7 @@ function App() {
     showToast('All data cleared', 'amber')
   }
 
-  const sidebarExpanded = compactLayout || sidebarPinned || sidebarHovered
+  const sidebarExpanded = compactLayout || sidebarPinned || sidebarHovered || touchSidebarOpen
   const toastView = <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
   function resetBoardFilters() {
@@ -1326,7 +1359,14 @@ function App() {
           userSecondaryLabel={userSecondaryLabel}
           signOutPending={signOutPending}
           attention={attention}
-          onTogglePinned={() => setSidebarPinned((current) => !current)}
+          onTogglePinned={() => {
+            if (touchSidebarEnabled) {
+              setTouchSidebarOpen((current) => !current)
+              return
+            }
+
+            setSidebarPinned((current) => !current)
+          }}
           onPortfolioChange={switchToPortfolio}
           onPageChange={handleSidebarPageChange}
           onSignOut={authEnabled ? handleSignOut : undefined}

@@ -198,7 +198,7 @@ export function CardDetailPanel({
     : card.activityLog.slice(0, ACTIVITY_PREVIEW_COUNT)
   const commentCharactersRemaining = COMMENT_MAX_LENGTH - commentDraft.length
 
-  useModalAccessibility(panelRef, true)
+  useModalAccessibility(panelRef, isOpen)
 
   function handleTaskTypeChange(taskTypeId: string) {
     const nextTaskType = getTaskTypeById(settings, taskTypeId)
@@ -776,11 +776,18 @@ export function CardDetailPanel({
             <div className="drive-actions">
               <button
                 type="button"
-                className="primary-button"
+                className={`primary-button ${isCreatingDriveFolder ? 'is-loading' : ''}`}
                 onClick={onCreateDriveFolder}
                 disabled={isCreatingDriveFolder}
               >
-                {isCreatingDriveFolder ? 'Creating...' : 'Create Drive Folder'}
+                {isCreatingDriveFolder ? (
+                  <>
+                    <span className="button-spinner" aria-hidden="true" />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  'Create Drive Folder'
+                )}
               </button>
               <div className="copy-field compact">
                 <div>
@@ -970,7 +977,10 @@ export function CardDetailPanel({
               >
                 Post
               </button>
-              <p className="comment-counter">{`${commentCharactersRemaining} characters remaining`}</p>
+              <div className="comment-helper-row">
+                <p className="comment-hint">Cmd+Enter to post</p>
+                <p className="comment-counter">{`${commentCharactersRemaining} characters remaining`}</p>
+              </div>
             </div>
           ) : null}
         </section>

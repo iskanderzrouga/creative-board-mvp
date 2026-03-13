@@ -46,22 +46,29 @@ function SortableBoardCardComponent({
       }}
       className="sortable-card"
     >
-      <BoardCardSurface
-        card={card}
-        portfolio={portfolio}
-        settings={settings}
-        nowMs={nowMs}
-        onOpen={() => {
-          if (!isDragging) {
-            onOpen()
-          }
-        }}
-        cursorMode={cursorMode}
-        isDragging={isDragging}
-        isInvalid={isInvalid && isDragging}
-        attributes={attributes}
-        listeners={listeners}
-      />
+      {isDragging ? (
+        <div
+          className={`sortable-card-placeholder ${isInvalid ? 'is-invalid' : ''}`}
+          aria-hidden="true"
+        />
+      ) : (
+        <BoardCardSurface
+          card={card}
+          portfolio={portfolio}
+          settings={settings}
+          nowMs={nowMs}
+          onOpen={() => {
+            if (!isDragging) {
+              onOpen()
+            }
+          }}
+          cursorMode={cursorMode}
+          isDragging={isDragging}
+          isInvalid={isInvalid && isDragging}
+          attributes={attributes}
+          listeners={listeners}
+        />
+      )}
     </div>
   )
 }
