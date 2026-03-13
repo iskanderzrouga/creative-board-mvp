@@ -44,6 +44,14 @@ export interface WorkspaceAccessEntry {
 
 let client: SupabaseClient | null | undefined
 
+interface LegacyWorkspaceAccessRow {
+  email: string
+  role_mode: 'manager' | 'editor' | 'observer'
+  editor_name: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 function hasBrowser() {
   return typeof window !== 'undefined'
 }
@@ -101,6 +109,26 @@ function getMagicLinkRedirectUrl() {
   }
 
   return hasBrowser() ? window.location.origin : undefined
+}
+
+function isLegacyWorkspaceAccessError(error: { message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? ''
+  return message.includes('scope_mode') || message.includes('scope_assignments')
+}
+
+function normalizeLegacyRoleMode(
+  roleMode: LegacyWorkspaceAccessRow['role_mode'],
+  isOwner: boolean,
+): RoleMode {
+  if (roleMode === 'manager') {
+    return isOwner ? 'owner' : 'manager'
+  }
+
+  if (roleMode === 'editor') {
+    return 'contributor'
+  }
+
+  return 'viewer'
 }
 
 export function isSupabaseConfigured() {
@@ -251,6 +279,27 @@ function mapWorkspaceAccessEntry(row: {
   } satisfies WorkspaceAccessEntry
 }
 
+function mapLegacyWorkspaceAccessRows(rows: LegacyWorkspaceAccessRow[]) {
+  const sortedManagerEmails = rows
+    .filter((row) => row.role_mode === 'manager')
+    .slice()
+    .sort((left, right) => {
+      const createdComparison = (left.created_at ?? '').localeCompare(right.created_at ?? '')
+      return createdComparison !== 0 ? createdComparison : left.email.localeCompare(right.email)
+    })
+    .map((row) => row.email)
+  const ownerEmail = sortedManagerEmails[0] ?? null
+
+  return rows.map((row) => ({
+    email: row.email,
+    roleMode: normalizeLegacyRoleMode(row.role_mode, row.email === ownerEmail),
+    editorName: row.role_mode === 'editor' ? row.editor_name ?? null : null,
+    scopeMode: 'all-portfolios' as const,
+    scopeAssignments: [],
+    updatedAt: row.updated_at,
+  }))
+}
+
 export async function getWorkspaceAccess() {
   if (isE2ESupabaseMode()) {
     const session = getE2EAuthSession()
@@ -287,25 +336,62 @@ export async function getWorkspaceAccess() {
     return null
   }
 
+  const session = await getAuthSession()
+  const email = session?.email?.trim().toLowerCase()
+  if (!email) {
+    return null
+  }
+
   const { data, error } = await supabase
     .from('workspace_access')
     .select('email, role_mode, editor_name, scope_mode, scope_assignments')
+    .eq('email', email)
     .maybeSingle()
 
-  if (error) {
+  if (error && !isLegacyWorkspaceAccessError(error)) {
     throw error
   }
 
-  if (!data) {
+  if (!error) {
+    if (!data) {
+      return null
+    }
+
+    return {
+      email: data.email,
+      roleMode: data.role_mode as RoleMode,
+      editorName: data.editor_name ?? null,
+      scopeMode: (data.scope_mode as AccessScopeMode | null) ?? 'all-portfolios',
+      scopeAssignments: (data.scope_assignments as PortfolioAccessScope[] | null) ?? [],
+    } satisfies WorkspaceAccessState
+  }
+
+  const legacyResponse = await supabase
+    .from('workspace_access')
+    .select('email, role_mode, editor_name, created_at, updated_at')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (legacyResponse.error) {
+    throw legacyResponse.error
+  }
+
+  if (!legacyResponse.data) {
+    return null
+  }
+
+  const rows = mapLegacyWorkspaceAccessRows([legacyResponse.data as LegacyWorkspaceAccessRow])
+  const normalized = rows[0]
+  if (!normalized) {
     return null
   }
 
   return {
-    email: data.email,
-    roleMode: data.role_mode as RoleMode,
-    editorName: data.editor_name ?? null,
-    scopeMode: (data.scope_mode as AccessScopeMode | null) ?? 'all-portfolios',
-    scopeAssignments: (data.scope_assignments as PortfolioAccessScope[] | null) ?? [],
+    email: normalized.email,
+    roleMode: normalized.roleMode,
+    editorName: normalized.editorName,
+    scopeMode: normalized.scopeMode,
+    scopeAssignments: normalized.scopeAssignments,
   } satisfies WorkspaceAccessState
 }
 
@@ -336,11 +422,25 @@ export async function listWorkspaceAccessEntries() {
     .select('email, role_mode, editor_name, scope_mode, scope_assignments, updated_at')
     .order('email', { ascending: true })
 
-  if (error) {
+  if (error && !isLegacyWorkspaceAccessError(error)) {
     throw error
   }
 
-  return (data ?? []).map(mapWorkspaceAccessEntry)
+  if (!error) {
+    return (data ?? []).map(mapWorkspaceAccessEntry)
+  }
+
+  const legacyResponse = await supabase
+    .from('workspace_access')
+    .select('email, role_mode, editor_name, created_at, updated_at')
+    .order('created_at', { ascending: true })
+    .order('email', { ascending: true })
+
+  if (legacyResponse.error) {
+    throw legacyResponse.error
+  }
+
+  return mapLegacyWorkspaceAccessRows((legacyResponse.data ?? []) as LegacyWorkspaceAccessRow[])
 }
 
 export async function upsertWorkspaceAccessEntry(entry: {
@@ -393,11 +493,41 @@ export async function upsertWorkspaceAccessEntry(entry: {
     .select('email, role_mode, editor_name, scope_mode, scope_assignments, updated_at')
     .single()
 
-  if (error) {
+  if (error && !isLegacyWorkspaceAccessError(error)) {
     throw error
   }
 
-  return mapWorkspaceAccessEntry(data)
+  if (!error) {
+    return mapWorkspaceAccessEntry(data)
+  }
+
+  const legacyRoleMode =
+    entry.roleMode === 'owner' || entry.roleMode === 'manager'
+      ? 'manager'
+      : entry.roleMode === 'contributor'
+        ? 'editor'
+        : 'observer'
+  const legacyResponse = await supabase
+    .from('workspace_access')
+    .upsert(
+      {
+        email: normalizedEmail,
+        role_mode: legacyRoleMode,
+        editor_name: legacyRoleMode === 'editor' ? entry.editorName?.trim() ?? null : null,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'email',
+      },
+    )
+    .select('email, role_mode, editor_name, created_at, updated_at')
+    .single()
+
+  if (legacyResponse.error) {
+    throw legacyResponse.error
+  }
+
+  return mapLegacyWorkspaceAccessRows([legacyResponse.data as LegacyWorkspaceAccessRow])[0]!
 }
 
 export async function deleteWorkspaceAccessEntry(email: string) {
