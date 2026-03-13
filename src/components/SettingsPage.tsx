@@ -53,7 +53,7 @@ interface SettingsPageProps {
   onExportData: () => void
   onImportClick: () => void
   onResetData: () => void
-  onClearAllData: () => void
+  onFreshStartData: () => void
   onWorkspaceAccessSave: (entry: {
     email: string
     roleMode: RoleMode
@@ -85,7 +85,7 @@ export function SettingsPage({
   onExportData,
   onImportClick,
   onResetData,
-  onClearAllData,
+  onFreshStartData,
   onWorkspaceAccessSave,
   onWorkspaceAccessDelete,
   showToast,
@@ -93,11 +93,11 @@ export function SettingsPage({
   const SETTINGS_TAB_HELP_TEXT: Record<SettingTab, string> = {
     general: 'Configure your workspace name, age thresholds, and auto-archive behavior.',
     portfolios: 'Manage portfolios, brands, and the Drive webhook settings that support each workspace stream.',
-    team: 'Board Team Members control board lanes and ownership. Login Access controls who can sign in.',
+    team: 'Board Team Members are the people on the board. Login Access decides who can sign in and, for editors, which board identity they work as.',
     'task-library': 'Define card types with default estimates and required fields. These appear in the card creation form.',
     capacity: 'Set utilization thresholds. Green, yellow, and red bands appear in Analytics and Workload views.',
     integrations: 'Store external service settings used by your workflow and keep them aligned with deployment.',
-    data: 'Export your board data as JSON for backup. Import to restore. Reset returns to sample data.',
+    data: 'Export your board data as JSON for backup. Import to restore. Fresh start keeps structure but clears operational clutter.',
   }
   const settingsPortfolio =
     state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
@@ -738,8 +738,17 @@ export function SettingsPage({
             <div className="settings-section-header">
               <h3>Board Team Members</h3>
               <p className="muted-copy">
-                These are the editors and managers who appear as lanes on the board. This does not
-                control login access.
+                These are the people who appear as lanes and owners on the board. This does not
+                control who can sign in.
+              </p>
+            </div>
+
+            <div className="settings-explainer-card">
+              <strong>Two layers, two jobs</strong>
+              <p>
+                Board Team Members define the people inside the workflow. Login Access defines who
+                can enter the app. If someone signs in as an editor, assign them to one board
+                teammate below so the app knows whose cards they can act on.
               </p>
             </div>
 
@@ -1141,6 +1150,13 @@ export function SettingsPage({
 
         {settingsTab === 'data' ? (
           <div className="settings-block">
+            <div className="settings-explainer-card">
+              <strong>Fresh-start cleanup</strong>
+              <p>
+                Use this when you want to keep your brands, products, and workspace setup, but wipe
+                old cards and people so you can start clean again.
+              </p>
+            </div>
             <div className="data-actions">
               <button type="button" className="primary-button" onClick={onExportData}>
                 Export board data
@@ -1151,11 +1167,15 @@ export function SettingsPage({
               <button type="button" className="ghost-button danger-outline" onClick={onResetData}>
                 Reset to seed data
               </button>
-              <button type="button" className="ghost-button danger-outline" onClick={onClearAllData}>
-                Clear all data
+              <button type="button" className="ghost-button danger-outline" onClick={onFreshStartData}>
+                Fresh start
               </button>
               <input ref={importInputRef} type="file" accept="application/json" hidden />
             </div>
+            <p className="muted-copy">
+              Fresh start removes cards, board people, and extra login access records, while keeping
+              brands, products, settings, and your current manager login.
+            </p>
           </div>
         ) : null}
 

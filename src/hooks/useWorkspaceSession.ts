@@ -212,7 +212,7 @@ export function useWorkspaceSession({
         if (access.roleMode === 'editor' && !access.editorName) {
           setAccessStatus('error')
           setAccessErrorMessage(
-            'This editor account is missing its linked team member. Ask a manager to reconnect it in Workspace Access.',
+            'This editor login is missing its board identity. Ask a manager to assign a board teammate in Login Access.',
           )
           return
         }
@@ -306,7 +306,7 @@ export function useWorkspaceSession({
         }
         setWorkspaceAccessEntries([])
         setWorkspaceAccessStatus('error')
-        setWorkspaceAccessErrorMessage('Workspace access records could not be loaded.')
+        setWorkspaceAccessErrorMessage('Login access records could not be loaded.')
       })
 
     return () => {
@@ -360,9 +360,9 @@ export function useWorkspaceSession({
             setWorkspaceAccessStatus('error')
           }
           setWorkspaceAccessErrorMessage(
-            'Saved the new email, but the old access row still needs cleanup.',
+            'Saved the new email, but the old login access row still needs cleanup.',
           )
-          showToast('Saved the new email, but the old access row still needs cleanup.', 'amber')
+          showToast('Saved the new email, but the old login access row still needs cleanup.', 'amber')
           return
         }
       }
@@ -377,16 +377,16 @@ export function useWorkspaceSession({
         isExistingEntry
           ? previousEmail === normalizedEmail
             ? `Updated access for ${normalizedEmail}`
-            : `Updated workspace access email to ${normalizedEmail}`
-          : `Added ${normalizedEmail} to workspace access`,
+            : `Updated login access email to ${normalizedEmail}`
+          : `Added ${normalizedEmail} to login access`,
         'green',
       )
     } catch (error) {
       setWorkspaceAccessStatus('error')
       setWorkspaceAccessErrorMessage(
-        error instanceof Error ? error.message : 'Could not save workspace access.',
+        error instanceof Error ? error.message : 'Could not save login access.',
       )
-      showToast('Could not save workspace access.', 'red')
+      showToast('Could not save login access.', 'red')
     } finally {
       setWorkspaceAccessPendingEmail(null)
     }
@@ -412,16 +412,69 @@ export function useWorkspaceSession({
         current.filter((item) => item.email !== normalizedEmail),
       )
       setWorkspaceAccessStatus('ready')
-      showToast(`Removed workspace access for ${normalizedEmail}`, 'amber')
+      showToast(`Removed login access for ${normalizedEmail}`, 'amber')
     } catch (error) {
       setWorkspaceAccessStatus('error')
       setWorkspaceAccessErrorMessage(
-        error instanceof Error ? error.message : 'Could not remove workspace access.',
+        error instanceof Error ? error.message : 'Could not remove login access.',
       )
-      showToast('Could not remove workspace access.', 'red')
+      showToast('Could not remove login access.', 'red')
     } finally {
       setWorkspaceAccessPendingEmail(null)
     }
+  }
+
+  async function handlePruneWorkspaceAccessEntries(keepEmail: string) {
+    const normalizedKeepEmail = keepEmail.trim().toLowerCase()
+    if (!normalizedKeepEmail) {
+      return { removedCount: 0, failedCount: 0 }
+    }
+
+    const entriesToRemove = workspaceAccessEntries.filter(
+      (entry) => entry.email !== normalizedKeepEmail,
+    )
+    if (entriesToRemove.length === 0) {
+      return { removedCount: 0, failedCount: 0 }
+    }
+
+    let removedCount = 0
+    let failedCount = 0
+
+    setWorkspaceAccessPendingEmail('__bulk__')
+    setWorkspaceAccessErrorMessage(null)
+
+    for (const entry of entriesToRemove) {
+      try {
+        await deleteWorkspaceAccessEntry(entry.email)
+        removedCount += 1
+      } catch {
+        failedCount += 1
+      }
+    }
+
+    if (removedCount > 0) {
+      try {
+        const refreshedEntries = await listWorkspaceAccessEntries()
+        setWorkspaceAccessEntries(refreshedEntries)
+        setWorkspaceAccessStatus('ready')
+      } catch {
+        setWorkspaceAccessEntries((current) =>
+          current.filter((entry) => entry.email === normalizedKeepEmail),
+        )
+        setWorkspaceAccessStatus(failedCount > 0 ? 'error' : 'ready')
+      }
+    }
+
+    if (failedCount > 0) {
+      setWorkspaceAccessStatus('error')
+      setWorkspaceAccessErrorMessage(
+        'Some login access records could not be removed. Review Login Access and try again.',
+      )
+    }
+
+    setWorkspaceAccessPendingEmail(null)
+
+    return { removedCount, failedCount }
   }
 
   async function handleSendMagicLink() {
@@ -571,6 +624,7 @@ export function useWorkspaceSession({
     handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
+    handlePruneWorkspaceAccessEntries,
     handleSendMagicLink,
     handleSignOut,
     handleTryDifferentEmail,

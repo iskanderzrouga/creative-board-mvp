@@ -8,6 +8,7 @@ import {
   coerceAppState,
   createCardFromQuickInput,
   createEmptyPortfolio,
+  createFreshStartState,
   createSeedState,
   getAgeToneFromMs,
   getBrandRemovalBlocker,
@@ -98,6 +99,27 @@ describe('board integrity helpers', () => {
     expect(reducedState.portfolios).toHaveLength(1)
     expect(reducedState.activePortfolioId).toBe(state.portfolios[0]?.id)
     expect(reducedState.settings.general.defaultPortfolioId).toBe(state.portfolios[0]?.id)
+  })
+
+  it('creates a fresh-start state that keeps brands and products but clears cards and team members', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+
+    expect(portfolio.cards.length).toBeGreaterThan(0)
+    expect(portfolio.team.length).toBeGreaterThan(0)
+    expect(portfolio.brands.length).toBeGreaterThan(0)
+
+    const nextState = createFreshStartState(state)
+    const nextPortfolio = nextState.portfolios[0]!
+
+    expect(nextPortfolio.cards).toHaveLength(0)
+    expect(nextPortfolio.team).toHaveLength(0)
+    expect(nextPortfolio.brands).toEqual(portfolio.brands)
+    expect(nextPortfolio.lastIdPerPrefix).toEqual(
+      Object.fromEntries(portfolio.brands.map((brand) => [brand.prefix, 0])),
+    )
+    expect(portfolio.cards.length).toBeGreaterThan(0)
+    expect(portfolio.team.length).toBeGreaterThan(0)
   })
 
   it('does not allow grouped-stage cards to become unassigned through direct updates', () => {

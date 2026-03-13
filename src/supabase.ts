@@ -340,7 +340,7 @@ export async function upsertWorkspaceAccessEntry(entry: {
   }
 
   if (entry.roleMode === 'editor' && !entry.editorName?.trim()) {
-    throw new Error('Editors need a linked team member name.')
+    throw new Error('Editors need a board teammate assignment.')
   }
 
   if (isE2ESupabaseMode()) {

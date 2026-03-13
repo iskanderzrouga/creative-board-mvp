@@ -3323,6 +3323,13 @@ button {
   min-width: 0;
 }
 
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .workspace-access-row.is-dirty {
   padding-left: 12px;
   border-left: 3px solid var(--warning-text);
@@ -3343,6 +3350,34 @@ button {
   background: var(--surface-subtle);
 }
 
+.workspace-access-explainer,
+.settings-explainer-card,
+.workspace-access-preview {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-shell);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.workspace-access-explainer strong,
+.settings-explainer-card strong,
+.workspace-access-preview strong {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+
+.workspace-access-explainer p,
+.settings-explainer-card p,
+.workspace-access-preview span {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
 .workspace-access-new-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1.3fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
@@ -3354,6 +3389,27 @@ button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+}
+
+.board-identity-static {
+  display: grid;
+  gap: 4px;
+  min-height: 100%;
+  padding: 11px 12px;
+  border: 1px dashed var(--line-shell);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.board-identity-static strong {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.board-identity-static span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .dirty-indicator {

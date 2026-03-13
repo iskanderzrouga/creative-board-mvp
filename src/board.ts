@@ -2045,6 +2045,37 @@ export function createEmptyPortfolio(name: string, existingCount: number): Portf
   }
 }
 
+export function createFreshStartState(state: AppState): AppState {
+  const portfolios = state.portfolios.map((portfolio) => ({
+    ...portfolio,
+    team: [],
+    cards: [],
+    lastIdPerPrefix: Object.fromEntries(portfolio.brands.map((brand) => [brand.prefix, 0])),
+  }))
+
+  const nextActivePortfolioId =
+    portfolios.find((portfolio) => portfolio.id === state.activePortfolioId)?.id ??
+    portfolios[0]?.id ??
+    ''
+  const nextDefaultPortfolioId =
+    portfolios.find((portfolio) => portfolio.id === state.settings.general.defaultPortfolioId)?.id ??
+    portfolios[0]?.id ??
+    ''
+
+  return {
+    ...state,
+    portfolios,
+    activePortfolioId: nextActivePortfolioId,
+    settings: {
+      ...state.settings,
+      general: {
+        ...state.settings.general,
+        defaultPortfolioId: nextDefaultPortfolioId,
+      },
+    },
+  }
+}
+
 export function renameBrandInPortfolio(
   portfolio: Portfolio,
   brandIndex: number,

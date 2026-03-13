@@ -55,6 +55,7 @@ import {
   addCardToPortfolio,
   applyCardUpdates,
   createCardFromQuickInput,
+  createFreshStartState,
   createSeedState,
   getActivePortfolio,
   getAttentionSummary,
@@ -119,7 +120,7 @@ interface PendingDeleteCard {
   cardId: string
 }
 
-type PendingAppConfirm = 'reset-seed' | 'clear-all'
+type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
@@ -210,6 +211,7 @@ function App() {
     handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
+    handlePruneWorkspaceAccessEntries,
     handleSendMagicLink,
     handleSignOut,
     handleTryDifferentEmail,
@@ -1223,22 +1225,45 @@ function App() {
     showToast('Board reset to seed data', 'amber')
   }
 
-  function clearAllData() {
-    setPendingAppConfirm('clear-all')
+  function freshStartData() {
+    setPendingAppConfirm('fresh-start')
   }
 
-  function confirmClearAllData() {
-    const emptyState = createSeedState()
-    emptyState.portfolios.forEach((portfolio) => {
-      portfolio.cards = []
-      portfolio.lastIdPerPrefix = Object.fromEntries(
-        portfolio.brands.map((brand) => [brand.prefix, 0]),
-      )
+  function confirmFreshStartData() {
+    const nextState = createFreshStartState(localFallbackStateRef.current)
+    replaceState({
+      ...nextState,
+      activeRole: { mode: 'manager', editorId: null },
+      activePage: 'settings',
     })
-    replaceState(emptyState)
     setSelectedCard(null)
     setPendingAppConfirm(null)
-    showToast('All data cleared', 'amber')
+    showToast('Fresh start applied. Brands and products were kept.', 'amber')
+
+    if (authEnabled && workspaceAccess?.email) {
+      void handlePruneWorkspaceAccessEntries(workspaceAccess.email).then(
+        ({ removedCount, failedCount }) => {
+          if (removedCount === 0 && failedCount === 0) {
+            return
+          }
+
+          if (failedCount > 0) {
+            showToast(
+              'Cards and board people were cleared, but some login access records still need review.',
+              'amber',
+            )
+            return
+          }
+
+          showToast(
+            removedCount === 1
+              ? 'Removed 1 older login access record.'
+              : `Removed ${removedCount} older login access records.`,
+            'blue',
+          )
+        },
+      )
+    }
   }
 
   const sidebarExpanded = compactLayout || sidebarPinned || sidebarHovered || touchSidebarOpen
@@ -1515,13 +1540,13 @@ function App() {
             localRole={state.activeRole}
             localEditorOptions={editorOptions}
             onLocalRoleChange={setRole}
-            onExportData={exportData}
-            onImportClick={() => importInputRef.current?.click()}
-            onResetData={resetToSeed}
-            onClearAllData={clearAllData}
-            onWorkspaceAccessSave={handleSaveWorkspaceAccessEntry}
-            onWorkspaceAccessDelete={handleDeleteWorkspaceAccessEntry}
-            showToast={showToast}
+          onExportData={exportData}
+          onImportClick={() => importInputRef.current?.click()}
+          onResetData={resetToSeed}
+          onFreshStartData={freshStartData}
+          onWorkspaceAccessSave={handleSaveWorkspaceAccessEntry}
+          onWorkspaceAccessDelete={handleDeleteWorkspaceAccessEntry}
+          showToast={showToast}
           />
         ) : null}
       </div>
@@ -1587,20 +1612,24 @@ function App() {
 
       {pendingAppConfirm ? (
         <ConfirmDialog
-          title={pendingAppConfirm === 'reset-seed' ? 'Reset to seed data?' : 'Clear all data?'}
+          title={pendingAppConfirm === 'reset-seed' ? 'Reset to seed data?' : 'Start fresh?'}
           message={
             pendingAppConfirm === 'reset-seed' ? (
               <p>This restores the original demo workspace and removes your current changes.</p>
             ) : (
               <>
-                <p>This removes every card from every portfolio and resets the running ID counters.</p>
+                <p>
+                  This keeps your brands, products, and workspace settings, but removes cards,
+                  board people, and extra login access records.
+                </p>
+                <p>Your current manager login will be kept so you do not get locked out.</p>
                 <p>This action cannot be undone.</p>
               </>
             )
           }
-          confirmLabel={pendingAppConfirm === 'reset-seed' ? 'Reset board' : 'Clear all data'}
+          confirmLabel={pendingAppConfirm === 'reset-seed' ? 'Reset board' : 'Start fresh'}
           onCancel={() => setPendingAppConfirm(null)}
-          onConfirm={pendingAppConfirm === 'reset-seed' ? confirmResetToSeed : confirmClearAllData}
+          onConfirm={pendingAppConfirm === 'reset-seed' ? confirmResetToSeed : confirmFreshStartData}
         />
       ) : null}
 
