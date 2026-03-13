@@ -544,7 +544,10 @@ export function SettingsPage({
               <div className="settings-section-divider" />
               <div className="settings-section">
                 <div className="settings-section-header">
-                  <h3>Thresholds</h3>
+                  <h3>Card thresholds</h3>
+                  <p className="muted-copy">
+                    How long a card can sit in a stage before it gets flagged.
+                  </p>
                 </div>
                 <div className="settings-form-grid">
                   <label>
@@ -611,7 +614,18 @@ export function SettingsPage({
                       }
                     />
                   </label>
+                </div>
+              </div>
 
+              <div className="settings-section-divider" />
+              <div className="settings-section">
+                <div className="settings-section-header">
+                  <h3>Capacity thresholds</h3>
+                  <p className="muted-copy">
+                    When team members are considered healthy, stretched, or overloaded.
+                  </p>
+                </div>
+                <div className="settings-form-grid">
                   <label>
                     <span>Default hours per week</span>
                     <input
@@ -778,7 +792,8 @@ export function SettingsPage({
                       <div className="portfolio-settings-head">
                         <button
                           type="button"
-                          className="portfolio-collapse"
+                          className="portfolio-collapse-toggle"
+                          aria-label={isCollapsed ? 'Expand portfolio' : 'Collapse portfolio'}
                           onClick={() =>
                             setCollapsedPortfolioIds((current) =>
                               current.includes(portfolio.id)
@@ -787,20 +802,19 @@ export function SettingsPage({
                             )
                           }
                         >
-                          <span>{isCollapsed ? '▸' : '▾'}</span>
-                          <input
-                            className="portfolio-title-input"
-                            value={portfolio.name}
-                            aria-label={`${portfolio.name} portfolio name`}
-                            onChange={(event) =>
-                              updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                                ...currentPortfolio,
-                                name: event.target.value,
-                              }))
-                            }
-                            onClick={(event) => event.stopPropagation()}
-                          />
+                          {isCollapsed ? '▸' : '▾'}
                         </button>
+                        <input
+                          className="portfolio-title-input"
+                          value={portfolio.name}
+                          aria-label={`${portfolio.name} portfolio name`}
+                          onChange={(event) =>
+                            updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                              ...currentPortfolio,
+                              name: event.target.value,
+                            }))
+                          }
+                        />
                         <button
                           type="button"
                           className="clear-link danger-link"
@@ -839,6 +853,7 @@ export function SettingsPage({
                                   <input
                                     aria-label={`${portfolio.name} brand name`}
                                     value={brand.name}
+                                    placeholder="Brand name"
                                     onChange={(event) =>
                                       updatePortfolio(portfolio.id, (currentPortfolio) =>
                                         renameBrandInPortfolio(
@@ -852,6 +867,7 @@ export function SettingsPage({
                                   <input
                                     aria-label={`${brand.name || 'Brand'} prefix`}
                                     value={brand.prefix}
+                                    placeholder="AB"
                                     onChange={(event) => {
                                       const nextPrefix = event.target.value
                                         .toUpperCase()
@@ -879,6 +895,7 @@ export function SettingsPage({
                                   <input
                                     aria-label={`${brand.name || 'Brand'} products`}
                                     value={brand.products.join(', ')}
+                                    placeholder="Product A, Product B"
                                     onChange={(event) =>
                                       updatePortfolio(portfolio.id, (currentPortfolio) =>
                                         syncPortfolioCardProducts({
@@ -901,6 +918,7 @@ export function SettingsPage({
                                   <input
                                     aria-label={`${brand.name || 'Brand'} Drive folder`}
                                     value={brand.driveParentFolderId}
+                                    placeholder="Folder ID"
                                     onChange={(event) =>
                                       updatePortfolio(portfolio.id, (currentPortfolio) => ({
                                         ...currentPortfolio,
@@ -999,37 +1017,54 @@ export function SettingsPage({
                 actions={
                   <>
                     {headerUtilityContent}
-                    <label className="settings-inline-field">
-                      <span>Portfolio</span>
-                      <select
-                        aria-label="Portfolio for new team member"
-                        value={settingsPortfolio?.id ?? ''}
-                        onChange={(event) => onSettingsPortfolioChange(event.target.value)}
+                    {state.portfolios.length === 1 ? (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => {
+                          const portfolio = state.portfolios[0]
+                          if (!portfolio) return
+                          const nextMember = createTeamMemberDraft(portfolio)
+                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                            ...currentPortfolio,
+                            team: [...currentPortfolio.team, nextMember],
+                          }))
+                          setExpandedTeamRowKey(`${portfolio.id}:${nextMember.id}`)
+                        }}
                       >
-                        {state.portfolios.map((portfolio) => (
-                          <option key={portfolio.id} value={portfolio.id}>
-                            {portfolio.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => {
-                        if (!settingsPortfolio) {
-                          return
-                        }
-                        const nextMember = createTeamMemberDraft(settingsPortfolio)
-                        updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                          ...currentPortfolio,
-                          team: [...currentPortfolio.team, nextMember],
-                        }))
-                        setExpandedTeamRowKey(`${settingsPortfolio.id}:${nextMember.id}`)
-                      }}
-                    >
-                      Add member
-                    </button>
+                        Add member
+                      </button>
+                    ) : (
+                      <div className="settings-add-member-group">
+                        <select
+                          className="settings-portfolio-select"
+                          aria-label="Portfolio for new team member"
+                          value={settingsPortfolio?.id ?? ''}
+                          onChange={(event) => onSettingsPortfolioChange(event.target.value)}
+                        >
+                          {state.portfolios.map((portfolio) => (
+                            <option key={portfolio.id} value={portfolio.id}>
+                              {portfolio.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() => {
+                            if (!settingsPortfolio) return
+                            const nextMember = createTeamMemberDraft(settingsPortfolio)
+                            updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
+                              ...currentPortfolio,
+                              team: [...currentPortfolio.team, nextMember],
+                            }))
+                            setExpandedTeamRowKey(`${settingsPortfolio.id}:${nextMember.id}`)
+                          }}
+                        >
+                          Add to {settingsPortfolio?.name ?? 'portfolio'}
+                        </button>
+                      </div>
+                    )}
                   </>
                 }
               />
@@ -1049,13 +1084,8 @@ export function SettingsPage({
                   const isExpanded = expandedTeamRowKey === rowKey
                   return (
                     <Fragment key={rowKey}>
-                      <button
-                        type="button"
+                      <div
                         className={`team-table-row ${isExpanded ? 'is-expanded' : ''}`}
-                        aria-expanded={isExpanded}
-                        onClick={() =>
-                          setExpandedTeamRowKey((current) => (current === rowKey ? null : rowKey))
-                        }
                       >
                         <span>{portfolio.name}</span>
                         <span className="team-table-primary">{member.name}</span>
@@ -1068,8 +1098,18 @@ export function SettingsPage({
                             {member.active ? 'Active' : 'Inactive'}
                           </span>
                         </span>
-                        <span className="team-row-chevron">{isExpanded ? '▾' : '▸'}</span>
-                      </button>
+                        <span className="team-row-actions-cell">
+                          <button
+                            type="button"
+                            className="team-edit-button"
+                            onClick={() =>
+                              setExpandedTeamRowKey((current) => (current === rowKey ? null : rowKey))
+                            }
+                          >
+                            {isExpanded ? 'Close' : 'Edit'}
+                          </button>
+                        </span>
+                      </div>
 
                       {isExpanded ? (
                         <div className="team-detail-row">

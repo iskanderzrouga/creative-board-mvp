@@ -351,19 +351,6 @@ function getAccessSummary(draft: AccessDraft, portfolios: Portfolio[]) {
   )
 }
 
-function getBadgeTone(roleMode: RoleMode) {
-  switch (roleMode) {
-    case 'owner':
-      return 'owner'
-    case 'manager':
-      return 'manager'
-    case 'contributor':
-      return 'contributor'
-    case 'viewer':
-      return 'viewer'
-  }
-}
-
 function ScopeTreeField({
   draft,
   portfolios,
@@ -384,7 +371,9 @@ function ScopeTreeField({
 
   return (
     <div className="workspace-access-field">
-      <span className="workspace-access-field-label">Visibility</span>
+      <span className="workspace-access-field-label">
+        Visibility — which portfolios and brands they can see
+      </span>
       <div className="workspace-scope-tree">
         <label className="workspace-scope-tree-option is-root">
           <input
@@ -410,8 +399,7 @@ function ScopeTreeField({
 
             return (
               <div key={portfolio.id} className="workspace-scope-tree-portfolio">
-                <div className="workspace-scope-tree-heading">{portfolio.name}</div>
-                <label className="workspace-scope-tree-option">
+                <label className="workspace-scope-tree-option workspace-scope-tree-heading-option">
                   <input
                     type="checkbox"
                     checked={fullPortfolioSelected}
@@ -430,7 +418,7 @@ function ScopeTreeField({
                       })
                     }}
                   />
-                  <span>All brands</span>
+                  <span className="workspace-scope-tree-heading">{portfolio.name}</span>
                 </label>
 
                 <div className="workspace-scope-tree-brand-list">
@@ -467,7 +455,6 @@ function ScopeTreeField({
           })}
         </div>
       </div>
-      <p className="field-hint">Products follow brand access automatically.</p>
     </div>
   )
 }
@@ -588,7 +575,7 @@ function AccessDrawer({
       />
       <aside className={`slide-panel ${isOpen ? 'is-open' : ''}`} aria-hidden={!isOpen}>
         <div className="slide-panel-header workspace-access-drawer-header">
-          <h2>{isCreate ? 'New person' : draft.email}</h2>
+          <h2>{isCreate ? 'Add person' : 'Edit access'}</h2>
           <button
             type="button"
             className="close-icon-button"
@@ -610,7 +597,9 @@ function AccessDrawer({
             <span className="workspace-access-field-label">Email</span>
             <input
               type="email"
+              autoFocus={isCreate}
               value={draft.email}
+              placeholder="team@company.com"
               onChange={(event) =>
                 onDraftChange({
                   ...draft,
@@ -785,6 +774,21 @@ export function WorkspaceAccessManager({
     }))
   }
 
+  async function handleInlineRoleChange(entry: WorkspaceAccessEntry, nextRole: RoleMode) {
+    try {
+      await onSave({
+        email: entry.email,
+        roleMode: nextRole,
+        editorName: nextRole === 'contributor' ? entry.editorName : null,
+        scopeMode: nextRole === 'owner' || nextRole === 'contributor' ? 'all-portfolios' : entry.scopeMode,
+        scopeAssignments: nextRole === 'owner' || nextRole === 'contributor' ? [] : entry.scopeAssignments,
+        previousEmail: entry.email,
+      })
+    } catch {
+      // Error is handled by the parent via toast
+    }
+  }
+
   async function handleSave() {
     if (!activeDraft) {
       return
@@ -875,8 +879,9 @@ export function WorkspaceAccessManager({
           <div>
             <strong>How access works</strong>
             <p>
-              Access level controls authority. Visibility controls portfolios and brands. Team
-              member connects contributor sign-ins to the right person on the board.
+              Add people with their email and choose an access level. Owners have full control.
+              Managers and viewers can be scoped to specific portfolios or brands.
+              Contributors are linked to a team member on the board.
             </p>
           </div>
           <button
@@ -903,7 +908,6 @@ export function WorkspaceAccessManager({
           <span>Access level</span>
           <span>Visibility</span>
           <span>Team member</span>
-          <span>Last updated</span>
           <span />
         </div>
 
@@ -915,27 +919,41 @@ export function WorkspaceAccessManager({
         ) : null}
 
         {entries.map((entry) => (
-          <button
+          <div
             key={entry.email}
-            type="button"
-            className={`workspace-access-row-button ${
+            className={`workspace-access-row ${
               activeKey === entry.email ? 'is-active' : ''
             }`}
-            onClick={() => openDrawer(entry.email)}
           >
             <span className="workspace-access-email">{entry.email}</span>
-            <span className="workspace-access-row-cell">
-              <span className={`access-level-badge is-${getBadgeTone(entry.roleMode)}`}>
-                {getAccessLevelLabel(entry.roleMode)}
-              </span>
+            <span className="workspace-access-row-cell" onClick={(e) => e.stopPropagation()}>
+              <select
+                className="workspace-access-inline-select"
+                aria-label={`Access level for ${entry.email}`}
+                value={entry.roleMode}
+                onChange={(event) => {
+                  void handleInlineRoleChange(entry, event.target.value as RoleMode)
+                }}
+              >
+                {ACCESS_LEVEL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {getAccessLevelLabel(option.value)}
+                  </option>
+                ))}
+              </select>
             </span>
             <span className="workspace-access-row-muted">{getScopeLabel(entry, portfolios)}</span>
-            <span className="workspace-access-row-muted">{entry.editorName ?? 'No team member'}</span>
-            <span className="workspace-access-row-muted">
-              {entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}
+            <span className="workspace-access-row-muted">{entry.editorName ?? '—'}</span>
+            <span className="workspace-access-row-actions-cell">
+              <button
+                type="button"
+                className="ghost-button workspace-access-edit-button"
+                onClick={() => openDrawer(entry.email)}
+              >
+                Edit
+              </button>
             </span>
-            <span className="workspace-access-row-chevron">›</span>
-          </button>
+          </div>
         ))}
       </div>
 

@@ -214,6 +214,7 @@ function App() {
     handleDeleteWorkspaceAccessEntry,
     handlePruneWorkspaceAccessEntries,
     handleSendMagicLink,
+    handlePasswordAuth,
     handleSignOut,
     handleTryDifferentEmail,
   } = useWorkspaceSession({
@@ -1359,6 +1360,7 @@ function App() {
           infoMessage={loginInfoMessage}
           onEmailChange={setLoginEmail}
           onSubmit={handleSendMagicLink}
+          onPasswordSubmit={handlePasswordAuth}
         />
         {toastView}
       </>

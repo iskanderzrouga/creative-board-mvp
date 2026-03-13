@@ -14,6 +14,8 @@ import {
   listWorkspaceAccessEntries,
   onAuthStateChange,
   signInWithMagicLink,
+  signInWithPassword,
+  signUpWithPassword,
   signOutOfSupabase,
   upsertWorkspaceAccessEntry,
   type AuthSessionState,
@@ -555,6 +557,63 @@ export function useWorkspaceSession({
     }
   }
 
+  async function handlePasswordAuth(password: string, mode: 'sign-in' | 'sign-up') {
+    const normalizedEmail = loginEmail.trim()
+
+    if (!normalizedEmail) {
+      setLoginErrorMessage('Enter your email.')
+      return
+    }
+
+    if (!isLikelyEmail(normalizedEmail)) {
+      setLoginErrorMessage('Enter a valid email address.')
+      return
+    }
+
+    if (!password || password.length < 6) {
+      setLoginErrorMessage('Password must be at least 6 characters.')
+      return
+    }
+
+    setLoginPending(true)
+    setLoginErrorMessage(null)
+    setLoginInfoMessage(null)
+
+    try {
+      if (mode === 'sign-up') {
+        await signUpWithPassword(normalizedEmail, password)
+      } else {
+        await signInWithPassword(normalizedEmail, password)
+      }
+
+      const session = await getAuthSession()
+      if (session) {
+        setAuthSession(session)
+        setAuthStatus('signed-in')
+        setLoginPending(false)
+        return
+      }
+
+      setLoginInfoMessage(
+        mode === 'sign-up'
+          ? 'Account created. Check your email to confirm, then sign in.'
+          : 'Signed in. Loading the workspace...',
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Authentication failed.'
+      const normalizedMessage = message.toLowerCase()
+      setLoginErrorMessage(
+        normalizedMessage.includes('not approved') || normalizedMessage.includes('not on the approved')
+          ? 'This email is not on the approved access list. Contact your workspace owner.'
+          : normalizedMessage.includes('already exists') || normalizedMessage.includes('already registered')
+            ? 'An account with this email already exists. Sign in instead.'
+            : message,
+      )
+    } finally {
+      setLoginPending(false)
+    }
+  }
+
   function resetSignedOutUi(nextLoginInfoMessage: string | null = null) {
     clearStoredAuthSession()
     setAuthSession(null)
@@ -631,6 +690,7 @@ export function useWorkspaceSession({
     handleDeleteWorkspaceAccessEntry,
     handlePruneWorkspaceAccessEntries,
     handleSendMagicLink,
+    handlePasswordAuth,
     handleSignOut,
     handleTryDifferentEmail,
   }

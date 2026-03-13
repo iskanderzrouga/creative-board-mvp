@@ -2557,6 +2557,22 @@ button {
   color: var(--danger-text);
 }
 
+.auth-switch {
+  text-align: center;
+}
+
+.auth-switch-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-switch-text .clear-link {
+  font-size: 13px;
+  color: var(--info-text);
+  font-weight: 600;
+}
+
 .remote-loading-frame {
   background: var(--page-backdrop);
 }
@@ -3306,15 +3322,25 @@ button {
   color: var(--muted);
 }
 
-.portfolio-collapse {
+.portfolio-collapse-toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 1;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
+  border-radius: 6px;
   background: transparent;
-  text-align: left;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.portfolio-collapse-toggle:hover {
+  background: var(--surface-subtle);
+  color: var(--text);
 }
 
 .full-table .settings-row {
@@ -3415,6 +3441,22 @@ button {
   color: var(--muted);
 }
 
+.settings-add-member-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-portfolio-select {
+  max-width: 160px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--text);
+}
+
 .settings-read-cell {
   display: flex;
   align-items: center;
@@ -3495,15 +3537,14 @@ button {
 }
 
 .workspace-access-table-head,
-.workspace-access-row-button {
+.workspace-access-row {
   display: grid;
   grid-template-columns:
-    minmax(240px, 1.6fr)
-    minmax(120px, 0.8fr)
-    minmax(180px, 1fr)
-    minmax(170px, 0.9fr)
-    160px
-    20px;
+    minmax(200px, 1.6fr)
+    minmax(140px, 0.9fr)
+    minmax(160px, 1fr)
+    minmax(140px, 0.8fr)
+    80px;
   gap: 14px;
   align-items: center;
 }
@@ -3519,29 +3560,56 @@ button {
   text-transform: uppercase;
 }
 
-.workspace-access-row-button {
+.workspace-access-row {
   width: 100%;
   min-width: 0;
-  min-height: 44px;
-  padding: 12px 16px;
-  border: none;
+  min-height: 48px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
   background: transparent;
   text-align: left;
 }
 
-.workspace-access-table > .workspace-access-row-button:last-child {
+.workspace-access-table > .workspace-access-row:last-child {
   border-bottom: none;
 }
 
-.workspace-access-row-button.is-active,
-.workspace-access-row-button:hover {
-  background: rgba(15, 23, 42, 0.04);
+.workspace-access-row.is-active,
+.workspace-access-row:hover {
+  background: rgba(15, 23, 42, 0.03);
 }
 
-.workspace-access-row-actions {
-  position: relative;
-  display: none;
+.workspace-access-inline-select {
+  width: 100%;
+  max-width: 140px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.workspace-access-inline-select:hover {
+  border-color: var(--line-control);
+}
+
+.workspace-access-inline-select:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.workspace-access-edit-button {
+  padding: 4px 12px !important;
+  min-height: 28px !important;
+  font-size: 12px !important;
+}
+
+.workspace-access-row-actions-cell {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .workspace-access-help-banner {
@@ -3805,6 +3873,14 @@ button {
   font-weight: 700;
 }
 
+.workspace-scope-tree-heading-option {
+  font-weight: 700;
+}
+
+.workspace-scope-tree-heading-option .workspace-scope-tree-heading {
+  margin: 0;
+}
+
 .workspace-scope-tree-brand-list {
   display: grid;
   gap: 6px;
@@ -3842,7 +3918,7 @@ button {
     minmax(120px, 0.9fr)
     minmax(180px, 1fr)
     110px
-    24px;
+    72px;
   gap: 12px;
   align-items: center;
 }
@@ -3861,11 +3937,10 @@ button {
 .team-table-row {
   width: 100%;
   padding: 12px 16px;
-  border: none;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  text-align: left;
+  font-size: 13px;
 }
 
 .team-table-row:last-of-type {
@@ -3882,10 +3957,25 @@ button {
   font-weight: 600;
 }
 
-.team-row-chevron {
-  color: var(--muted);
-  font-size: 15px;
-  text-align: right;
+.team-row-actions-cell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.team-edit-button {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.team-edit-button:hover {
+  background: var(--surface-subtle);
+  border-color: var(--text);
 }
 
 .team-status-badge {
@@ -4318,7 +4408,6 @@ button {
 }
 
 .working-day-toggle:hover,
-.portfolio-collapse:hover,
 .queue-card:hover,
 .overview-card:hover,
 .dashboard-card-row:hover,
@@ -4331,11 +4420,6 @@ button {
 .working-day-toggle:hover,
 .radio-option:hover {
   border-color: var(--line-strong);
-}
-
-.portfolio-collapse:hover .nested-settings-title,
-.portfolio-collapse:hover .muted-copy {
-  color: var(--text);
 }
 
 @media (max-width: 1180px) {
@@ -4621,7 +4705,7 @@ button {
     display: none;
   }
 
-  .workspace-access-row-button {
+  .workspace-access-row {
     grid-template-columns: 1fr;
     gap: 8px;
     padding: 14px;
