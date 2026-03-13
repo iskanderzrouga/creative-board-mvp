@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   getAccessLevelLabel,
   getEffectiveAccessSummary,
@@ -25,6 +25,8 @@ interface WorkspaceAccessManagerProps {
   status: WorkspaceDirectoryStatus
   errorMessage: string | null
   pendingEmail: string | null
+  headerUtilityContent?: ReactNode
+  onOpenTeam: () => void
   onSave: (entry: {
     email: string
     roleMode: RoleMode
@@ -44,8 +46,7 @@ interface AccessDraft {
   scopeAssignments: PortfolioAccessScope[]
 }
 
-const ACCESS_INFO_SEEN_KEY = 'editors-board-access-info-seen'
-const ACCESS_INFO_COLLAPSED_KEY = 'editors-board-access-info-collapsed'
+const ACCESS_HELP_DISMISSED_KEY = 'editors-board-access-help-dismissed'
 const NEW_ENTRY_KEY = '__new__'
 
 const ACCESS_LEVEL_OPTIONS: Array<{
@@ -54,41 +55,19 @@ const ACCESS_LEVEL_OPTIONS: Array<{
 }> = [
   {
     value: 'owner',
-    description: 'Full control across all portfolios, settings, people, and access.',
+    description: 'Full control over everything.',
   },
   {
     value: 'manager',
-    description: 'Manages work inside assigned scope.',
+    description: 'Manages cards and people within their visibility.',
   },
   {
     value: 'contributor',
-    description: 'Works only on assigned cards.',
+    description: 'Works on their own assigned cards.',
   },
   {
     value: 'viewer',
-    description: 'Views assigned scope in read-only mode.',
-  },
-]
-
-const VISIBILITY_SCOPE_OPTIONS: Array<{
-  value: AccessScopeMode
-  label: string
-  description: string
-}> = [
-  {
-    value: 'all-portfolios',
-    label: 'All portfolios',
-    description: 'Shows every portfolio, brand, and product.',
-  },
-  {
-    value: 'selected-portfolios',
-    label: 'Selected portfolios',
-    description: 'Shows every brand and product inside chosen portfolios.',
-  },
-  {
-    value: 'selected-brands',
-    label: 'Specific brands',
-    description: 'Shows only chosen brands and the products under them.',
+    description: 'Read-only view of their assigned area.',
   },
 ]
 
@@ -96,17 +75,12 @@ function hasBrowser() {
   return typeof window !== 'undefined'
 }
 
-function getInitialInfoExpanded() {
+function getInitialHelpDismissed() {
   if (!hasBrowser()) {
-    return true
+    return false
   }
 
-  const hasSeenInfo = window.localStorage.getItem(ACCESS_INFO_SEEN_KEY) === 'true'
-  if (!hasSeenInfo) {
-    return true
-  }
-
-  return window.localStorage.getItem(ACCESS_INFO_COLLAPSED_KEY) !== 'true'
+  return window.localStorage.getItem(ACCESS_HELP_DISMISSED_KEY) === 'true'
 }
 
 function normalizeEmail(value: string) {
@@ -127,33 +101,177 @@ function createEmptyDraft(): AccessDraft {
   }
 }
 
-function getScopeDescription(scopeMode: AccessScopeMode) {
-  return VISIBILITY_SCOPE_OPTIONS.find((option) => option.value === scopeMode)?.description ?? ''
+function buildAllPortfolioAssignments(portfolios: Portfolio[]) {
+  return portfolios.map((portfolio) => ({
+    portfolioId: portfolio.id,
+    brandNames: [],
+  }))
 }
 
-function normalizeDraftForRole(draft: AccessDraft): AccessDraft {
-  if (draft.roleMode === 'owner') {
+function getPortfolioAssignment(
+  assignments: PortfolioAccessScope[],
+  portfolioId: string,
+) {
+  return normalizeScopeAssignments(assignments).find(
+    (assignment) => assignment.portfolioId === portfolioId,
+  )
+}
+
+function getPortfolioBrandNames(portfolio: Portfolio) {
+  return portfolio.brands.map((brand) => brand.name)
+}
+
+function isPortfolioFullySelected(
+  assignments: PortfolioAccessScope[],
+  portfolio: Portfolio,
+) {
+  const assignment = getPortfolioAssignment(assignments, portfolio.id)
+  if (!assignment) {
+    return false
+  }
+
+  return assignment.brandNames.length === 0
+}
+
+function getSelectedBrandNames(
+  assignments: PortfolioAccessScope[],
+  portfolio: Portfolio,
+) {
+  const assignment = getPortfolioAssignment(assignments, portfolio.id)
+  if (!assignment) {
+    return []
+  }
+
+  return assignment.brandNames.length === 0
+    ? getPortfolioBrandNames(portfolio)
+    : assignment.brandNames
+}
+
+function setPortfolioAllBrands(
+  current: PortfolioAccessScope[],
+  portfolio: Portfolio,
+  checked: boolean,
+) {
+  const normalized = normalizeScopeAssignments(current)
+
+  if (checked) {
+    const nextAssignments = normalized.filter(
+      (assignment) => assignment.portfolioId !== portfolio.id,
+    )
+    return [...nextAssignments, { portfolioId: portfolio.id, brandNames: [] }]
+  }
+
+  return normalized.filter((assignment) => assignment.portfolioId !== portfolio.id)
+}
+
+function setBrandSelection(
+  current: PortfolioAccessScope[],
+  portfolio: Portfolio,
+  brandName: string,
+  checked: boolean,
+) {
+  const allBrandNames = getPortfolioBrandNames(portfolio)
+  const normalized = normalizeScopeAssignments(current)
+  const assignment = getPortfolioAssignment(normalized, portfolio.id)
+  const nextNames = new Set(
+    assignment?.brandNames.length === 0 ? allBrandNames : assignment?.brandNames ?? [],
+  )
+
+  if (checked) {
+    nextNames.add(brandName)
+  } else {
+    nextNames.delete(brandName)
+  }
+
+  const nextAssignments = normalized.filter(
+    (currentAssignment) => currentAssignment.portfolioId !== portfolio.id,
+  )
+
+  if (nextNames.size === 0) {
+    return nextAssignments
+  }
+
+  return [
+    ...nextAssignments,
+    {
+      portfolioId: portfolio.id,
+      brandNames:
+        nextNames.size === allBrandNames.length
+          ? []
+          : Array.from(nextNames).sort((left, right) => left.localeCompare(right)),
+    },
+  ]
+}
+
+function getDerivedNonAllScopeMode(
+  assignments: PortfolioAccessScope[],
+  portfolios: Portfolio[],
+) {
+  const normalized = normalizeScopeAssignments(assignments)
+  const hasPartialSelection = normalized.some((assignment) => {
+    const portfolio = portfolios.find((item) => item.id === assignment.portfolioId)
+    if (!portfolio || assignment.brandNames.length === 0) {
+      return false
+    }
+    return assignment.brandNames.length < portfolio.brands.length
+  })
+
+  return hasPartialSelection ? 'selected-brands' : 'selected-portfolios'
+}
+
+function getNormalizedScopeState(
+  draft: AccessDraft,
+  portfolios: Portfolio[],
+): { scopeMode: AccessScopeMode; scopeAssignments: PortfolioAccessScope[] } {
+  if (draft.roleMode === 'owner' || draft.roleMode === 'contributor') {
     return {
-      ...draft,
-      editorName: '',
       scopeMode: 'all-portfolios',
       scopeAssignments: [],
     }
   }
 
-  if (draft.roleMode === 'contributor') {
+  if (draft.scopeMode === 'all-portfolios') {
     return {
-      ...draft,
-      editorName: draft.editorName,
       scopeMode: 'all-portfolios',
       scopeAssignments: [],
     }
   }
+
+  const normalizedAssignments = normalizeScopeAssignments(draft.scopeAssignments)
+    .map((assignment) => {
+      const portfolio = portfolios.find((item) => item.id === assignment.portfolioId)
+      if (!portfolio) {
+        return null
+      }
+
+      const validBrands = assignment.brandNames.filter((brandName) =>
+        portfolio.brands.some((brand) => brand.name === brandName),
+      )
+
+      return {
+        portfolioId: assignment.portfolioId,
+        brandNames:
+          validBrands.length === portfolio.brands.length
+            ? []
+            : validBrands.sort((left, right) => left.localeCompare(right)),
+      }
+    })
+    .filter((assignment): assignment is PortfolioAccessScope => Boolean(assignment))
+
+  if (normalizedAssignments.length === 0) {
+    return {
+      scopeMode: 'selected-portfolios',
+      scopeAssignments: [],
+    }
+  }
+
+  const hasPartialSelection = normalizedAssignments.some(
+    (assignment) => assignment.brandNames.length > 0,
+  )
 
   return {
-    ...draft,
-    editorName: '',
-    scopeAssignments: normalizeScopeAssignments(draft.scopeAssignments),
+    scopeMode: hasPartialSelection ? 'selected-brands' : 'selected-portfolios',
+    scopeAssignments: normalizedAssignments,
   }
 }
 
@@ -170,15 +288,16 @@ function getEntryDraft(entry: WorkspaceAccessEntry): AccessDraft {
 function getValidationMessage(
   draft: AccessDraft,
   entries: WorkspaceAccessEntry[],
+  portfolios: Portfolio[],
   currentEmail?: string,
 ) {
   const normalizedValue = normalizeEmail(draft.email)
   if (!normalizedValue) {
-    return 'Enter a work email.'
+    return 'Enter an email.'
   }
 
   if (!isValidEmail(normalizedValue)) {
-    return 'Enter a valid work email.'
+    return 'Enter a valid email.'
   }
 
   const normalizedCurrentEmail = currentEmail ? normalizeEmail(currentEmail) : null
@@ -193,117 +312,43 @@ function getValidationMessage(
   }
 
   if (draft.roleMode === 'contributor' && !draft.editorName.trim()) {
-    return 'Choose a teammate profile.'
+    return 'Select a team member.'
   }
 
   if (draft.roleMode === 'manager' || draft.roleMode === 'viewer') {
+    const normalizedScope = getNormalizedScopeState(draft, portfolios)
     if (
-      draft.scopeMode === 'selected-portfolios' &&
-      normalizeScopeAssignments(draft.scopeAssignments).length === 0
+      normalizedScope.scopeMode !== 'all-portfolios' &&
+      normalizedScope.scopeAssignments.length === 0
     ) {
-      return 'Choose at least one portfolio.'
-    }
-
-    if (draft.scopeMode === 'selected-brands') {
-      const selectedBrands = normalizeScopeAssignments(draft.scopeAssignments).flatMap(
-        (assignment) => assignment.brandNames,
-      )
-      if (selectedBrands.length === 0) {
-        return 'Choose at least one brand.'
-      }
+      return 'Choose at least one portfolio or brand.'
     }
   }
 
   return null
 }
 
-function isReadyForSave(draft: AccessDraft) {
-  if (!normalizeEmail(draft.email)) {
-    return false
-  }
-
-  if (draft.roleMode === 'contributor') {
-    return Boolean(draft.editorName.trim())
-  }
-
-  if (draft.roleMode === 'manager' || draft.roleMode === 'viewer') {
-    if (draft.scopeMode === 'selected-portfolios') {
-      return normalizeScopeAssignments(draft.scopeAssignments).length > 0
-    }
-
-    if (draft.scopeMode === 'selected-brands') {
-      return normalizeScopeAssignments(draft.scopeAssignments).some(
-        (assignment) => assignment.brandNames.length > 0,
-      )
-    }
-  }
-
-  return true
+function isReadyForSave(
+  draft: AccessDraft,
+  entries: WorkspaceAccessEntry[],
+  portfolios: Portfolio[],
+  currentEmail?: string,
+) {
+  return getValidationMessage(draft, entries, portfolios, currentEmail) === null
 }
 
 function getAccessSummary(draft: AccessDraft, portfolios: Portfolio[]) {
+  const normalizedScope = getNormalizedScopeState(draft, portfolios)
+
   return getEffectiveAccessSummary(
     {
       roleMode: draft.roleMode,
-      editorName: draft.editorName || null,
-      scopeMode: draft.scopeMode,
-      scopeAssignments: normalizeScopeAssignments(draft.scopeAssignments),
+      editorName: draft.roleMode === 'contributor' ? draft.editorName || null : null,
+      scopeMode: normalizedScope.scopeMode,
+      scopeAssignments: normalizedScope.scopeAssignments,
     },
     portfolios,
   )
-}
-
-function toggleSelectedPortfolio(
-  current: PortfolioAccessScope[],
-  portfolioId: string,
-  checked: boolean,
-) {
-  const normalized = normalizeScopeAssignments(current)
-  if (checked) {
-    if (normalized.some((assignment) => assignment.portfolioId === portfolioId)) {
-      return normalized
-    }
-
-    return [...normalized, { portfolioId, brandNames: [] }]
-  }
-
-  return normalized.filter((assignment) => assignment.portfolioId !== portfolioId)
-}
-
-function toggleSelectedBrand(
-  current: PortfolioAccessScope[],
-  portfolioId: string,
-  brandName: string,
-  checked: boolean,
-) {
-  const nextAssignments = new Map(
-    normalizeScopeAssignments(current).map((assignment) => [
-      assignment.portfolioId,
-      new Set(assignment.brandNames),
-    ]),
-  )
-  const brandNames = nextAssignments.get(portfolioId) ?? new Set<string>()
-
-  if (checked) {
-    brandNames.add(brandName)
-    nextAssignments.set(portfolioId, brandNames)
-  } else {
-    brandNames.delete(brandName)
-    if (brandNames.size === 0) {
-      nextAssignments.delete(portfolioId)
-    } else {
-      nextAssignments.set(portfolioId, brandNames)
-    }
-  }
-
-  return Array.from(nextAssignments.entries()).map(([nextPortfolioId, names]) => ({
-    portfolioId: nextPortfolioId,
-    brandNames: Array.from(names).sort((left, right) => left.localeCompare(right)),
-  }))
-}
-
-function getAvatarInitial(email: string) {
-  return email.trim().charAt(0).toUpperCase() || '?'
 }
 
 function getBadgeTone(roleMode: RoleMode) {
@@ -319,48 +364,7 @@ function getBadgeTone(roleMode: RoleMode) {
   }
 }
 
-function AccessChoiceGroup({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: Array<{
-    value: string
-    label: string
-    description: string
-  }>
-  onChange: (value: string) => void
-}) {
-  return (
-    <div className="workspace-access-field">
-      <span className="workspace-access-field-label">{label}</span>
-      <div className="workspace-access-choice-list">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={`workspace-access-choice-card ${value === option.value ? 'is-selected' : ''}`}
-          >
-            <input
-              type="radio"
-              name={label}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-            />
-            <div>
-              <strong>{option.label}</strong>
-              <span>{option.description}</span>
-            </div>
-          </label>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function VisibilityScopeField({
+function ScopeTreeField({
   draft,
   portfolios,
   onChange,
@@ -373,113 +377,111 @@ function VisibilityScopeField({
     return null
   }
 
-  const normalizedAssignments = normalizeScopeAssignments(draft.scopeAssignments)
+  const allPortfoliosChecked = draft.scopeMode === 'all-portfolios'
+  const normalizedAssignments = allPortfoliosChecked
+    ? buildAllPortfolioAssignments(portfolios)
+    : normalizeScopeAssignments(draft.scopeAssignments)
 
   return (
     <div className="workspace-access-field">
-      <AccessChoiceGroup
-        label="Visibility scope"
-        value={draft.scopeMode}
-        options={VISIBILITY_SCOPE_OPTIONS.map((option) => ({
-          value: option.value,
-          label: option.label,
-          description: option.description,
-        }))}
-        onChange={(value) =>
-          onChange({
-            ...draft,
-            scopeMode: value as AccessScopeMode,
-            scopeAssignments: [],
-          })
-        }
-      />
+      <span className="workspace-access-field-label">Visibility</span>
+      <div className="workspace-scope-tree">
+        <label className="workspace-scope-tree-option is-root">
+          <input
+            type="checkbox"
+            checked={allPortfoliosChecked}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                scopeMode: event.target.checked
+                  ? 'all-portfolios'
+                  : getDerivedNonAllScopeMode(draft.scopeAssignments, portfolios),
+              })
+            }
+          />
+          <span>All portfolios</span>
+        </label>
 
-      {draft.scopeMode === 'selected-portfolios' ? (
-        <div className="workspace-access-subpicker">
-          <span className="workspace-access-subpicker-label">Choose portfolios</span>
-          <div className="scope-checkbox-grid">
-            {portfolios.map((portfolio) => {
-              const checked = normalizedAssignments.some(
-                (assignment) => assignment.portfolioId === portfolio.id,
-              )
-              return (
-                <label key={portfolio.id} className="scope-choice-card">
+        <div className="workspace-scope-tree-groups">
+          {portfolios.map((portfolio) => {
+            const fullPortfolioSelected =
+              allPortfoliosChecked || isPortfolioFullySelected(normalizedAssignments, portfolio)
+            const selectedBrandNames = getSelectedBrandNames(normalizedAssignments, portfolio)
+
+            return (
+              <div key={portfolio.id} className="workspace-scope-tree-portfolio">
+                <div className="workspace-scope-tree-heading">{portfolio.name}</div>
+                <label className="workspace-scope-tree-option">
                   <input
                     type="checkbox"
-                    checked={checked}
-                    onChange={(event) =>
+                    checked={fullPortfolioSelected}
+                    disabled={allPortfoliosChecked}
+                    onChange={(event) => {
+                      const nextAssignments = setPortfolioAllBrands(
+                        draft.scopeAssignments,
+                        portfolio,
+                        event.target.checked,
+                      )
+
                       onChange({
                         ...draft,
-                        scopeAssignments: toggleSelectedPortfolio(
-                          normalizedAssignments,
-                          portfolio.id,
-                          event.target.checked,
-                        ),
+                        scopeMode: getDerivedNonAllScopeMode(nextAssignments, portfolios),
+                        scopeAssignments: nextAssignments,
                       })
-                    }
+                    }}
                   />
-                  <span>{portfolio.name}</span>
+                  <span>All brands</span>
                 </label>
-              )
-            })}
-          </div>
-        </div>
-      ) : null}
 
-      {draft.scopeMode === 'selected-brands' ? (
-        <div className="workspace-access-subpicker">
-          <span className="workspace-access-subpicker-label">Choose brands</span>
-          <div className="scope-brand-groups">
-            {portfolios.map((portfolio) => {
-              const selectedBrands =
-                normalizedAssignments.find((assignment) => assignment.portfolioId === portfolio.id)
-                  ?.brandNames ?? []
+                <div className="workspace-scope-tree-brand-list">
+                  {portfolio.brands.map((brand) => (
+                    <label
+                      key={`${portfolio.id}-${brand.name}`}
+                      className="workspace-scope-tree-option is-child"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedBrandNames.includes(brand.name)}
+                        disabled={allPortfoliosChecked || fullPortfolioSelected}
+                        onChange={(event) => {
+                          const nextAssignments = setBrandSelection(
+                            draft.scopeAssignments,
+                            portfolio,
+                            brand.name,
+                            event.target.checked,
+                          )
 
-              return (
-                <div key={portfolio.id} className="scope-brand-group">
-                  <strong>{portfolio.name}</strong>
-                  <div className="scope-checkbox-grid">
-                    {portfolio.brands.map((brand) => (
-                      <label key={`${portfolio.id}-${brand.name}`} className="scope-choice-card">
-                        <input
-                          type="checkbox"
-                          checked={selectedBrands.includes(brand.name)}
-                          onChange={(event) =>
-                            onChange({
-                              ...draft,
-                              scopeAssignments: toggleSelectedBrand(
-                                normalizedAssignments,
-                                portfolio.id,
-                                brand.name,
-                                event.target.checked,
-                              ),
-                            })
-                          }
-                        />
-                        <span>{brand.name}</span>
-                      </label>
-                    ))}
-                  </div>
+                          onChange({
+                            ...draft,
+                            scopeMode: getDerivedNonAllScopeMode(nextAssignments, portfolios),
+                            scopeAssignments: nextAssignments,
+                          })
+                        }}
+                      />
+                      <span>{brand.name}</span>
+                    </label>
+                  ))}
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            )
+          })}
         </div>
-      ) : null}
-
-      <p className="field-hint">{getScopeDescription(draft.scopeMode)}</p>
+      </div>
+      <p className="field-hint">Products follow brand access automatically.</p>
     </div>
   )
 }
 
-function TeammateProfileField({
+function TeamMemberField({
   draft,
   editorOptions,
   onChange,
+  onOpenTeam,
 }: {
   draft: AccessDraft
   editorOptions: string[]
   onChange: (draft: AccessDraft) => void
+  onOpenTeam: () => void
 }) {
   if (draft.roleMode !== 'contributor') {
     return null
@@ -488,30 +490,35 @@ function TeammateProfileField({
   const hasTeammates = editorOptions.length > 0
 
   return (
-    <label className="workspace-access-field">
-      <span className="workspace-access-field-label">Teammate profile</span>
-      <select
-        aria-label={`Teammate profile for ${draft.email || 'new person'}`}
-        value={draft.editorName}
-        disabled={!hasTeammates}
-        onChange={(event) =>
-          onChange({
-            ...draft,
-            editorName: event.target.value,
-          })
-        }
-      >
-        <option value="">
-          {hasTeammates ? 'Choose teammate profile' : 'Add a teammate in People first'}
-        </option>
-        {editorOptions.map((editorName) => (
-          <option key={editorName} value={editorName}>
-            {editorName}
-          </option>
-        ))}
-      </select>
-      <p className="field-hint">Links this login to the right person on the board.</p>
-    </label>
+    <div className="workspace-access-field">
+      <span className="workspace-access-field-label">Team member</span>
+      {hasTeammates ? (
+        <>
+          <select
+            aria-label={`Team member for ${draft.email || 'new person'}`}
+            value={draft.editorName}
+            onChange={(event) =>
+              onChange({
+                ...draft,
+                editorName: event.target.value,
+              })
+            }
+          >
+            <option value="">Select team member</option>
+            {editorOptions.map((editorName) => (
+              <option key={editorName} value={editorName}>
+                {editorName}
+              </option>
+            ))}
+          </select>
+          <p className="field-hint">Connects this sign-in to a board identity.</p>
+        </>
+      ) : (
+        <button type="button" className="clear-link" onClick={onOpenTeam}>
+          No team members yet — add one in Team
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -534,6 +541,7 @@ function AccessDrawer({
   onStartRevoke,
   onCancelRevoke,
   onConfirmRevoke,
+  onOpenTeam,
 }: {
   isOpen: boolean
   isCreate: boolean
@@ -553,21 +561,23 @@ function AccessDrawer({
   onStartRevoke: () => void
   onCancelRevoke: () => void
   onConfirmRevoke: () => void
+  onOpenTeam: () => void
 }) {
   if (!draft) {
     return null
   }
 
-  const normalizedDraft = normalizeDraftForRole(draft)
-  const hasEmail = normalizeEmail(draft.email).length > 0
   const validationMessage = getValidationMessage(
-    normalizedDraft,
+    draft,
     entries,
+    portfolios,
     isCreate ? undefined : currentEmail ?? undefined,
   )
   const pendingKey = isCreate ? NEW_ENTRY_KEY : normalizeEmail(currentEmail ?? draft.email)
   const isPending = pendingEmail === pendingKey
-  const visibleError = saveAttempted ? errorMessage ?? validationMessage : errorMessage
+  const visibleError = errorMessage ?? (saveAttempted ? validationMessage : null)
+  const selectedLevelDescription =
+    ACCESS_LEVEL_OPTIONS.find((option) => option.value === draft.roleMode)?.description ?? ''
 
   return (
     <>
@@ -578,13 +588,7 @@ function AccessDrawer({
       />
       <aside className={`slide-panel ${isOpen ? 'is-open' : ''}`} aria-hidden={!isOpen}>
         <div className="slide-panel-header workspace-access-drawer-header">
-          <div className="slide-panel-header-main">
-            <span className="settings-intro-eyebrow">{isCreate ? 'Add person' : 'Edit access'}</span>
-            <h2>{isCreate ? 'Add person' : draft.email}</h2>
-            <p className="muted-copy">
-              {updatedAt ? `Last updated ${formatDateTime(updatedAt)}` : 'Set identity, access level, and scope.'}
-            </p>
-          </div>
+          <h2>{isCreate ? 'New person' : draft.email}</h2>
           <button
             type="button"
             className="close-icon-button"
@@ -603,7 +607,7 @@ function AccessDrawer({
           ) : null}
 
           <label className="workspace-access-field">
-            <span className="workspace-access-field-label">Work email</span>
+            <span className="workspace-access-field-label">Email</span>
             <input
               type="email"
               value={draft.email}
@@ -616,48 +620,43 @@ function AccessDrawer({
             />
           </label>
 
-          {hasEmail ? (
-            <AccessChoiceGroup
-              label="Access level"
+          {updatedAt ? (
+            <p className="workspace-access-drawer-meta">Updated {formatDateTime(updatedAt)}</p>
+          ) : null}
+
+          <label className="workspace-access-field">
+            <span className="workspace-access-field-label">Access level</span>
+            <select
+              aria-label={`Access level for ${draft.email || 'new person'}`}
               value={draft.roleMode}
-              options={ACCESS_LEVEL_OPTIONS.map((option) => ({
-                value: option.value,
-                label: getAccessLevelLabel(option.value),
-                description: option.description,
-              }))}
-              onChange={(value) =>
+              onChange={(event) =>
                 onDraftChange({
                   ...draft,
-                  roleMode: value as RoleMode,
-                  editorName: '',
-                  scopeMode: 'all-portfolios',
-                  scopeAssignments: [],
+                  roleMode: event.target.value as RoleMode,
                 })
               }
-            />
-          ) : null}
+            >
+              {ACCESS_LEVEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {getAccessLevelLabel(option.value)}
+                </option>
+              ))}
+            </select>
+            <p className="field-hint">{selectedLevelDescription}</p>
+          </label>
 
-          {hasEmail ? (
-            <VisibilityScopeField
-              draft={draft}
-              portfolios={portfolios}
-              onChange={onDraftChange}
-            />
-          ) : null}
+          <ScopeTreeField draft={draft} portfolios={portfolios} onChange={onDraftChange} />
 
-          {hasEmail ? (
-            <TeammateProfileField
-              draft={draft}
-              editorOptions={editorOptions}
-              onChange={onDraftChange}
-            />
-          ) : null}
+          <TeamMemberField
+            draft={draft}
+            editorOptions={editorOptions}
+            onChange={onDraftChange}
+            onOpenTeam={onOpenTeam}
+          />
 
-          {hasEmail ? (
-            <p className="muted-copy workspace-access-effective-copy">
-              {getAccessSummary(draft, portfolios)}
-            </p>
-          ) : null}
+          <p className="muted-copy workspace-access-effective-copy">
+            {getAccessSummary(draft, portfolios)}
+          </p>
 
           <div className="workspace-access-drawer-actions">
             {!isCreate ? (
@@ -667,13 +666,23 @@ function AccessDrawer({
                 disabled={isPending}
                 onClick={onStartRevoke}
               >
-                Revoke access
+                Remove access
               </button>
-            ) : <span />}
+            ) : (
+              <span />
+            )}
             <button
               type="button"
               className="ghost-button"
-              disabled={isPending || !isReadyForSave(draft)}
+              disabled={
+                isPending ||
+                !isReadyForSave(
+                  draft,
+                  entries,
+                  portfolios,
+                  isCreate ? undefined : currentEmail ?? undefined,
+                )
+              }
               onClick={onSave}
             >
               {isPending ? <ButtonSpinner /> : null}
@@ -683,14 +692,18 @@ function AccessDrawer({
 
           {revokeConfirming ? (
             <div className="workspace-access-confirm">
-              <strong>Remove {draft.email}?</strong>
-              <p>Their cards and teammate profile stay intact.</p>
+              <strong>Remove access for {draft.email}?</strong>
+              <p>Their cards and team profile are not affected.</p>
               <div className="workspace-access-confirm-actions">
                 <button type="button" className="ghost-button" onClick={onCancelRevoke}>
                   Cancel
                 </button>
-                <button type="button" className="ghost-button danger-outline" onClick={onConfirmRevoke}>
-                  Confirm revoke
+                <button
+                  type="button"
+                  className="ghost-button danger-outline"
+                  onClick={onConfirmRevoke}
+                >
+                  Remove access
                 </button>
               </div>
             </div>
@@ -708,31 +721,28 @@ export function WorkspaceAccessManager({
   status,
   errorMessage,
   pendingEmail,
+  headerUtilityContent,
+  onOpenTeam,
   onSave,
   onDelete,
 }: WorkspaceAccessManagerProps) {
   const [drafts, setDrafts] = useState<Record<string, AccessDraft>>({})
   const [newEntry, setNewEntry] = useState<AccessDraft>(() => createEmptyDraft())
   const [activeKey, setActiveKey] = useState<string | null>(null)
-  const [menuOpenKey, setMenuOpenKey] = useState<string | null>(null)
   const [saveAttempted, setSaveAttempted] = useState(false)
   const [drawerErrorMessage, setDrawerErrorMessage] = useState<string | null>(null)
   const [revokeConfirming, setRevokeConfirming] = useState(false)
-  const [infoExpanded, setInfoExpanded] = useState(getInitialInfoExpanded)
+  const [dismissedHelpOnce, setDismissedHelpOnce] = useState(getInitialHelpDismissed)
 
   useEffect(() => {
-    if (!hasBrowser()) {
+    if (!hasBrowser() || entries.length === 0) {
       return
     }
 
-    const hasSeenInfo = window.localStorage.getItem(ACCESS_INFO_SEEN_KEY) === 'true'
-    if (!hasSeenInfo) {
-      window.localStorage.setItem(ACCESS_INFO_SEEN_KEY, 'true')
-      if (!window.localStorage.getItem(ACCESS_INFO_COLLAPSED_KEY)) {
-        window.localStorage.setItem(ACCESS_INFO_COLLAPSED_KEY, 'true')
-      }
-    }
-  }, [])
+    window.localStorage.setItem(ACCESS_HELP_DISMISSED_KEY, 'true')
+  }, [entries.length])
+
+  const helpDismissed = dismissedHelpOnce || entries.length > 0
 
   const isCreate = activeKey === NEW_ENTRY_KEY
   const activeEntry = !isCreate ? entries.find((entry) => entry.email === activeKey) ?? null : null
@@ -742,18 +752,8 @@ export function WorkspaceAccessManager({
       ? drafts[activeEntry.email] ?? getEntryDraft(activeEntry)
       : null
 
-  function setDrawerExpanded(nextExpanded: boolean) {
-    setInfoExpanded(nextExpanded)
-    if (!hasBrowser()) {
-      return
-    }
-
-    window.localStorage.setItem(ACCESS_INFO_COLLAPSED_KEY, nextExpanded ? 'false' : 'true')
-  }
-
   function openDrawer(key: string) {
     setActiveKey(key)
-    setMenuOpenKey(null)
     setSaveAttempted(false)
     setDrawerErrorMessage(null)
     setRevokeConfirming(false)
@@ -793,24 +793,30 @@ export function WorkspaceAccessManager({
     setSaveAttempted(true)
     setDrawerErrorMessage(null)
 
-    const normalizedDraft = normalizeDraftForRole(activeDraft)
-    const currentEmail = isCreate ? undefined : activeEntry?.email
-    const validationMessage = getValidationMessage(normalizedDraft, entries, currentEmail)
+    const validationMessage = getValidationMessage(
+      activeDraft,
+      entries,
+      portfolios,
+      isCreate ? undefined : activeEntry?.email,
+    )
+
     if (validationMessage) {
       setDrawerErrorMessage(validationMessage)
       return
     }
 
+    const normalizedScope = getNormalizedScopeState(activeDraft, portfolios)
+
     try {
       await onSave({
-        email: normalizedDraft.email,
-        roleMode: normalizedDraft.roleMode,
+        email: normalizeEmail(activeDraft.email),
+        roleMode: activeDraft.roleMode,
         editorName:
-          normalizedDraft.roleMode === 'contributor'
-            ? normalizedDraft.editorName.trim() || null
+          activeDraft.roleMode === 'contributor'
+            ? activeDraft.editorName.trim() || null
             : null,
-        scopeMode: normalizedDraft.scopeMode,
-        scopeAssignments: normalizeScopeAssignments(normalizedDraft.scopeAssignments),
+        scopeMode: normalizedScope.scopeMode,
+        scopeAssignments: normalizedScope.scopeAssignments,
         previousEmail: activeEntry?.email,
       })
 
@@ -842,133 +848,95 @@ export function WorkspaceAccessManager({
       closeDrawer()
     } catch (error) {
       setDrawerErrorMessage(
-        error instanceof Error ? error.message : 'Access could not be revoked.',
+        error instanceof Error ? error.message : 'Access could not be removed.',
       )
     }
   }
 
   return (
-    <div className="settings-stack">
-      <div className="settings-block">
-        <div className="settings-block-header settings-inline-header">
-          <div className="settings-section-header">
-            <h3>Access</h3>
-            <p className="muted-copy">
-              Control who can sign in, what they can see, and how they interact with the board.
-            </p>
-          </div>
+    <div className="settings-block">
+      <div className="settings-block-header settings-page-toolbar">
+        <div className="settings-section-header">
+          <h2>Access</h2>
+          <p className="muted-copy">
+            Who can sign in, what they can see, and how that access works.
+          </p>
+        </div>
+        <div className="settings-page-toolbar-actions">
+          {headerUtilityContent}
           <button type="button" className="ghost-button" onClick={() => openDrawer(NEW_ENTRY_KEY)}>
             Add person
           </button>
         </div>
+      </div>
 
-        <div className="workspace-access-info-banner">
+      {!helpDismissed && entries.length === 0 ? (
+        <div className="workspace-access-help-banner">
+          <div>
+            <strong>How access works</strong>
+            <p>
+              Access level controls authority. Visibility controls portfolios and brands. Team
+              member connects contributor sign-ins to the right person on the board.
+            </p>
+          </div>
           <button
             type="button"
-            className="clear-link workspace-access-info-toggle"
-            onClick={() => setDrawerExpanded(!infoExpanded)}
+            className="clear-link"
+            onClick={() => {
+              if (hasBrowser()) {
+                window.localStorage.setItem(ACCESS_HELP_DISMISSED_KEY, 'true')
+              }
+              setDismissedHelpOnce(true)
+            }}
           >
-            {infoExpanded ? 'Hide' : 'Show'} how access works
+            Dismiss
           </button>
-          <strong>How access works</strong>
-          {infoExpanded ? (
-            <p>
-              Access level controls authority. Visibility scope controls portfolio and brand access.
-              Teammate profile links a contributor login to the right person on the board. Products
-              follow brand visibility automatically.
-            </p>
-          ) : null}
+        </div>
+      ) : null}
+
+      {status === 'loading' ? <p className="muted-copy">Loading…</p> : null}
+      {status === 'error' && errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
+
+      <div className="workspace-access-table">
+        <div className="workspace-access-table-head">
+          <span>Email</span>
+          <span>Access level</span>
+          <span>Visibility</span>
+          <span>Team member</span>
+          <span>Last updated</span>
+          <span />
         </div>
 
-        {status === 'loading' ? <p className="muted-copy">Loading access records...</p> : null}
-        {status === 'error' && errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
-
-        <div className="workspace-access-table">
-          <div className="workspace-access-table-head">
-            <span>Email</span>
-            <span>Access level</span>
-            <span>Scope</span>
-            <span>Teammate profile</span>
-            <span>Last updated</span>
-            <span />
+        {entries.length === 0 ? (
+          <div className="workspace-access-empty">
+            <strong>No one has access yet.</strong>
+            <p>Add the first person to enable sign-in.</p>
           </div>
+        ) : null}
 
-          {entries.length === 0 ? (
-            <div className="workspace-access-empty">
-              <strong>No access records yet</strong>
-              <p>Add the first person to open workspace login.</p>
-            </div>
-          ) : null}
-
-          {entries.map((entry) => {
-            const isPending = pendingEmail === normalizeEmail(entry.email)
-            return (
-              <div
-                key={entry.email}
-                className={`workspace-access-table-row ${activeKey === entry.email ? 'is-active' : ''}`}
-              >
-                <button
-                  type="button"
-                  className="workspace-access-row-button"
-                  onClick={() => openDrawer(entry.email)}
-                >
-                  <span className="workspace-access-identity">
-                    <span className="workspace-access-avatar">{getAvatarInitial(entry.email)}</span>
-                    <span className="workspace-access-email">{entry.email}</span>
-                  </span>
-                  <span className="workspace-access-row-cell">
-                    <span className={`access-level-badge is-${getBadgeTone(entry.roleMode)}`}>
-                      {getAccessLevelLabel(entry.roleMode)}
-                    </span>
-                  </span>
-                  <span className="workspace-access-row-cell workspace-access-row-muted">
-                    {getScopeLabel(entry, portfolios)}
-                  </span>
-                  <span className="workspace-access-row-cell workspace-access-row-muted">
-                    {entry.editorName ?? '—'}
-                  </span>
-                  <span className="workspace-access-row-cell workspace-access-row-muted">
-                    {entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}
-                  </span>
-                </button>
-                <div className="workspace-access-row-actions">
-                  <button
-                    type="button"
-                    className="workspace-access-menu-trigger"
-                    aria-label={`More actions for ${entry.email}`}
-                    disabled={isPending}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setMenuOpenKey((current) => (current === entry.email ? null : entry.email))
-                    }}
-                  >
-                    •••
-                  </button>
-                  {menuOpenKey === entry.email ? (
-                    <div className="workspace-access-menu">
-                      <button
-                        type="button"
-                        onClick={() => openDrawer(entry.email)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="is-danger"
-                        onClick={() => {
-                          openDrawer(entry.email)
-                          setRevokeConfirming(true)
-                        }}
-                      >
-                        Revoke access
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        {entries.map((entry) => (
+          <button
+            key={entry.email}
+            type="button"
+            className={`workspace-access-row-button ${
+              activeKey === entry.email ? 'is-active' : ''
+            }`}
+            onClick={() => openDrawer(entry.email)}
+          >
+            <span className="workspace-access-email">{entry.email}</span>
+            <span className="workspace-access-row-cell">
+              <span className={`access-level-badge is-${getBadgeTone(entry.roleMode)}`}>
+                {getAccessLevelLabel(entry.roleMode)}
+              </span>
+            </span>
+            <span className="workspace-access-row-muted">{getScopeLabel(entry, portfolios)}</span>
+            <span className="workspace-access-row-muted">{entry.editorName ?? 'No team member'}</span>
+            <span className="workspace-access-row-muted">
+              {entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}
+            </span>
+            <span className="workspace-access-row-chevron">›</span>
+          </button>
+        ))}
       </div>
 
       <AccessDrawer
@@ -993,6 +961,10 @@ export function WorkspaceAccessManager({
         onCancelRevoke={() => setRevokeConfirming(false)}
         onConfirmRevoke={() => {
           void handleConfirmRevoke()
+        }}
+        onOpenTeam={() => {
+          closeDrawer()
+          onOpenTeam()
         }}
       />
     </div>

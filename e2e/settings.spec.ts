@@ -53,18 +53,17 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
 
-  const amberWarningInput = page.getByLabel('Amber warning at days')
+  const amberWarningInput = page.getByLabel('Warning (amber) after days')
   await expect(amberWarningInput).toHaveValue('3')
   await amberWarningInput.fill('6')
-  await expect(page.getByText('Amber warning must stay lower than the red warning threshold.')).toBeVisible()
+  await expect(page.getByText('Amber must stay below red.')).toBeVisible()
   await expect(amberWarningInput).toHaveValue('3')
 
-  await page.getByRole('button', { name: 'Capacity' }).click()
-  const redMinInput = page.getByLabel('Red min %')
+  const redMinInput = page.getByLabel('Overloaded min (%)')
   await expect(redMinInput).toHaveValue('90')
   await redMinInput.fill('89')
   await expect(
-    page.getByText('Utilization thresholds must stay in order: green max < yellow max < red min.'),
+    page.getByText('Thresholds must be in ascending order: healthy < stretched < overloaded.'),
   ).toBeVisible()
   await expect(redMinInput).toHaveValue('90')
 
@@ -77,14 +76,15 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   )
   await expect(page.getByRole('button', { name: 'Test Connection' })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Integrations' }).click()
-  await page.getByLabel('Global Google Drive webhook').fill('https://example.com/global-webhook')
-  await expect(page.getByLabel('Global Google Drive webhook')).toHaveValue(
+  await page.getByRole('button', { name: 'General' }).click()
+  await page.getByLabel('Google Drive webhook (shared)').fill('https://example.com/global-webhook')
+  await expect(page.getByLabel('Google Drive webhook (shared)')).toHaveValue(
     'https://example.com/global-webhook',
   )
   await expect(page.getByRole('button', { name: 'Test', exact: true })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'People' }).click()
+  await page.getByRole('button', { name: 'Team' }).click()
+  await page.locator('.team-table-row').filter({ hasText: 'Naomi' }).click()
   await expect(page.getByLabel('Naomi role')).toHaveValue('Manager')
   await expect(page.getByLabel('Naomi works Mon')).toBeChecked()
   await expect(page.getByLabel('Naomi timezone')).toHaveValue(/.+/)
@@ -101,31 +101,29 @@ test('workspace access new entries default to manager and contributors require W
   await page.getByRole('button', { name: 'Add person' }).click()
 
   const accessDrawer = page.locator('.slide-panel.is-open')
-  const emailInput = accessDrawer.getByLabel('Work email')
+  const emailInput = accessDrawer.getByLabel('Email')
+  const levelSelect = accessDrawer.getByLabel(/Access level/)
   const addButton = accessDrawer.getByRole('button', { name: 'Add person' })
 
-  await expect(accessDrawer.getByRole('heading', { name: 'Add person' })).toBeVisible()
+  await expect(accessDrawer.getByRole('heading', { name: 'New person' })).toBeVisible()
   await expect(addButton).toBeDisabled()
 
   await emailInput.fill('contributor@example.com')
-  await expect(
-    accessDrawer.locator('.workspace-access-choice-card.is-selected').filter({ hasText: 'Manager' }),
-  ).toHaveCount(1)
+  await expect(levelSelect).toHaveValue('manager')
   await expect(addButton).toBeEnabled()
 
-  await accessDrawer
-    .locator('.workspace-access-choice-card')
-    .filter({ hasText: 'Contributor' })
-    .click()
+  await levelSelect.selectOption('contributor')
   await expect(addButton).toBeDisabled()
 
-  await accessDrawer.getByLabel('Teammate profile for contributor@example.com').selectOption({
+  await accessDrawer.getByLabel('Team member for contributor@example.com').selectOption({
     label: 'Daniel T',
   })
   await expect(addButton).toBeEnabled()
 
   await addButton.click()
-  await expect(page.locator('.workspace-access-table-row').filter({ hasText: 'contributor@example.com' })).toBeVisible()
+  await expect(
+    page.locator('.workspace-access-row-button').filter({ hasText: 'contributor@example.com' }),
+  ).toBeVisible()
 })
 
 test('settings can add and remove brands and team members', async ({ page }) => {
@@ -135,7 +133,7 @@ test('settings can add and remove brands and team members', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Portfolios' }).click()
-  await page.getByRole('button', { name: '+ Add Brand' }).click()
+  await page.getByRole('button', { name: 'Add brand' }).click()
 
   const newBrandRow = page.locator('.brand-row').last()
   await newBrandRow.locator('input').nth(0).fill('Plan Coverage Brand')
@@ -157,22 +155,20 @@ test('settings can add and remove brands and team members', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Plan Coverage Brand', exact: true })).toHaveCount(0)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'People' }).click()
-  await page.getByRole('button', { name: '+ Add teammate profile' }).click()
+  await page.getByRole('button', { name: 'Team' }).click()
+  await page.getByRole('button', { name: 'Add member' }).click()
 
-  await page.getByLabel('New Member team member name').fill('Plan Coverage Editor')
+  await page.getByLabel('Untitled member team member name').fill('Plan Coverage Editor')
   await expect(page.getByLabel('Plan Coverage Editor role')).toHaveValue('Editor')
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toBeVisible()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'People' }).click()
-  const savedMemberRow = page.locator('.team-row').filter({
-    has: page.locator('input[aria-label="Plan Coverage Editor team member name"]'),
-  })
-  await savedMemberRow.getByRole('button', { name: 'Delete' }).click()
-  await page.getByRole('button', { name: 'Delete member' }).click()
+  await page.getByRole('button', { name: 'Team' }).click()
+  await page.locator('.team-table-row').filter({ hasText: 'Plan Coverage Editor' }).click()
+  await page.getByRole('button', { name: 'Remove member' }).click()
+  await page.getByRole('button', { name: 'Remove member' }).nth(1).click()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toHaveCount(0)
@@ -183,15 +179,15 @@ test('data export and import round-trip restores saved board state', async ({ pa
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('button', { name: 'Portfolios' }).click()
-  await page.getByRole('button', { name: '+ Add Brand' }).click()
+  await page.getByRole('button', { name: 'Add brand' }).click()
 
   const brandRow = page.locator('.brand-row').last()
   await brandRow.locator('input').nth(0).fill('Roundtrip Brand')
   await brandRow.locator('input').nth(1).fill('RT')
 
-  await page.getByRole('button', { name: 'Data' }).click()
+  await page.getByRole('button', { name: 'General' }).click()
   const downloadPromise = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Export board data' }).click()
+  await page.getByRole('button', { name: 'Export data' }).click()
   const download = await downloadPromise
   const exportPath = testInfo.outputPath('creative-board-data.json')
   await download.saveAs(exportPath)
@@ -207,7 +203,7 @@ test('data export and import round-trip restores saved board state', async ({ pa
   await expect(page.getByRole('button', { name: 'Roundtrip Brand', exact: true })).toHaveCount(0)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Data' }).click()
+  await page.getByRole('button', { name: 'General' }).click()
   await expect(page.locator('input[type="file"]')).toHaveCount(1)
   await page.waitForTimeout(100)
   await page.locator('input[type="file"]').setInputFiles(exportPath)
@@ -227,7 +223,7 @@ test('importing corrupt JSON shows an error and keeps the current board state', 
   writeFileSync(invalidImportPath, '{"portfolios": [', 'utf8')
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Data' }).click()
+  await page.getByRole('button', { name: 'General' }).click()
   await expect(page.locator('input[type="file"]')).toHaveCount(1)
   await page.waitForTimeout(100)
   await page.locator('input[type="file"]').setInputFiles(invalidImportPath)

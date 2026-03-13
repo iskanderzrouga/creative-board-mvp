@@ -28,28 +28,27 @@ test('toasts stack and can be dismissed individually', async ({ page }) => {
   await openFreshLocalApp(page)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
 
-  await page.getByLabel('Amber warning at days').fill('6')
-  await expect(page.getByText('Amber warning must stay lower than the red warning threshold.')).toBeVisible()
+  await page.getByLabel('Warning (amber) after days').fill('6')
+  await expect(page.getByText('Amber must stay below red.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Capacity' }).click()
-  await page.getByLabel('Red min %').fill('89')
+  await page.getByLabel('Overloaded min (%)').fill('89')
   await expect(
-    page.getByText('Utilization thresholds must stay in order: green max < yellow max < red min.'),
+    page.getByText('Thresholds must be in ascending order: healthy < stretched < overloaded.'),
   ).toBeVisible()
 
   await expect(page.locator('.toast')).toHaveCount(2)
 
   const firstToast = page.locator('.toast').filter({
-    hasText: 'Amber warning must stay lower than the red warning threshold.',
+    hasText: 'Amber must stay below red.',
   })
   await firstToast.getByRole('button', { name: 'Dismiss notification' }).click()
 
   await expect(firstToast).toHaveCount(0)
   await expect(
     page.locator('.toast').filter({
-      hasText: 'Utilization thresholds must stay in order: green max < yellow max < red min.',
+      hasText: 'Thresholds must be in ascending order: healthy < stretched < overloaded.',
     }),
   ).toHaveCount(1)
 })

@@ -40,8 +40,8 @@ test('tablet layout stacks board columns and keeps detail and settings usable', 
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
-  await expect(page.getByLabel('Amber warning at days')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'People' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
+  await expect(page.getByLabel('Warning (amber) after days')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Team' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Access' })).toBeVisible()
 })

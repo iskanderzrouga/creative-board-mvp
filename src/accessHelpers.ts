@@ -146,6 +146,10 @@ export function getVisibleBrandNamesForPortfolio(
     return allBrandNames
   }
 
+  if (assignment.brandNames.length === 0) {
+    return allBrandNames
+  }
+
   const allowedBrands = new Set(assignment.brandNames)
   return portfolio.brands
     .map((brand) => brand.name)
@@ -219,6 +223,10 @@ export function getScopeLabel(
         return null
       }
 
+      if (assignment.brandNames.length === 0) {
+        return portfolio.name
+      }
+
       const brandLabels = assignment.brandNames.filter((brandName) =>
         portfolio.brands.some((brand) => brand.name === brandName),
       )
@@ -238,11 +246,11 @@ export function getEffectiveAccessSummary(
 ) {
   switch (access.roleMode) {
     case 'owner':
-      return 'Can see and manage all portfolios, brands, products, settings, people, and access.'
+      return 'Can see and manage everything across all portfolios.'
     case 'contributor':
       return access.editorName
         ? `Can work only on cards assigned to ${access.editorName}.`
-        : 'Needs a teammate profile before this person can work cards.'
+        : 'Needs a team member before this person can work cards.'
     case 'viewer': {
       const scopeLabel = getScopeLabel(access, portfolios)
       return scopeLabel === 'All portfolios'
@@ -252,7 +260,7 @@ export function getEffectiveAccessSummary(
     case 'manager': {
       const scopeLabel = getScopeLabel(access, portfolios)
       return scopeLabel === 'All portfolios'
-        ? 'Can manage cards, assignments, and people across all portfolios, brands, and products.'
+        ? 'Can manage cards, assignments, and people across all portfolios.'
         : `Can manage cards, assignments, and people in ${scopeLabel}.`
     }
   }

@@ -1290,7 +1290,7 @@ function App() {
     replaceState(nextState)
     setSelectedCard(null)
     setPendingAppConfirm(null)
-    showToast('Board reset to seed data', 'amber')
+    showToast('Board reset to defaults', 'amber')
   }
 
   function freshStartData() {
@@ -1597,7 +1597,6 @@ function App() {
             authEnabled={authEnabled}
             settingsTab={settingsTab}
             settingsPortfolioId={settingsPortfolioId}
-            importInputRef={importInputRef}
             headerUtilityContent={headerUtilityContent}
             workspaceAccessEntries={workspaceAccessEntries}
             workspaceAccessStatus={workspaceAccessStatus}
@@ -1620,6 +1619,8 @@ function App() {
           />
         ) : null}
       </div>
+
+      <input ref={importInputRef} type="file" accept="application/json" hidden />
 
       {quickCreateOpen && activePortfolioView ? (
         <QuickCreateModal
@@ -1682,7 +1683,7 @@ function App() {
 
       {pendingAppConfirm ? (
         <ConfirmDialog
-          title={pendingAppConfirm === 'reset-seed' ? 'Reset to seed data?' : 'Start fresh?'}
+          title={pendingAppConfirm === 'reset-seed' ? 'Reset to defaults?' : 'Start fresh?'}
           message={
             pendingAppConfirm === 'reset-seed' ? (
               <p>This restores the original demo workspace and removes your current changes.</p>

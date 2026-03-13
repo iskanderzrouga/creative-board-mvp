@@ -58,10 +58,7 @@ export const SETTING_TABS = [
   'portfolios',
   'team',
   'access',
-  'task-library',
-  'capacity',
-  'integrations',
-  'data',
+  'workflow',
 ] as const
 
 export type StageId = (typeof STAGES)[number]
@@ -548,12 +545,9 @@ export const ALL_PORTFOLIOS_ID = 'all-portfolios'
 export const SETTINGS_TAB_LABELS: Record<SettingTab, string> = {
   general: 'General',
   portfolios: 'Portfolios',
-  team: 'People',
+  team: 'Team',
   access: 'Access',
-  'task-library': 'Task library',
-  capacity: 'Capacity',
-  integrations: 'Integrations',
-  data: 'Data',
+  workflow: 'Workflow',
 }
 
 function roundToTenths(value: number) {
@@ -2193,7 +2187,7 @@ export function getTeamMemberRemovalBlocker(portfolio: Portfolio, memberIndex: n
     isManagerRole(member.role) &&
     portfolio.team.filter((item, index) => index !== memberIndex && isManagerRole(item.role)).length === 0
   ) {
-    return 'At least one manager is required.'
+    return 'Each portfolio needs at least one manager.'
   }
 
   const assignedCards = portfolio.cards.filter((card) => card.owner === member.name).length

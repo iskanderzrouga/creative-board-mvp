@@ -74,7 +74,7 @@ test('role switching keeps owner-only settings locked down while contributor foc
   await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
 
   await settingsNav.click()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'General' })).toBeVisible()
 
   await sidebarNav.getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()

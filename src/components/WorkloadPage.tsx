@@ -159,7 +159,7 @@ export function WorkloadPage({
         </div>
         {workload.rows.length === 0 ? (
           <div className="dashboard-placeholder">
-            Add teammate profiles in People to see workload
+            Add team members in Team to see workload
           </div>
         ) : (
           <div className="workload-grid">

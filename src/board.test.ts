@@ -199,7 +199,9 @@ describe('board integrity helpers', () => {
     const managerIndex = portfolio.team.findIndex((member) => member.role === 'Manager')
 
     expect(managerIndex).toBeGreaterThanOrEqual(0)
-    expect(getTeamMemberRemovalBlocker(portfolio, managerIndex)).toBe('At least one manager is required.')
+    expect(getTeamMemberRemovalBlocker(portfolio, managerIndex)).toBe(
+      'Each portfolio needs at least one manager.',
+    )
     expect(removeTeamMemberFromPortfolio(portfolio, managerIndex)).toBe(portfolio)
   })
 
