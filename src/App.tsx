@@ -21,7 +21,6 @@ import {
   getAllowedPageForRole,
   getCurrentPage,
   getDefaultBackwardMoveForm,
-  getRoleActorName,
   getRoleFromWorkspaceAccess,
   getSearchCountLabel,
   isLikelyEmail,
@@ -123,6 +122,7 @@ interface PendingDeleteCard {
 type PendingAppConfirm = 'reset-seed' | 'clear-all'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
+const CARD_PANEL_CLOSE_DELAY_MS = 240
 
 function App() {
   const authEnabled = isSupabaseConfigured()
@@ -163,6 +163,7 @@ function App() {
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
   const [pendingAppConfirm, setPendingAppConfirm] = useState<PendingAppConfirm | null>(null)
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false)
+  const [isClosingCardPanel, setIsClosingCardPanel] = useState(false)
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     if (typeof window === 'undefined') {
       return false
@@ -176,6 +177,7 @@ function App() {
   const localFallbackStateRef = useRef(state)
   const remoteHydratedRef = useRef(!authEnabled)
   const remoteSaveTimerRef = useRef<number | null>(null)
+  const cardPanelCloseTimerRef = useRef<number | null>(null)
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
 
@@ -335,29 +337,83 @@ function App() {
             editorId: state.activeRole.editorId,
           }
         : null
-  const headerUtilityContent =
-    authStatus === 'signed-in' && authSession ? (
-      <div className="session-toolbar">
-        <SyncStatusPill syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} />
-        <span className="session-email">{authSession.email}</span>
-        <button
-          type="button"
-          className="ghost-button shortcut-button"
-          aria-label="Open keyboard shortcuts"
-          onClick={() => setKeyboardShortcutsOpen(true)}
-        >
-          ?
-        </button>
-        <button
-          type="button"
-          className="ghost-button"
-          disabled={signOutPending}
-          onClick={handleSignOut}
-        >
-          {signOutPending ? 'Signing out...' : 'Sign out'}
-        </button>
+  const userDisplayName = authEnabled
+    ? workspaceAccess?.editorName || authSession?.email || 'Workspace user'
+    : 'Local User'
+  const userSecondaryLabel = authEnabled
+    ? authSession?.email ?? workspaceAccess?.email ?? null
+    : 'Local mode'
+  const localModeBanner = !authEnabled ? (
+    <section className="local-mode-banner" role="status" aria-live="polite">
+      <div className="local-mode-copy">
+        <strong>Running in local mode.</strong>
+        <span>Configure Supabase to enable team login.</span>
       </div>
-    ) : null
+      <div className="local-mode-controls">
+        <label className="local-mode-field">
+          <span>Local role</span>
+          <select
+            aria-label="Local demo role"
+            value={state.activeRole.mode}
+            onChange={(event) =>
+              setRole({
+                mode: event.target.value as ActiveRole['mode'],
+                editorId:
+                  event.target.value === 'editor'
+                    ? editorOptions[0]?.id ?? state.activeRole.editorId
+                    : state.activeRole.editorId,
+              })
+            }
+          >
+            <option value="manager">Manager</option>
+            <option value="editor">Editor</option>
+            <option value="observer">Observer</option>
+          </select>
+        </label>
+
+        {state.activeRole.mode === 'editor' ? (
+          <label className="local-mode-field">
+            <span>Editor lane</span>
+            <select
+              aria-label="Local demo editor lane"
+              value={state.activeRole.editorId ?? editorOptions[0]?.id ?? ''}
+              onChange={(event) =>
+                setRole({
+                  mode: 'editor',
+                  editorId: event.target.value || null,
+                })
+              }
+            >
+              {editorOptions.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+    </section>
+  ) : null
+
+  const headerUtilityContent = (
+    <div className="session-toolbar">
+      {authEnabled && authStatus === 'signed-in' && authSession ? (
+        <SyncStatusPill syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} />
+      ) : null}
+      {authEnabled && authStatus === 'signed-in' && authSession ? (
+        <span className="session-email">{authSession.email}</span>
+      ) : null}
+      <button
+        type="button"
+        className="ghost-button shortcut-button"
+        aria-label="Open keyboard shortcuts"
+        onClick={() => setKeyboardShortcutsOpen(true)}
+      >
+        ?
+      </button>
+    </div>
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -453,8 +509,21 @@ function App() {
         window.clearTimeout(timerId)
       })
       toastTimerIdsRef.current = {}
+      if (cardPanelCloseTimerRef.current !== null) {
+        window.clearTimeout(cardPanelCloseTimerRef.current)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (selectedCard) {
+      setIsClosingCardPanel(false)
+      if (cardPanelCloseTimerRef.current !== null) {
+        window.clearTimeout(cardPanelCloseTimerRef.current)
+        cardPanelCloseTimerRef.current = null
+      }
+    }
+  }, [selectedCard])
 
   function dismissToast(id: number) {
     const timerId = toastTimerIdsRef.current[id]
@@ -598,7 +667,27 @@ function App() {
     }
   }
 
+  function getActorName(portfolio: Portfolio | null) {
+    if (!authEnabled) {
+      return 'Local User'
+    }
+
+    if (workspaceAccess?.editorName) {
+      return workspaceAccess.editorName
+    }
+
+    if (authSession?.email) {
+      return authSession.email
+    }
+
+    return portfolio?.team.find((member) => member.id === state.activeRole.editorId)?.name ?? 'Workspace user'
+  }
+
   function setRole(nextRole: ActiveRole) {
+    if (lockedRole && nextRole.mode !== lockedRole.mode) {
+      return
+    }
+
     let resolvedEditorId = nextRole.editorId
     if (nextRole.mode === 'editor' && activePortfolio) {
       const nextEditor =
@@ -636,7 +725,7 @@ function App() {
       return
     }
 
-    const actor = getRoleActorName(state.activeRole, activePortfolio)
+    const actor = getActorName(activePortfolio)
     let card: Card
 
     try {
@@ -671,14 +760,32 @@ function App() {
   }
 
   function openCard(portfolioId: string, cardId: string) {
+    if (cardPanelCloseTimerRef.current !== null) {
+      window.clearTimeout(cardPanelCloseTimerRef.current)
+      cardPanelCloseTimerRef.current = null
+    }
+    setIsClosingCardPanel(false)
     setSelectedCard({ portfolioId, cardId })
+  }
+
+  function requestCloseSelectedCard() {
+    if (cardPanelCloseTimerRef.current !== null) {
+      window.clearTimeout(cardPanelCloseTimerRef.current)
+    }
+
+    setIsClosingCardPanel(true)
+    cardPanelCloseTimerRef.current = window.setTimeout(() => {
+      setSelectedCard(null)
+      setIsClosingCardPanel(false)
+      cardPanelCloseTimerRef.current = null
+    }, CARD_PANEL_CLOSE_DELAY_MS)
   }
 
   function saveOpenCard(updates: Partial<Card>) {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
-    const actor = getRoleActorName(state.activeRole, activeSelectedPortfolio)
+    const actor = getActorName(activeSelectedPortfolio)
     updatePortfolio(activeSelectedPortfolio.id, (portfolio) =>
       applyCardUpdates(
         portfolio,
@@ -743,7 +850,7 @@ function App() {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
-    const author = getRoleActorName(state.activeRole, activeSelectedPortfolio)
+    const author = getActorName(activeSelectedPortfolio)
     updatePortfolio(activeSelectedPortfolio.id, (portfolio) => ({
       ...portfolio,
       cards: portfolio.cards.map((card) =>
@@ -900,7 +1007,7 @@ function App() {
     if (!portfolio) {
       return
     }
-    const actor = getRoleActorName(state.activeRole, portfolio)
+    const actor = getActorName(portfolio)
     const card = portfolio.cards.find((item) => item.id === cardId)
     if (!card) {
       return
@@ -1215,19 +1322,20 @@ function App() {
           portfolio={activePortfolio}
           portfolios={state.portfolios}
           role={state.activeRole}
-          lockedRole={lockedRole}
-          editorOptions={editorOptions}
-          editorMenuOpen={editorMenuOpen}
+          userName={userDisplayName}
+          userSecondaryLabel={userSecondaryLabel}
+          signOutPending={signOutPending}
           attention={attention}
           onTogglePinned={() => setSidebarPinned((current) => !current)}
           onPortfolioChange={switchToPortfolio}
           onPageChange={handleSidebarPageChange}
-          onRoleChange={setRole}
-          onToggleEditorMenu={() => setEditorMenuOpen((current) => !current)}
+          onSignOut={authEnabled ? handleSignOut : undefined}
         />
       </div>
 
       <div className="main-shell">
+        {localModeBanner}
+
         {currentPage === 'board' && !activePortfolio ? (
           <div className="page-shell">
             <PageHeader title={state.settings.general.appName} rightContent={headerUtilityContent} />
@@ -1351,6 +1459,7 @@ function App() {
         {currentPage === 'settings' ? (
           <SettingsPage
             state={state}
+            authEnabled={authEnabled}
             settingsTab={settingsTab}
             settingsPortfolioId={settingsPortfolioId}
             importInputRef={importInputRef}
@@ -1363,6 +1472,9 @@ function App() {
             onSettingsPortfolioChange={setSettingsPortfolioId}
             onBackToBoard={() => setPage('board')}
             onStateChange={updateState}
+            localRole={state.activeRole}
+            localEditorOptions={editorOptions}
+            onLocalRoleChange={setRole}
             onExportData={exportData}
             onImportClick={() => importInputRef.current?.click()}
             onResetData={resetToSeed}
@@ -1422,8 +1534,9 @@ function App() {
           viewerMemberRole={viewerContext.memberRole}
           copyState={copyState}
           isCreatingDriveFolder={creatingDriveCardId === selectedCardData.id}
+          isOpen={!isClosingCardPanel}
           nowMs={nowMs}
-          onClose={() => setSelectedCard(null)}
+          onClose={requestCloseSelectedCard}
           onCopy={handleCopy}
           onSave={saveOpenCard}
           onAddComment={addCommentToCard}

@@ -6,6 +6,7 @@ import {
   type QuickCreateInput,
 } from '../board'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { XIcon } from './icons/AppIcons'
 
 interface QuickCreateModalProps {
   portfolio: Portfolio
@@ -38,16 +39,16 @@ export function QuickCreateModal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-      >
+        >
         <div className="quick-create-head">
-          <strong id={titleId}>New Card</strong>
+          <h2 id={titleId}>New Card</h2>
           <button
             type="button"
             className="close-icon-button"
             aria-label="Close new card dialog"
             onClick={onClose}
           >
-            ×
+            <XIcon />
           </button>
         </div>
 

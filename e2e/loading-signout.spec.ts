@@ -33,6 +33,7 @@ test('authenticated loading shell appears before the shared board and sign out r
   await expect(page.getByText('team@example.com')).toBeVisible()
 
   await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
+  await page.getByRole('button', { name: 'Expand sidebar' }).click()
   await page.getByRole('button', { name: 'Sign out' }).click()
 
   await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()

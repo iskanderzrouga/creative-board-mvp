@@ -1,5 +1,6 @@
 import { useId, useRef, type ReactNode } from 'react'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { XIcon } from './icons/AppIcons'
 
 interface ConfirmDialogProps {
   title: string
@@ -41,14 +42,14 @@ export function ConfirmDialog({
         tabIndex={-1}
       >
         <div className="quick-create-head">
-          <strong id={titleId}>{title}</strong>
+          <h2 id={titleId}>{title}</h2>
           <button
             type="button"
             className="close-icon-button"
             aria-label="Close confirmation dialog"
             onClick={onCancel}
           >
-            ×
+            <XIcon />
           </button>
         </div>
 

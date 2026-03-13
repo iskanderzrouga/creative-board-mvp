@@ -88,6 +88,7 @@ export function RevisionReasonLibraryEditor({
           >
             <div className="settings-row revision-reason-row">
               <input
+                aria-label={`Revision reason name for ${reason.name}`}
                 value={reason.name}
                 disabled={reason.locked}
                 onChange={(event) =>
@@ -100,6 +101,7 @@ export function RevisionReasonLibraryEditor({
                 type="number"
                 min={1}
                 step={0.5}
+                aria-label={`Revision reason hours for ${reason.name}`}
                 value={reason.estimatedHours}
                 onChange={(event) =>
                   onRevisionReasonChange((current) =>

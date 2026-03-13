@@ -29,6 +29,7 @@ import {
   type RoleMode,
   type TaskType,
 } from '../board'
+import { BlockedIcon, XIcon } from './icons/AppIcons'
 
 interface CopyState {
   key: string
@@ -44,6 +45,7 @@ interface CardDetailPanelProps {
   viewerMemberRole: string | null
   copyState: CopyState | null
   isCreatingDriveFolder: boolean
+  isOpen: boolean
   nowMs: number
   onClose: () => void
   onCopy: (key: string, value: string) => void
@@ -55,10 +57,12 @@ interface CardDetailPanelProps {
 
 const COMMENT_PREVIEW_COUNT = 10
 const ACTIVITY_PREVIEW_COUNT = 5
+const COMMENT_MAX_LENGTH = 2000
 const CARD_DETAIL_SECTIONS = [
   { id: 'details', label: 'Details' },
   { id: 'naming', label: 'Naming' },
   { id: 'metadata', label: 'Metadata' },
+  { id: 'drive', label: 'Drive' },
   { id: 'brief', label: 'Brief' },
   { id: 'links', label: 'Links' },
   { id: 'comments', label: 'Comments' },
@@ -141,6 +145,7 @@ export function CardDetailPanel({
   viewerMemberRole,
   copyState,
   isCreatingDriveFolder,
+  isOpen,
   nowMs,
   onClose,
   onCopy,
@@ -155,6 +160,7 @@ export function CardDetailPanel({
     details: null,
     naming: null,
     metadata: null,
+    drive: null,
     brief: null,
     links: null,
     comments: null,
@@ -190,6 +196,7 @@ export function CardDetailPanel({
   const visibleActivity = showAllActivity
     ? card.activityLog
     : card.activityLog.slice(0, ACTIVITY_PREVIEW_COUNT)
+  const commentCharactersRemaining = COMMENT_MAX_LENGTH - commentDraft.length
 
   useModalAccessibility(panelRef, true)
 
@@ -268,10 +275,14 @@ export function CardDetailPanel({
 
   return (
     <>
-      <div className="panel-overlay" aria-hidden="true" onClick={onClose} />
+      <div
+        className={`panel-overlay ${isOpen ? 'is-visible' : ''}`}
+        aria-hidden="true"
+        onClick={onClose}
+      />
       <aside
         ref={panelRef}
-        className="slide-panel"
+        className={`slide-panel ${isOpen ? 'is-open' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -316,12 +327,30 @@ export function CardDetailPanel({
               <span className={`funnel-pill funnel-${card.funnelStage.toLowerCase().replace(/\s+/g, '-')}`}>
                 {card.funnelStage}
               </span>
-              {card.blocked ? <span className="blocked-badge">🚫 Blocked</span> : null}
+              {card.blocked ? (
+                <span className="blocked-badge">
+                  <BlockedIcon />
+                  Blocked
+                </span>
+              ) : null}
               {card.archivedAt ? <span className="archived-badge">Archived</span> : null}
             </div>
           </div>
 
           <div className="panel-header-actions">
+            {canManage ? (
+              <button
+                type="button"
+                className={`ghost-button archive-toggle-button ${card.archivedAt ? 'is-active' : ''}`}
+                onClick={() =>
+                  onSave({
+                    archivedAt: card.archivedAt ? null : new Date().toISOString(),
+                  })
+                }
+              >
+                {card.archivedAt ? 'Unarchive' : 'Archive'}
+              </button>
+            ) : null}
             {canManage ? (
               <button type="button" className="ghost-button danger-outline" onClick={onRequestDelete}>
                 Delete
@@ -333,7 +362,7 @@ export function CardDetailPanel({
               aria-label="Close card detail panel"
               onClick={onClose}
             >
-              ×
+              <XIcon />
             </button>
           </div>
         </div>
@@ -359,9 +388,9 @@ export function CardDetailPanel({
           }}
           className="panel-section"
         >
+          <div className="section-rule-title">Details</div>
           <div className="block-toggle-row">
             <div>
-              <span className="section-rule-title">Blocked</span>
               {card.blocked ? (
                 <p className="muted-copy">{`Reason: ${card.blocked.reason}`}</p>
               ) : (
@@ -387,9 +416,6 @@ export function CardDetailPanel({
               </div>
             ) : null}
           </div>
-        </section>
-
-        <section className="panel-section">
           <div className="stage-dot-row">
             {STAGES.map((stage, index) => {
               const currentStageIndex = STAGES.indexOf(card.stage)
@@ -442,7 +468,7 @@ export function CardDetailPanel({
           }}
           className="panel-section"
         >
-          <div className="panel-section-title">Naming</div>
+          <div className="section-rule-title">Naming</div>
           <div className="copy-field">
             <div>
               <label>Sheet Name</label>
@@ -477,260 +503,274 @@ export function CardDetailPanel({
           }}
           className="panel-section"
         >
-          <div className="panel-section-title">Metadata</div>
-          <div className="metadata-grid">
-            <label>
-              <span>Brand</span>
-              {canManage ? (
-                <select value={card.brand} onChange={(event) => onSave({ brand: event.target.value })}>
-                  {portfolio.brands.map((brand) => (
-                    <option key={brand.name} value={brand.name}>
-                      {brand.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <strong>{card.brand}</strong>
-              )}
-            </label>
-            <label>
-              <span>Product</span>
-              {canManage ? (
-                <select value={card.product} onChange={(event) => onSave({ product: event.target.value })}>
-                  {(getBrandByName(portfolio, card.brand)?.products ?? []).map((product) => (
-                    <option key={product} value={product}>
-                      {product}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <strong>{card.product || '—'}</strong>
-              )}
-            </label>
-            <label>
-              <span>Platform</span>
-              {canManage ? (
-                <select
-                  value={card.platform}
-                  onChange={(event) => onSave({ platform: event.target.value as Card['platform'] })}
-                >
-                  {['Meta', 'AppLovin', 'TikTok', 'Other'].map((platform) => (
-                    <option key={platform} value={platform}>
-                      {platform}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <strong>{card.platform}</strong>
-              )}
-            </label>
-            <label>
-              <span>Task Type</span>
-              {canManage ? (
-                <select value={card.taskTypeId} onChange={(event) => handleTaskTypeChange(event.target.value)}>
-                  {getTaskTypeGroups(settings).map((group) => (
-                    <optgroup key={group.category} label={group.category}>
-                      {group.items.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {`${option.icon} ${option.name}`}
+          <div className="section-rule-title">Metadata</div>
+          <div className="metadata-groups">
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Classification</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Brand</span>
+                  {canManage ? (
+                    <select value={card.brand} onChange={(event) => onSave({ brand: event.target.value })}>
+                      {portfolio.brands.map((brand) => (
+                        <option key={brand.name} value={brand.name}>
+                          {brand.name}
                         </option>
                       ))}
-                    </optgroup>
-                  ))}
-                </select>
-              ) : (
-                <strong>{taskType.name}</strong>
-              )}
-            </label>
-            <label>
-              <span>Original Estimate</span>
-              {canManage ? (
-                <input
-                  type="number"
-                  min={1}
-                  value={card.estimatedHours}
-                  onChange={(event) => onSave({ estimatedHours: Number(event.target.value) || 1 })}
-                />
-              ) : (
-                <strong>{formatHours(card.estimatedHours)}</strong>
-              )}
-            </label>
-            <label>
-              <span>Revision Estimate</span>
-              {canManage && card.revisionEstimatedHours !== null ? (
-                <div className="inline-hours-field">
-                  <input
-                    type="number"
-                    min={1}
-                    step={0.5}
-                    value={card.revisionEstimatedHours}
-                    onChange={(event) =>
-                      onSave({
-                        revisionEstimatedHours: event.target.value ? Number(event.target.value) : null,
-                      })
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="clear-link"
-                    onClick={() => onSave({ revisionEstimatedHours: null })}
-                  >
-                    Clear
-                  </button>
-                </div>
-              ) : (
-                <strong>{card.revisionEstimatedHours !== null ? formatHours(card.revisionEstimatedHours) : '—'}</strong>
-              )}
-            </label>
-            <label>
-              <span>Current Scheduling Estimate</span>
-              <strong>{formatHours(getCardScheduledHours(card))}</strong>
-            </label>
-            <label>
-              <span>Funnel Stage</span>
-              {canManage ? (
-                <select
-                  value={card.funnelStage}
-                  onChange={(event) => onSave({ funnelStage: event.target.value as Card['funnelStage'] })}
-                >
-                  {['Cold', 'Warm', 'Promo', 'Promo Evergreen'].map((stage) => (
-                    <option key={stage} value={stage}>
-                      {stage}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <strong>{card.funnelStage}</strong>
-              )}
-            </label>
-            <label>
-              <span>Hook</span>
-              {canEditOwnedContent ? (
-                <input
-                  value={hookDraft}
-                  onChange={(event) => setHookDraft(event.target.value)}
-                  onBlur={() => commitTextDraft('hook', hookDraft)}
-                />
-              ) : (
-                <strong>{card.hook || '—'}</strong>
-              )}
-            </label>
-            <label>
-              <span>Angle</span>
-              {canEditOwnedContent ? (
-                <input
-                  value={angleDraft}
-                  onChange={(event) => setAngleDraft(event.target.value)}
-                  onBlur={() => commitTextDraft('angle', angleDraft)}
-                />
-              ) : (
-                <strong>{card.angle || '—'}</strong>
-              )}
-            </label>
-            <label>
-              <span>Audience</span>
-              {canEditOwnedContent ? (
-                <input
-                  value={audienceDraft}
-                  onChange={(event) => setAudienceDraft(event.target.value)}
-                  onBlur={() => commitTextDraft('audience', audienceDraft)}
-                />
-              ) : (
-                <strong>{card.audience || '—'}</strong>
-              )}
-            </label>
-            <label>
-              <span>Assigned to</span>
-              {canManage ? (
-                <select value={card.owner ?? ''} onChange={(event) => onSave({ owner: event.target.value || null })}>
-                  {canClearOwner ? <option value="">Unassigned</option> : null}
-                  {getEditorOptions(portfolio).map((member) => (
-                    <option key={member.id} value={member.name}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <strong>{card.owner ?? 'Unassigned'}</strong>
-              )}
-            </label>
-            <label>
-              <span>Due Date</span>
-              {canManage ? (
-                <input
-                  type="date"
-                  value={card.dueDate ?? ''}
-                  onChange={(event) => onSave({ dueDate: event.target.value || null })}
-                />
-              ) : (
-                <strong
-                  className={
-                    dueStatus === 'overdue'
-                      ? 'is-danger-text'
-                      : dueStatus === 'soon'
-                        ? 'is-warning-text'
-                        : ''
-                  }
-                >
-                  {card.dueDate ? formatDateShort(card.dueDate) : '—'}
-                </strong>
-              )}
-            </label>
-            <label>
-              <span>Estimated Completion</span>
-              <strong>
-                {formatEstimatedCompletionLabel(
-                  completionForecast.completionDate,
-                  completionForecast.estimatedDays,
-                )}
-              </strong>
-            </label>
-            <label>
-              <span>Date Created</span>
-              <strong>{formatDateLong(card.dateCreated)}</strong>
-            </label>
-            <label>
-              <span>Date Assigned</span>
-              <strong>{formatDateLong(card.dateAssigned)}</strong>
-            </label>
-            <label>
-              <span>Days Since Briefed</span>
-              <strong>{formatDaysSinceBriefedLabel(daysSinceBriefed)}</strong>
-            </label>
-            <label>
-              <span>Revisions</span>
-              <strong>{getRevisionCount(card)}</strong>
-            </label>
+                    </select>
+                  ) : (
+                    <strong>{card.brand}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Product</span>
+                  {canManage ? (
+                    <select value={card.product} onChange={(event) => onSave({ product: event.target.value })}>
+                      {(getBrandByName(portfolio, card.brand)?.products ?? []).map((product) => (
+                        <option key={product} value={product}>
+                          {product}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>{card.product || '—'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Platform</span>
+                  {canManage ? (
+                    <select
+                      value={card.platform}
+                      onChange={(event) => onSave({ platform: event.target.value as Card['platform'] })}
+                    >
+                      {['Meta', 'AppLovin', 'TikTok', 'Other'].map((platform) => (
+                        <option key={platform} value={platform}>
+                          {platform}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>{card.platform}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Task Type</span>
+                  {canManage ? (
+                    <select value={card.taskTypeId} onChange={(event) => handleTaskTypeChange(event.target.value)}>
+                      {getTaskTypeGroups(settings).map((group) => (
+                        <optgroup key={group.category} label={group.category}>
+                          {group.items.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {`${option.icon} ${option.name}`}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>{taskType.name}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Funnel Stage</span>
+                  {canManage ? (
+                    <select
+                      value={card.funnelStage}
+                      onChange={(event) => onSave({ funnelStage: event.target.value as Card['funnelStage'] })}
+                    >
+                      {['Cold', 'Warm', 'Promo', 'Promo Evergreen'].map((stage) => (
+                        <option key={stage} value={stage}>
+                          {stage}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>{card.funnelStage}</strong>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Schedule</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Due Date</span>
+                  {canManage ? (
+                    <input
+                      type="date"
+                      value={card.dueDate ?? ''}
+                      onChange={(event) => onSave({ dueDate: event.target.value || null })}
+                    />
+                  ) : (
+                    <strong
+                      className={
+                        dueStatus === 'overdue'
+                          ? 'is-danger-text'
+                          : dueStatus === 'soon'
+                            ? 'is-warning-text'
+                            : ''
+                      }
+                    >
+                      {card.dueDate ? formatDateShort(card.dueDate) : '—'}
+                    </strong>
+                  )}
+                </label>
+                <label>
+                  <span>Estimated Completion</span>
+                  <strong>
+                    {formatEstimatedCompletionLabel(
+                      completionForecast.completionDate,
+                      completionForecast.estimatedDays,
+                    )}
+                  </strong>
+                </label>
+                <label>
+                  <span>Date Created</span>
+                  <strong>{formatDateLong(card.dateCreated)}</strong>
+                </label>
+                <label>
+                  <span>Date Assigned</span>
+                  <strong>{formatDateLong(card.dateAssigned)}</strong>
+                </label>
+                <label>
+                  <span>Days Since Briefed</span>
+                  <strong>{formatDaysSinceBriefedLabel(daysSinceBriefed)}</strong>
+                </label>
+              </div>
+            </div>
+
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Estimates</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Original Estimate</span>
+                  {canManage ? (
+                    <input
+                      type="number"
+                      min={1}
+                      value={card.estimatedHours}
+                      onChange={(event) => onSave({ estimatedHours: Number(event.target.value) || 1 })}
+                    />
+                  ) : (
+                    <strong>{formatHours(card.estimatedHours)}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Revision Estimate</span>
+                  {canManage && card.revisionEstimatedHours !== null ? (
+                    <div className="inline-hours-field">
+                      <input
+                        type="number"
+                        min={1}
+                        step={0.5}
+                        value={card.revisionEstimatedHours}
+                        onChange={(event) =>
+                          onSave({
+                            revisionEstimatedHours: event.target.value ? Number(event.target.value) : null,
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="clear-link"
+                        onClick={() => onSave({ revisionEstimatedHours: null })}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <strong>{card.revisionEstimatedHours !== null ? formatHours(card.revisionEstimatedHours) : '—'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Current Scheduling Estimate</span>
+                  <strong>{formatHours(getCardScheduledHours(card))}</strong>
+                </label>
+              </div>
+            </div>
+
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Creative</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Hook</span>
+                  {canEditOwnedContent ? (
+                    <input
+                      value={hookDraft}
+                      onChange={(event) => setHookDraft(event.target.value)}
+                      onBlur={() => commitTextDraft('hook', hookDraft)}
+                    />
+                  ) : (
+                    <strong>{card.hook || '—'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Angle</span>
+                  {canEditOwnedContent ? (
+                    <input
+                      value={angleDraft}
+                      onChange={(event) => setAngleDraft(event.target.value)}
+                      onBlur={() => commitTextDraft('angle', angleDraft)}
+                    />
+                  ) : (
+                    <strong>{card.angle || '—'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Audience</span>
+                  {canEditOwnedContent ? (
+                    <input
+                      value={audienceDraft}
+                      onChange={(event) => setAudienceDraft(event.target.value)}
+                      onBlur={() => commitTextDraft('audience', audienceDraft)}
+                    />
+                  ) : (
+                    <strong>{card.audience || '—'}</strong>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Assignment</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Assigned to</span>
+                  {canManage ? (
+                    <select value={card.owner ?? ''} onChange={(event) => onSave({ owner: event.target.value || null })}>
+                      {canClearOwner ? <option value="">Unassigned</option> : null}
+                      {getEditorOptions(portfolio).map((member) => (
+                        <option key={member.id} value={member.name}>
+                          {member.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>{card.owner ?? 'Unassigned'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Revisions</span>
+                  <strong>{getRevisionCount(card)}</strong>
+                </label>
+              </div>
+            </div>
           </div>
-          {canManage ? (
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() =>
-                onSave({
-                  archivedAt: card.archivedAt ? null : new Date().toISOString(),
-                })
-              }
-            >
-              {card.archivedAt ? 'Unarchive' : 'Archive'}
-            </button>
-          ) : null}
         </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">Drive Folder</div>
+        <section
+          ref={(node) => {
+            sectionRefs.current.drive = node
+          }}
+          className="panel-section"
+        >
+          <div className="section-rule-title">Drive Folder</div>
           {card.driveFolderCreated && card.driveFolderUrl ? (
             <div className="drive-section">
               <a href={card.driveFolderUrl} target="_blank" rel="noreferrer">
                 {card.driveFolderUrl}
               </a>
-              <div className="drive-subitems">
-                {['Final_Edited_Videos', 'Editor_Brief', 'Ad_Copy'].map((item) => (
-                  <a key={item} href={card.driveFolderUrl} target="_blank" rel="noreferrer">
-                    {item}
-                  </a>
-                ))}
-              </div>
             </div>
           ) : canManage ? (
             <div className="drive-actions">
@@ -787,8 +827,8 @@ export function CardDetailPanel({
           className="panel-section"
         >
           <div className="section-rule-title">Links</div>
-            <div className="frameio-row">
-              <span className="frameio-label">Frame.io</span>
+          <div className="frameio-row">
+            <span className="frameio-label">Frame.io</span>
             {canEditFrameio ? (
               <input
                 value={card.frameioLink}
@@ -906,6 +946,7 @@ export function CardDetailPanel({
             <div className="comment-composer">
               <textarea
                 value={commentDraft}
+                maxLength={COMMENT_MAX_LENGTH}
                 onChange={(event) => setCommentDraft(event.target.value)}
                 placeholder="Leave feedback or an update..."
                 rows={2}
@@ -929,6 +970,7 @@ export function CardDetailPanel({
               >
                 Post
               </button>
+              <p className="comment-counter">{`${commentCharactersRemaining} characters remaining`}</p>
             </div>
           ) : null}
         </section>
@@ -941,15 +983,19 @@ export function CardDetailPanel({
         >
           <div className="section-rule-title">Activity</div>
           <div className="activity-list">
-            {visibleActivity.map((activity) => (
-              <div key={activity.id} className="activity-item">
-                <div className="activity-meta">
-                  <strong>{activity.actor}</strong>
-                  <span>{formatDateTime(activity.timestamp)}</span>
+            {card.activityLog.length === 0 ? (
+              <div className="muted-copy">No activity recorded.</div>
+            ) : (
+              visibleActivity.map((activity) => (
+                <div key={activity.id} className="activity-item">
+                  <div className="activity-meta">
+                    <strong>{activity.actor}</strong>
+                    <span>{formatDateTime(activity.timestamp)}</span>
+                  </div>
+                  <p>{activity.message}</p>
                 </div>
-                <p>{activity.message}</p>
-              </div>
-            ))}
+              ))
+            )}
           </div>
           {card.activityLog.length > ACTIVITY_PREVIEW_COUNT ? (
             <button type="button" className="clear-link" onClick={() => setShowAllActivity((open) => !open)}>

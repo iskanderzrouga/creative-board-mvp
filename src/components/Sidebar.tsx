@@ -1,5 +1,11 @@
-import { memo } from 'react'
-import type { ActiveRole, AppPage, Portfolio, TeamMember } from '../board'
+import { memo, type ComponentType, type SVGProps } from 'react'
+import type { ActiveRole, AppPage, Portfolio } from '../board'
+import {
+  AnalyticsIcon,
+  BoardIcon,
+  SettingsIcon,
+  WorkloadIcon,
+} from './icons/AppIcons'
 
 interface SidebarProps {
   expanded: boolean
@@ -7,18 +13,19 @@ interface SidebarProps {
   portfolio: Portfolio | null
   portfolios: Portfolio[]
   role: ActiveRole
-  lockedRole: ActiveRole | null
-  editorOptions: TeamMember[]
-  editorMenuOpen: boolean
+  userName: string
+  userSecondaryLabel: string | null
+  signOutPending?: boolean
   attention: {
     hasAttention: boolean
   }
   onTogglePinned: () => void
   onPortfolioChange: (portfolioId: string) => void
   onPageChange: (page: AppPage) => void
-  onRoleChange: (role: ActiveRole) => void
-  onToggleEditorMenu: () => void
+  onSignOut?: () => void
 }
+
+type PageIcon = ComponentType<SVGProps<SVGSVGElement>>
 
 function getPageLabel(page: AppPage) {
   switch (page) {
@@ -33,16 +40,27 @@ function getPageLabel(page: AppPage) {
   }
 }
 
-function getPageIcon(page: AppPage) {
+function getPageIcon(page: AppPage): PageIcon {
   switch (page) {
     case 'board':
-      return '📋'
+      return BoardIcon
     case 'analytics':
-      return '📊'
+      return AnalyticsIcon
     case 'workload':
-      return '👥'
+      return WorkloadIcon
     case 'settings':
-      return '⚙️'
+      return SettingsIcon
+  }
+}
+
+function getRoleLabel(mode: ActiveRole['mode']) {
+  switch (mode) {
+    case 'manager':
+      return 'Manager'
+    case 'editor':
+      return 'Editor'
+    case 'observer':
+      return 'Observer'
   }
 }
 
@@ -52,20 +70,15 @@ function SidebarComponent({
   portfolio,
   portfolios,
   role,
-  lockedRole,
-  editorOptions,
-  editorMenuOpen,
+  userName,
+  userSecondaryLabel,
+  signOutPending = false,
   attention,
   onTogglePinned,
   onPortfolioChange,
   onPageChange,
-  onRoleChange,
-  onToggleEditorMenu,
+  onSignOut,
 }: SidebarProps) {
-  const canChooseManager = !lockedRole || lockedRole.mode === 'manager'
-  const canChooseEditor = !lockedRole || lockedRole.mode === 'editor'
-  const canChooseObserver = !lockedRole || lockedRole.mode === 'observer'
-  const lockedEditorId = lockedRole?.mode === 'editor' ? lockedRole.editorId : null
   const navItems: Array<{
     page: AppPage
     disabled: boolean
@@ -88,6 +101,8 @@ function SidebarComponent({
       tooltip: role.mode !== 'manager' ? 'Manager only' : undefined,
     },
   ]
+  const avatarSource = userName || userSecondaryLabel || 'User'
+  const avatarInitial = avatarSource.charAt(0).toUpperCase() || 'U'
 
   return (
     <aside className={`app-sidebar ${expanded ? 'is-expanded' : ''}`}>
@@ -103,29 +118,33 @@ function SidebarComponent({
       </div>
 
       <nav className="sidebar-nav">
-        {navItems.map((item) => (
-          <button
-            key={item.page}
-            type="button"
-            className={`sidebar-nav-item ${page === item.page ? 'is-active' : ''}`}
-            onClick={() => {
-              if (!item.disabled) {
-                onPageChange(item.page)
-              }
-            }}
-            disabled={item.disabled}
-            title={item.tooltip}
-            aria-label={getPageLabel(item.page)}
-          >
-            <span className="sidebar-nav-icon">
-              {item.page === 'board' && attention.hasAttention ? (
-                <span className="sidebar-alert-dot" />
-              ) : null}
-              {getPageIcon(item.page)}
-            </span>
-            {expanded ? <span>{getPageLabel(item.page)}</span> : null}
-          </button>
-        ))}
+        {navItems.map((item) => {
+          const Icon = getPageIcon(item.page)
+
+          return (
+            <button
+              key={item.page}
+              type="button"
+              className={`sidebar-nav-item ${page === item.page ? 'is-active' : ''}`}
+              onClick={() => {
+                if (!item.disabled) {
+                  onPageChange(item.page)
+                }
+              }}
+              disabled={item.disabled}
+              title={item.tooltip}
+              aria-label={getPageLabel(item.page)}
+            >
+              <span className="sidebar-nav-icon">
+                {item.page === 'board' && attention.hasAttention ? (
+                  <span className="sidebar-alert-dot" />
+                ) : null}
+                <Icon />
+              </span>
+              {expanded ? <span>{getPageLabel(item.page)}</span> : null}
+            </button>
+          )
+        })}
       </nav>
 
       <div className="sidebar-section">
@@ -143,77 +162,38 @@ function SidebarComponent({
         </select>
       </div>
 
-      <div className="sidebar-section">
-        <label className="sidebar-label">Role</label>
-        <div className="sidebar-role-stack">
-          <button
-            type="button"
-            className={`role-segment ${role.mode === 'manager' ? 'is-active' : ''}`}
-            onClick={() => onRoleChange({ mode: 'manager', editorId: role.editorId })}
-            disabled={!canChooseManager}
-            title={!canChooseManager ? 'Your account access is fixed by the workspace admin.' : undefined}
-            aria-label="Manager role"
-          >
-            {expanded ? 'Manager' : 'M'}
-          </button>
-          <div className="sidebar-editor-picker">
-            <button
-              type="button"
-              className={`role-segment ${role.mode === 'editor' ? 'is-active' : ''}`}
-              onClick={() => {
-                if (canChooseEditor && !lockedEditorId) {
-                  onToggleEditorMenu()
-                }
-              }}
-              disabled={!canChooseEditor || Boolean(lockedEditorId)}
-              title={
-                !canChooseEditor
-                  ? 'Your account access is fixed by the workspace admin.'
-                  : lockedEditorId
-                    ? 'Your editor lane is assigned by the workspace admin.'
-                    : undefined
-              }
-              aria-label={
-                role.mode === 'editor'
-                  ? `Editor role, ${editorOptions.find((member) => member.id === role.editorId)?.name ?? 'Select editor'}`
-                  : 'Editor role'
-              }
-            >
-              {expanded
-                ? role.mode === 'editor'
-                  ? `Editor: ${
-                      editorOptions.find((member) => member.id === role.editorId)?.name ?? 'Select'
-                    }`
-                  : 'Editor'
-                : 'E'}
-              {expanded && !lockedEditorId ? <span className="segment-caret">▾</span> : null}
-            </button>
-            {editorMenuOpen && !lockedEditorId ? (
-              <div className="sidebar-editor-menu">
-                {editorOptions.map((member) => (
-                  <button
-                    key={member.id}
-                    type="button"
-                    className="sidebar-editor-item"
-                    onClick={() => onRoleChange({ mode: 'editor', editorId: member.id })}
-                  >
-                    {member.name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+      <div className="sidebar-user-shell">
+        <div className="sidebar-user-info" title={userSecondaryLabel ?? userName}>
+          <div className="sidebar-user-avatar" aria-hidden="true">
+            {avatarInitial}
           </div>
-          <button
-            type="button"
-            className={`role-segment ${role.mode === 'observer' ? 'is-active' : ''}`}
-            onClick={() => onRoleChange({ mode: 'observer', editorId: role.editorId })}
-            disabled={!canChooseObserver}
-            title={!canChooseObserver ? 'Your account access is fixed by the workspace admin.' : undefined}
-            aria-label="Observer role"
-          >
-            {expanded ? 'Observer' : 'O'}
-          </button>
+          {expanded ? (
+            <div className="sidebar-user-details">
+              <span className="sidebar-user-name">{userName}</span>
+              {userSecondaryLabel ? (
+                <span className="sidebar-user-secondary">{userSecondaryLabel}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
+
+        {expanded ? (
+          <div className="sidebar-user-actions">
+            <span className={`sidebar-user-role role-${role.mode}`}>{getRoleLabel(role.mode)}</span>
+            {onSignOut ? (
+              <button
+                type="button"
+                className="clear-link sidebar-signout"
+                disabled={signOutPending}
+                onClick={onSignOut}
+              >
+                {signOutPending ? 'Signing out...' : 'Sign out'}
+              </button>
+            ) : (
+              <span className="sidebar-user-secondary">Local demo access</span>
+            )}
+          </div>
+        ) : null}
       </div>
     </aside>
   )

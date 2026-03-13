@@ -1,6 +1,7 @@
 import { useId, useRef } from 'react'
 import type { Card } from '../board'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { XIcon } from './icons/AppIcons'
 
 interface DeleteCardModalProps {
   card: Card
@@ -27,18 +28,18 @@ export function DeleteCardModal({ card, onCancel, onConfirm }: DeleteCardModalPr
         tabIndex={-1}
       >
         <div className="quick-create-head">
-          <strong id={titleId}>{`Delete ${card.id}?`}</strong>
+          <h2 id={titleId}>{`Delete ${card.id}?`}</h2>
           <button
             type="button"
             className="close-icon-button"
             aria-label="Close delete card dialog"
             onClick={onCancel}
           >
-            ×
+            <XIcon />
           </button>
         </div>
         <p id={descriptionId} className="muted-copy">
-          This will permanently remove the card from the board.
+          {`This will permanently remove "${card.title}" (${card.id}) from the board.`}
         </p>
         <div className="quick-create-actions">
           <button type="button" className="ghost-button" onClick={onCancel}>

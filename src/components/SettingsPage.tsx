@@ -17,10 +17,12 @@ import {
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
   syncPortfolioCardProducts,
+  type ActiveRole,
   type AppState,
   type Portfolio,
   type RoleMode,
   type SettingTab,
+  type TeamMember,
 } from '../board'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
@@ -32,6 +34,7 @@ type PendingSettingsDelete =
 
 interface SettingsPageProps {
   state: AppState
+  authEnabled: boolean
   settingsTab: SettingTab
   settingsPortfolioId: string
   importInputRef: RefObject<HTMLInputElement | null>
@@ -44,6 +47,9 @@ interface SettingsPageProps {
   onSettingsPortfolioChange: (portfolioId: string) => void
   onBackToBoard: () => void
   onStateChange: (updater: (state: AppState) => AppState) => void
+  localRole: ActiveRole
+  localEditorOptions: TeamMember[]
+  onLocalRoleChange: (role: ActiveRole) => void
   onExportData: () => void
   onImportClick: () => void
   onResetData: () => void
@@ -60,6 +66,7 @@ interface SettingsPageProps {
 
 export function SettingsPage({
   state,
+  authEnabled,
   settingsTab,
   settingsPortfolioId,
   importInputRef,
@@ -72,6 +79,9 @@ export function SettingsPage({
   onSettingsPortfolioChange,
   onBackToBoard,
   onStateChange,
+  localRole,
+  localEditorOptions,
+  onLocalRoleChange,
   onExportData,
   onImportClick,
   onResetData,
@@ -80,6 +90,15 @@ export function SettingsPage({
   onWorkspaceAccessDelete,
   showToast,
 }: SettingsPageProps) {
+  const SETTINGS_TAB_HELP_TEXT: Record<SettingTab, string> = {
+    general: 'Configure your workspace name, age thresholds, and auto-archive behavior.',
+    portfolios: 'Manage portfolios, brands, and the Drive webhook settings that support each workspace stream.',
+    team: 'Board Team Members control board lanes and ownership. Login Access controls who can sign in.',
+    'task-library': 'Define card types with default estimates and required fields. These appear in the card creation form.',
+    capacity: 'Set utilization thresholds. Green, yellow, and red bands appear in Analytics and Workload views.',
+    integrations: 'Store external service settings used by your workflow and keep them aligned with deployment.',
+    data: 'Export your board data as JSON for backup. Import to restore. Reset returns to sample data.',
+  }
   const settingsPortfolio =
     state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
     state.portfolios[0]
@@ -88,13 +107,7 @@ export function SettingsPage({
   }
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
   const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(null)
-  const teamRoleOptions = Array.from(
-    new Set(
-      ['Manager', 'Editor', 'Designer', 'Launch Ops', ...state.portfolios.flatMap((portfolio) =>
-        portfolio.team.map((member) => member.role),
-      )].filter(Boolean),
-    ),
-  ).sort((left, right) => left.localeCompare(right))
+  const teamRoleOptions = ['Editor', 'Manager', 'Launch Ops', 'Designer']
   const timezoneOptions =
     typeof intlWithSupportedValues.supportedValuesOf === 'function'
       ? intlWithSupportedValues.supportedValuesOf('timeZone')
@@ -307,112 +320,184 @@ export function SettingsPage({
       <div className="settings-page-content">
         <PageHeader title="Settings" rightContent={headerUtilityContent} />
 
+        <section className="settings-tab-intro">
+          <p className="muted-copy">{SETTINGS_TAB_HELP_TEXT[settingsTab]}</p>
+        </section>
+
         {settingsTab === 'general' ? (
-          <div className="settings-block">
-            <div className="settings-form-grid">
-              <label>
-                <span>App name</span>
-                <input
-                  value={state.settings.general.appName}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        general: {
-                          ...current.settings.general,
-                          appName: event.target.value,
+          <div className="settings-stack">
+            {!authEnabled ? (
+              <div className="settings-block">
+                <div className="settings-section-header">
+                  <h3>Local Demo Access</h3>
+                  <p className="muted-copy">
+                    Local mode skips team login. Use these controls only for testing or demos.
+                  </p>
+                </div>
+                <div className="settings-form-grid">
+                  <label>
+                    <span>Viewer role</span>
+                    <select
+                      aria-label="Local demo role"
+                      value={localRole.mode}
+                      onChange={(event) => {
+                        const nextMode = event.target.value as ActiveRole['mode']
+                        onLocalRoleChange({
+                          mode: nextMode,
+                          editorId:
+                            nextMode === 'editor'
+                              ? localEditorOptions[0]?.id ?? localRole.editorId
+                              : localRole.editorId,
+                        })
+                      }}
+                    >
+                      <option value="manager">Manager</option>
+                      <option value="editor">Editor</option>
+                      <option value="observer">Observer</option>
+                    </select>
+                  </label>
+
+                  {localRole.mode === 'editor' ? (
+                    <label>
+                      <span>Editor lane</span>
+                      <select
+                        aria-label="Local demo editor lane"
+                        value={localRole.editorId ?? localEditorOptions[0]?.id ?? ''}
+                        disabled={localEditorOptions.length === 0}
+                        onChange={(event) =>
+                          onLocalRoleChange({
+                            mode: 'editor',
+                            editorId: event.target.value || null,
+                          })
+                        }
+                      >
+                        {localEditorOptions.length === 0 ? (
+                          <option value="">No editor lanes available</option>
+                        ) : null}
+                        {localEditorOptions.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="settings-block">
+              <div className="settings-form-grid">
+                <label>
+                  <span>App name</span>
+                  <input
+                    aria-label="Workspace app name"
+                    value={state.settings.general.appName}
+                    onChange={(event) =>
+                      onStateChange((current) => ({
+                        ...current,
+                        settings: {
+                          ...current.settings,
+                          general: {
+                            ...current.settings.general,
+                            appName: event.target.value,
+                          },
                         },
-                      },
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Default portfolio on startup</span>
-                <select
-                  value={state.settings.general.defaultPortfolioId}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        general: {
-                          ...current.settings.general,
-                          defaultPortfolioId: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Default portfolio on startup</span>
+                  <select
+                    aria-label="Default portfolio on startup"
+                    value={state.settings.general.defaultPortfolioId}
+                    onChange={(event) =>
+                      onStateChange((current) => ({
+                        ...current,
+                        settings: {
+                          ...current.settings,
+                          general: {
+                            ...current.settings.general,
+                            defaultPortfolioId: event.target.value,
+                          },
                         },
-                      },
-                    }))
-                  }
-                >
-                  {state.portfolios.map((portfolio) => (
-                    <option key={portfolio.id} value={portfolio.id}>
-                      {portfolio.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Theme</span>
-                <input value="Light" disabled />
-              </label>
-              <label>
-                <span>Amber warning at days</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={state.settings.general.timeInStageThresholds.amberStart}
-                  onChange={(event) => updateGeneralThreshold('amberStart', event.target.value)}
-                />
-              </label>
-              <label>
-                <span>Red warning at days</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={state.settings.general.timeInStageThresholds.redStart}
-                  onChange={(event) => updateGeneralThreshold('redStart', event.target.value)}
-                />
-              </label>
-              <label className="toggle-row">
-                <span>Auto-archive Live cards</span>
-                <input
-                  type="checkbox"
-                  checked={state.settings.general.autoArchiveEnabled}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        general: {
-                          ...current.settings.general,
-                          autoArchiveEnabled: event.target.checked,
+                      }))
+                    }
+                  >
+                    {state.portfolios.map((portfolio) => (
+                      <option key={portfolio.id} value={portfolio.id}>
+                        {portfolio.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Theme</span>
+                  <input aria-label="Theme" value="Light" disabled />
+                </label>
+                <label>
+                  <span>Amber warning at days</span>
+                  <input
+                    aria-label="Amber warning at days"
+                    type="number"
+                    min={1}
+                    value={state.settings.general.timeInStageThresholds.amberStart}
+                    onChange={(event) => updateGeneralThreshold('amberStart', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Red warning at days</span>
+                  <input
+                    aria-label="Red warning at days"
+                    type="number"
+                    min={1}
+                    value={state.settings.general.timeInStageThresholds.redStart}
+                    onChange={(event) => updateGeneralThreshold('redStart', event.target.value)}
+                  />
+                </label>
+                <label className="toggle-row">
+                  <span>Auto-archive Live cards</span>
+                  <input
+                    aria-label="Auto-archive Live cards"
+                    type="checkbox"
+                    checked={state.settings.general.autoArchiveEnabled}
+                    onChange={(event) =>
+                      onStateChange((current) => ({
+                        ...current,
+                        settings: {
+                          ...current.settings,
+                          general: {
+                            ...current.settings.general,
+                            autoArchiveEnabled: event.target.checked,
+                          },
                         },
-                      },
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Archive after days</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={state.settings.general.autoArchiveDays}
-                  onChange={(event) =>
-                    onStateChange((current) => ({
-                      ...current,
-                      settings: {
-                        ...current.settings,
-                        general: {
-                          ...current.settings.general,
-                          autoArchiveDays: Number(event.target.value) || 1,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Archive after days</span>
+                  <input
+                    aria-label="Archive after days"
+                    type="number"
+                    min={1}
+                    value={state.settings.general.autoArchiveDays}
+                    onChange={(event) =>
+                      onStateChange((current) => ({
+                        ...current,
+                        settings: {
+                          ...current.settings,
+                          general: {
+                            ...current.settings.general,
+                            autoArchiveDays: Number(event.target.value) || 1,
+                          },
                         },
-                      },
-                    }))
-                  }
-                />
-              </label>
+                      }))
+                    }
+                  />
+                </label>
+              </div>
             </div>
           </div>
         ) : null}
@@ -480,6 +565,7 @@ export function SettingsPage({
                         {portfolio.brands.map((brand, brandIndex) => (
                           <div key={`${portfolio.id}-${brand.prefix}-${brandIndex}`} className="settings-row brand-row">
                             <input
+                              aria-label={`${portfolio.name} brand name`}
                               value={brand.name}
                               onChange={(event) =>
                                 updatePortfolio(portfolio.id, (currentPortfolio) =>
@@ -488,6 +574,7 @@ export function SettingsPage({
                               }
                             />
                             <input
+                              aria-label={`${brand.name || 'Brand'} prefix`}
                               value={brand.prefix}
                               onChange={(event) => {
                                 const nextPrefix = event.target.value.toUpperCase().slice(0, 2)
@@ -507,6 +594,7 @@ export function SettingsPage({
                               }}
                             />
                             <input
+                              aria-label={`${brand.name || 'Brand'} products`}
                               value={brand.products.join(', ')}
                               onChange={(event) =>
                                 updatePortfolio(portfolio.id, (currentPortfolio) =>
@@ -528,6 +616,7 @@ export function SettingsPage({
                               }
                             />
                             <input
+                              aria-label={`${brand.name || 'Brand'} Drive folder ID`}
                               value={brand.driveParentFolderId}
                               onChange={(event) =>
                                 updatePortfolio(portfolio.id, (currentPortfolio) => ({
@@ -540,7 +629,7 @@ export function SettingsPage({
                             />
                             <button
                               type="button"
-                              className="clear-link"
+                              className="clear-link danger-link"
                               onClick={() => {
                                 const blocker = getBrandRemovalBlocker(portfolio, brandIndex)
                                 if (blocker) {
@@ -644,6 +733,14 @@ export function SettingsPage({
                   {portfolio.name}
                 </button>
               ))}
+            </div>
+
+            <div className="settings-section-header">
+              <h3>Board Team Members</h3>
+              <p className="muted-copy">
+                These are the editors and managers who appear as lanes on the board. This does not
+                control login access.
+              </p>
             </div>
 
             <div className="settings-table full-table">
@@ -762,9 +859,8 @@ export function SettingsPage({
                       </label>
                     ))}
                   </div>
-                  <input
+                  <select
                     aria-label={`${member.name} timezone`}
-                    list="timezone-options"
                     value={member.timezone}
                     onChange={(event) =>
                       updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
@@ -774,8 +870,13 @@ export function SettingsPage({
                         ),
                       }))
                     }
-                    placeholder="Asia/Bangkok"
-                  />
+                  >
+                    {timezoneOptions.map((timezone) => (
+                      <option key={timezone} value={timezone}>
+                        {timezone}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     aria-label={`${member.name} WIP cap`}
                     type="number"
@@ -825,11 +926,6 @@ export function SettingsPage({
                   </button>
                 </div>
               ))}
-              <datalist id="timezone-options">
-                {timezoneOptions.map((timezone) => (
-                  <option key={timezone} value={timezone} />
-                ))}
-              </datalist>
             </div>
 
             <button
@@ -859,6 +955,16 @@ export function SettingsPage({
             >
               + Add team member
             </button>
+
+            <hr className="settings-divider" />
+
+            <div className="settings-section-header">
+              <h3>Login Access</h3>
+              <p className="muted-copy">
+                Control who can sign in to this workspace. Each person needs an entry here to log
+                in.
+              </p>
+            </div>
 
             <WorkspaceAccessManager
               entries={workspaceAccessEntries}

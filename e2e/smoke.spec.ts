@@ -15,6 +15,14 @@ async function openFreshApp(page: Page) {
   await page.reload()
 }
 
+async function setLocalRole(page: Page, mode: 'manager' | 'editor' | 'observer', editorName?: string) {
+  await page.getByLabel('Local demo role').selectOption(mode)
+
+  if (mode === 'editor' && editorName) {
+    await page.getByLabel('Local demo editor lane').selectOption({ label: editorName })
+  }
+}
+
 test('manager can create a card and the state survives reload', async ({ page }) => {
   ensureArtifactsDir()
 
@@ -45,8 +53,7 @@ test('observer can access analytics while manager-only settings stay locked down
   ensureArtifactsDir()
 
   await openFreshApp(page)
-  await page.locator('.sidebar-pin').click()
-  await page.getByRole('button', { name: 'Observer' }).click()
+  await setLocalRole(page, 'observer')
 
   const settingsNav = page.getByRole('button', { name: 'Settings' })
   await expect(settingsNav).toBeDisabled()

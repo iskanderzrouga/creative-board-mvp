@@ -129,7 +129,16 @@ export function BoardPage({
           }))
         }
         searchRef={searchRef}
-        rightContent={headerUtilityContent}
+        rightContent={
+          <>
+            {activeRoleMode === 'manager' ? (
+              <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
+                + Add card
+              </button>
+            ) : null}
+            {headerUtilityContent}
+          </>
+        }
       />
 
       {showOnboarding ? (
@@ -180,128 +189,143 @@ export function BoardPage({
 
       {activeRoleMode !== 'editor' ? (
         <section className="manager-filter-bar">
-          <div className="manager-filter-group">
-            <button
-              type="button"
-              className={`filter-pill ${allBrandsSelected ? 'is-active is-all' : ''}`}
-              onClick={() =>
-                setBoardFilters((current) => ({
-                  ...current,
-                  brandNames: portfolio.brands.map((brand) => brand.name),
-                }))
-              }
-            >
-              All
-            </button>
-            {portfolio.brands.map((brand) => (
+          <div className="manager-filter-cluster">
+            <span className="filter-group-label">Brand</span>
+            <div className="manager-filter-group">
               <button
-                key={brand.name}
                 type="button"
-                className={`filter-pill ${
-                  boardFilters.brandNames.includes(brand.name) ? 'is-active' : ''
-                }`}
-                style={
-                  boardFilters.brandNames.includes(brand.name)
-                    ? {
-                        background: brand.color,
-                        borderColor: brand.color,
-                        color: '#fff',
-                      }
-                    : undefined
-                }
+                className={`filter-pill ${allBrandsSelected ? 'is-active is-all' : ''}`}
                 onClick={() =>
                   setBoardFilters((current) => ({
                     ...current,
-                    brandNames: current.brandNames.includes(brand.name)
-                      ? current.brandNames.filter((item) => item !== brand.name).length > 0
-                        ? current.brandNames.filter((item) => item !== brand.name)
-                        : portfolio.brands.map((item) => item.name)
-                      : [...current.brandNames, brand.name],
+                    brandNames: portfolio.brands.map((brand) => brand.name),
                   }))
                 }
               >
-                {brand.name}
+                All
               </button>
-            ))}
+              {portfolio.brands.map((brand) => (
+                <button
+                  key={brand.name}
+                  type="button"
+                  className={`filter-pill ${
+                    boardFilters.brandNames.includes(brand.name) ? 'is-active' : ''
+                  }`}
+                  style={
+                    boardFilters.brandNames.includes(brand.name)
+                      ? {
+                          background: brand.color,
+                          borderColor: brand.color,
+                          color: '#fff',
+                        }
+                      : undefined
+                  }
+                  onClick={() =>
+                    setBoardFilters((current) => ({
+                      ...current,
+                      brandNames: current.brandNames.includes(brand.name)
+                        ? current.brandNames.filter((item) => item !== brand.name).length > 0
+                          ? current.brandNames.filter((item) => item !== brand.name)
+                          : portfolio.brands.map((item) => item.name)
+                        : [...current.brandNames, brand.name],
+                    }))
+                  }
+                >
+                  {brand.name}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="manager-editor-pills">
-            {getEditorOptions(portfolio).map((member) => (
+          <span className="filter-group-divider" aria-hidden="true" />
+
+          <div className="manager-filter-cluster">
+            <span className="filter-group-label">Editor</span>
+            <div className="manager-editor-pills">
+              {getEditorOptions(portfolio).map((member) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  className={`editor-pill ${
+                    boardFilters.ownerNames.includes(member.name) ? 'is-active' : ''
+                  }`}
+                  onClick={() =>
+                    setBoardFilters((current) => ({
+                      ...current,
+                      ownerNames: current.ownerNames.includes(member.name)
+                        ? current.ownerNames.filter((item) => item !== member.name)
+                        : [...current.ownerNames, member.name],
+                    }))
+                  }
+                >
+                  {member.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <span className="filter-group-divider" aria-hidden="true" />
+
+          <div className="manager-filter-cluster">
+            <span className="filter-group-label">Flags</span>
+            <div className="manager-flag-pills">
               <button
-                key={member.id}
                 type="button"
-                className={`editor-pill ${
-                  boardFilters.ownerNames.includes(member.name) ? 'is-active' : ''
-                }`}
+                className={`filter-pill ${boardFilters.overdueOnly ? 'is-active is-danger' : ''}`}
                 onClick={() =>
                   setBoardFilters((current) => ({
                     ...current,
-                    ownerNames: current.ownerNames.includes(member.name)
-                      ? current.ownerNames.filter((item) => item !== member.name)
-                      : [...current.ownerNames, member.name],
+                    overdueOnly: !current.overdueOnly,
                   }))
                 }
               >
-                {member.name}
+                Overdue
               </button>
-            ))}
+              <button
+                type="button"
+                className={`filter-pill ${boardFilters.stuckOnly ? 'is-active is-warning' : ''}`}
+                onClick={() =>
+                  setBoardFilters((current) => ({
+                    ...current,
+                    stuckOnly: !current.stuckOnly,
+                  }))
+                }
+              >
+                Stuck
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${boardFilters.blockedOnly ? 'is-active is-danger' : ''}`}
+                onClick={() =>
+                  setBoardFilters((current) => ({
+                    ...current,
+                    blockedOnly: !current.blockedOnly,
+                  }))
+                }
+              >
+                Blocked
+              </button>
+              {hasActiveFilters ? (
+                <button type="button" className="clear-link filter-reset-link" onClick={onResetFilters}>
+                  Reset filters
+                </button>
+              ) : null}
+            </div>
           </div>
 
-          <div className="manager-flag-pills">
-            <button
-              type="button"
-              className={`filter-pill ${boardFilters.overdueOnly ? 'is-active is-all' : ''}`}
-              onClick={() =>
+          <label className="archive-toggle">
+            <input
+              type="checkbox"
+              checked={boardFilters.showArchived}
+              onChange={(event) =>
                 setBoardFilters((current) => ({
                   ...current,
-                  overdueOnly: !current.overdueOnly,
+                  showArchived: event.target.checked,
                 }))
               }
-            >
-              Overdue
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${boardFilters.stuckOnly ? 'is-active is-all' : ''}`}
-              onClick={() =>
-                setBoardFilters((current) => ({
-                  ...current,
-                  stuckOnly: !current.stuckOnly,
-                }))
-              }
-            >
-              Stuck
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${boardFilters.blockedOnly ? 'is-active is-all' : ''}`}
-              onClick={() =>
-                setBoardFilters((current) => ({
-                  ...current,
-                  blockedOnly: !current.blockedOnly,
-                }))
-              }
-            >
-              Blocked
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${boardFilters.showArchived ? 'is-active is-all' : ''}`}
-              onClick={() =>
-                setBoardFilters((current) => ({
-                  ...current,
-                  showArchived: !current.showArchived,
-                }))
-              }
-            >
-              Show archived
-            </button>
-            {hasActiveFilters ? (
-              <button type="button" className="clear-link filter-reset-link" onClick={onResetFilters}>
-                Reset filters
-              </button>
-            ) : null}
-          </div>
+            />
+            <span>Show archived</span>
+          </label>
         </section>
       ) : null}
 
@@ -337,139 +361,132 @@ export function BoardPage({
       >
         <main className="board-scroll">
           {!hasVisibleCards ? (
-            <section className="board-empty-state" aria-live="polite">
-              <strong>
-                {hasActiveFilters
-                  ? 'No cards match the current filters'
-                  : hasBoardCards
-                    ? 'Nothing is visible in this board view yet'
-                    : 'This board is ready for its first card'}
-              </strong>
-              <p>
-                {hasActiveFilters
-                  ? 'Clear the current filters or search to bring cards back into view.'
-                  : hasBoardCards
-                    ? 'Adjust the current role or filters, or open an existing card from another view.'
-                    : activeRoleMode === 'manager'
-                      ? 'Add a first card to the backlog so the shared workflow has something to track.'
-                      : 'A manager can add the first backlog card to start the shared workflow.'}
-              </p>
-              <div className="board-empty-actions">
-                {hasActiveFilters ? (
-                  <button type="button" className="primary-button" onClick={onResetFilters}>
-                    Reset filters
-                  </button>
-                ) : activeRoleMode === 'manager' ? (
-                  <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
-                    Add first card
-                  </button>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
-          <div className="board-grid">
-            {columns.map((column) => (
-              <section
-                key={column.id}
-                className={`stage-column ${column.id === 'Archived' ? 'is-archived-column' : ''}`}
-              >
-                <div className="stage-column-header">
-                  <h2>
-                    {column.label} <span>· {column.count}</span>
-                  </h2>
-                  {column.id === 'Backlog' && activeRoleMode === 'manager' ? (
-                    <button
-                      type="button"
-                      className="column-ghost-button"
-                      onClick={onQuickCreateOpen}
-                    >
-                      + Add card
+            <div className="board-empty-centered">
+              <section className="board-empty-state" aria-live="polite">
+                <strong>
+                  {hasActiveFilters
+                    ? 'No cards match the current filters'
+                    : hasBoardCards
+                      ? 'Nothing is visible in this board view yet'
+                      : 'This board is ready for its first card'}
+                </strong>
+                <p>
+                  {hasActiveFilters
+                    ? 'Clear the current filters or search to bring cards back into view.'
+                    : hasBoardCards
+                      ? 'Adjust the current role or filters, or open an existing card from another view.'
+                      : activeRoleMode === 'manager'
+                        ? 'Add a first card to the backlog so the shared workflow has something to track.'
+                        : 'A manager can add the first backlog card to start the shared workflow.'}
+                </p>
+                <div className="board-empty-actions">
+                  {hasActiveFilters ? (
+                    <button type="button" className="primary-button" onClick={onResetFilters}>
+                      Reset filters
                     </button>
-                  ) : null}
-                </div>
-
-                <div className="stage-column-content">
-                  {column.lanes.map((lane) => {
-                    const hovered = dragOverLaneId === lane.id
-                    const isBlocked = blockedLaneId === lane.id
-                    const isWipFull =
-                      lane.wipCap !== null && lane.wipCount !== null && lane.wipCount >= lane.wipCap
-
-                    return (
-                      <div key={lane.id} className={`lane-shell ${isWipFull ? 'is-hot' : ''}`}>
-                        {column.grouped ? (
-                          <div className="lane-header rich">
-                            <div className="lane-header-left">
-                              <span>{lane.label}</span>
-                              <span className="queue-inline">
-                                {column.id === 'In Production'
-                                  ? `${lane.activeCount} active`
-                                  : `${lane.activeCount} queued`}
-                                {lane.showTotalWorkload && lane.totalWorkDays !== null
-                                  ? ` · ~${lane.totalWorkDays} days total`
-                                  : ''}
-                              </span>
-                            </div>
-                            {lane.wipCap !== null ? (
-                              <span className={`wip-badge ${isWipFull ? 'is-full' : ''}`}>
-                                {lane.wipCount}/{lane.wipCap}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        <LaneDropZone
-                          lane={lane}
-                          isHovered={hovered}
-                          isBlocked={isBlocked}
-                          dragActive={dragCardId !== null}
-                          allowEmptyHint={activeRoleMode === 'manager'}
-                        >
-                          <SortableContext
-                            items={lane.cards.map((card) => card.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {lane.cards.map((card) => (
-                              <SortableBoardCard
-                                key={card.id}
-                                card={card}
-                                portfolio={portfolio}
-                                settings={settings}
-                                nowMs={nowMs}
-                                canDrag={canDragCard(card)}
-                                cursorMode={canDragCard(card) ? 'drag' : 'pointer'}
-                                isInvalid={isBlocked}
-                                onOpen={() => onOpenCard(portfolio.id, card.id)}
-                              />
-                            ))}
-                          </SortableContext>
-                        </LaneDropZone>
-                      </div>
-                    )
-                  })}
-
-                  {column.grouped && column.hiddenEditorCount > 0 ? (
-                    <button
-                      type="button"
-                      className="clear-link hidden-editors-toggle"
-                      onClick={() =>
-                        setExpandedStages((current) =>
-                          current.includes(column.id as StageId)
-                            ? current.filter((item) => item !== column.id)
-                            : [...current, column.id as StageId],
-                        )
-                      }
-                    >
-                      {expandedStages.includes(column.id as StageId)
-                        ? 'Hide empty editors'
-                        : `+${column.hiddenEditorCount} editors`}
+                  ) : activeRoleMode === 'manager' ? (
+                    <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
+                      Add first card
                     </button>
                   ) : null}
                 </div>
               </section>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="board-grid">
+              {columns.map((column) => (
+                <section
+                  key={column.id}
+                  className={`stage-column ${column.id === 'Archived' ? 'is-archived-column' : ''}`}
+                >
+                  <div className="stage-column-header">
+                    <h2>
+                      {column.label} <span>· {column.count}</span>
+                    </h2>
+                  </div>
+
+                  <div className="stage-column-content">
+                    {column.lanes.map((lane) => {
+                      const hovered = dragOverLaneId === lane.id
+                      const isBlocked = blockedLaneId === lane.id
+                      const isWipFull =
+                        lane.wipCap !== null && lane.wipCount !== null && lane.wipCount >= lane.wipCap
+
+                      return (
+                        <div key={lane.id} className={`lane-shell ${isWipFull ? 'is-hot' : ''}`}>
+                          {column.grouped ? (
+                            <div className="lane-header rich">
+                              <div className="lane-header-left">
+                                <span>{lane.label}</span>
+                                <span className="queue-inline">
+                                  {column.id === 'In Production'
+                                    ? `${lane.activeCount} active`
+                                    : `${lane.activeCount} queued`}
+                                  {lane.showTotalWorkload && lane.totalWorkDays !== null
+                                    ? ` · ~${lane.totalWorkDays} days total`
+                                    : ''}
+                                </span>
+                              </div>
+                              {lane.wipCap !== null ? (
+                                <span className={`wip-badge ${isWipFull ? 'is-full' : ''}`}>
+                                  {lane.wipCount}/{lane.wipCap}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          <LaneDropZone
+                            lane={lane}
+                            isHovered={hovered}
+                            isBlocked={isBlocked}
+                            dragActive={dragCardId !== null}
+                            allowEmptyHint={activeRoleMode === 'manager'}
+                          >
+                            <SortableContext
+                              items={lane.cards.map((card) => card.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {lane.cards.map((card) => (
+                                <SortableBoardCard
+                                  key={card.id}
+                                  card={card}
+                                  portfolio={portfolio}
+                                  settings={settings}
+                                  nowMs={nowMs}
+                                  canDrag={canDragCard(card)}
+                                  cursorMode={canDragCard(card) ? 'drag' : 'pointer'}
+                                  isInvalid={isBlocked}
+                                  onOpen={() => onOpenCard(portfolio.id, card.id)}
+                                />
+                              ))}
+                            </SortableContext>
+                          </LaneDropZone>
+                        </div>
+                      )
+                    })}
+
+                    {column.grouped && column.hiddenEditorCount > 0 ? (
+                      <button
+                        type="button"
+                        className="clear-link hidden-editors-toggle"
+                        onClick={() =>
+                          setExpandedStages((current) =>
+                            current.includes(column.id as StageId)
+                              ? current.filter((item) => item !== column.id)
+                              : [...current, column.id as StageId],
+                          )
+                        }
+                      >
+                        {expandedStages.includes(column.id as StageId)
+                          ? 'Hide empty editors'
+                          : `+${column.hiddenEditorCount} editors`}
+                      </button>
+                    ) : null}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </main>
 
         <DragOverlay>

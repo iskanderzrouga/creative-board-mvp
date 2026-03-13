@@ -1,3 +1,5 @@
+import { XIcon } from './icons/AppIcons'
+
 interface ToastStackItem {
   id: number
   message: string
@@ -25,7 +27,7 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
             aria-label="Dismiss notification"
             onClick={() => onDismiss(toast.id)}
           >
-            ×
+            <XIcon />
           </button>
         </div>
       ))}

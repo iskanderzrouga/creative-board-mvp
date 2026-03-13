@@ -7,6 +7,7 @@ import {
   type StageId,
 } from '../board'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { XIcon } from './icons/AppIcons'
 
 interface BackwardMoveFormState {
   reasonId: string
@@ -62,27 +63,38 @@ export function BackwardMoveModal({
         tabIndex={-1}
       >
         <div className="quick-create-head">
-          <strong id={titleId}>{`Moving ${card.id} back to ${destinationStage}`}</strong>
+          <h2 id={titleId}>{`Moving ${card.id} back to ${destinationStage}`}</h2>
+          <button
+            type="button"
+            className="close-icon-button"
+            aria-label="Close move-back dialog"
+            onClick={onCancel}
+          >
+            <XIcon />
+          </button>
         </div>
 
         <div className="backward-move-body">
-          <span>Why?</span>
-          {reasons.map((reason) => (
-            <label key={reason.id} className="radio-option">
-              <input
-                type="radio"
-                checked={formState.reasonId === reason.id}
-                onChange={() =>
-                  onChange({
-                    reasonId: reason.id,
-                    estimatedHours: reason.estimatedHours,
-                    otherReason: reason.id === 'revision-other' ? formState.otherReason : '',
-                  })
-                }
-              />
-              <span>{`${reason.name} · ${formatHours(reason.estimatedHours)}`}</span>
-            </label>
-          ))}
+          <fieldset className="backward-move-fieldset">
+            <legend>Why?</legend>
+            {reasons.map((reason) => (
+              <label key={reason.id} className="radio-option">
+                <input
+                  type="radio"
+                  name="revision-reason"
+                  checked={formState.reasonId === reason.id}
+                  onChange={() =>
+                    onChange({
+                      reasonId: reason.id,
+                      estimatedHours: reason.estimatedHours,
+                      otherReason: reason.id === 'revision-other' ? formState.otherReason : '',
+                    })
+                  }
+                />
+                <span>{`${reason.name} · ${formatHours(reason.estimatedHours)}`}</span>
+              </label>
+            ))}
+          </fieldset>
           {otherSelected ? (
             <input
               value={formState.otherReason}

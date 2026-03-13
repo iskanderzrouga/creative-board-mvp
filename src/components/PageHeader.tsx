@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from 'react'
+import { SearchIcon, XIcon } from './icons/AppIcons'
 
 interface PageHeaderProps {
   title: string
@@ -27,6 +28,7 @@ export function PageHeader({
       <div className="page-header-actions">
         {searchValue !== undefined && onSearchChange ? (
           <div className="search-shell">
+            <SearchIcon className="search-icon" />
             <input
               ref={searchRef}
               className="search-input"
@@ -42,7 +44,7 @@ export function PageHeader({
                 aria-label="Clear card search"
                 onClick={onSearchClear}
               >
-                ×
+                <XIcon />
               </button>
             ) : null}
             {searchValue && searchCountLabel ? (

@@ -7,6 +7,7 @@ import {
   type StageId,
 } from '../board'
 import { PageHeader } from './PageHeader'
+import { BlockedIcon } from './icons/AppIcons'
 
 interface AnalyticsPageProps {
   state: AppState
@@ -109,7 +110,16 @@ export function AnalyticsPage({
                   onClick={() => onOpenCard(card.portfolioId, card.cardId)}
                 >
                   <span>{card.cardId}</span>
-                  <span>{card.isBlocked ? `🚫 ${card.title}` : card.title}</span>
+                  <span className="dashboard-card-title">
+                    {card.isBlocked ? (
+                      <span className="inline-icon-with-text">
+                        <BlockedIcon />
+                        {card.title}
+                      </span>
+                    ) : (
+                      card.title
+                    )}
+                  </span>
                   <span>{card.portfolioName}</span>
                   <span>{card.owner ?? 'Unassigned'}</span>
                 </button>
@@ -146,8 +156,8 @@ export function AnalyticsPage({
               <span>{row.portfolioName}</span>
               <span>{row.active}</span>
               <span className={`util-inline is-${row.utilizationTone}`}>
-                {row.utilizationPct}%{' '}
-                {row.utilizationTone === 'green' ? '🟢' : row.utilizationTone === 'yellow' ? '🟡' : '🔴'}
+                {row.utilizationPct}%
+                <span className={`status-dot is-${row.utilizationTone}`} aria-hidden="true" />
               </span>
               <span>{`${formatHours(row.usedHours)}/${formatHours(row.totalHours)}`}</span>
               <span>{`~${row.workloadDays}d`}</span>

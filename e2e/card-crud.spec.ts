@@ -86,19 +86,14 @@ test('manager can archive and unarchive a card from the detail panel', async ({ 
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
   await expect(page.getByText('Phase 10 archive card')).toHaveCount(0)
 
-  await page
-    .locator('.manager-flag-pills')
-    .getByRole('button', { name: 'Show archived', exact: true })
-    .click()
+  await page.getByLabel('Show archived').check()
   await expect(page.getByRole('button', { name: /Phase 10 archive card/ })).toBeVisible()
 
   await page.getByRole('button', { name: /Phase 10 archive card/ }).click()
   await page.getByRole('button', { name: 'Unarchive', exact: true }).click()
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
 
-  await page
-    .locator('.manager-flag-pills')
-    .getByRole('button', { name: 'Show archived', exact: true })
-    .click()
+  await page.getByLabel('Show archived').uncheck()
+  await page.getByLabel('Show archived').check()
   await expect(page.getByRole('button', { name: /Phase 10 archive card/ })).toBeVisible()
 })

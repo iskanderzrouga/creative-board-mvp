@@ -105,6 +105,7 @@ export function TaskLibraryEditor({
           >
             <div className="settings-row task-library-row">
               <input
+                aria-label={`Task type name for ${taskType.name}`}
                 value={taskType.name}
                 onChange={(event) =>
                   onTaskTypeChange((current) =>
@@ -131,6 +132,7 @@ export function TaskLibraryEditor({
               <div className="task-type-color-inputs">
                 <input
                   type="color"
+                  aria-label={`Task type color for ${taskType.name}`}
                   value={taskType.color}
                   onChange={(event) =>
                     onTaskTypeChange((current) =>
@@ -140,6 +142,7 @@ export function TaskLibraryEditor({
                 />
                 <input
                   type="text"
+                  aria-label={`Task type icon for ${taskType.name}`}
                   value={taskType.icon}
                   onChange={(event) =>
                     onTaskTypeChange((current) =>
@@ -151,6 +154,7 @@ export function TaskLibraryEditor({
               <input
                 type="number"
                 min={1}
+                aria-label={`Task type hours for ${taskType.name}`}
                 value={taskType.estimatedHours}
                 onChange={(event) =>
                   onTaskTypeChange((current) =>

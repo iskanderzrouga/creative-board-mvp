@@ -14,6 +14,7 @@ import {
   type StageId,
   type TaskType,
 } from '../board'
+import { BlockedIcon, ClockIcon } from './icons/AppIcons'
 
 interface BoardCardSurfaceProps {
   card: Card
@@ -77,13 +78,18 @@ function BoardCardSurfaceComponent({
       } ${isDragging ? 'is-dragging' : ''} ${isOverlay ? 'is-overlay' : ''} ${
         isInvalid ? 'is-invalid' : ''
       }`}
+      aria-label={`Open card ${card.id}: ${card.title}`}
       onClick={onOpen}
       {...attributes}
       {...listeners}
     >
       <div className="board-card-top">
         <div className="board-card-indicators">
-          {card.blocked ? <span className="board-card-flag">🚫</span> : null}
+          {card.blocked ? (
+            <span className="board-card-flag" aria-hidden="true">
+              <BlockedIcon />
+            </span>
+          ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
       </div>
@@ -117,8 +123,16 @@ function BoardCardSurfaceComponent({
         </span>
         {showEstimate ? (
           <span className={`card-age ${completionForecast.isScheduled ? `tone-${tone}` : 'is-unscheduled'}`}>
-            {dueStatus === 'overdue' ? <span className="due-indicator is-overdue">⏰</span> : null}
-            {dueStatus === 'soon' ? <span className="due-indicator is-soon">⏰</span> : null}
+            {dueStatus === 'overdue' ? (
+              <span className="due-indicator is-overdue" aria-hidden="true">
+                <ClockIcon />
+              </span>
+            ) : null}
+            {dueStatus === 'soon' ? (
+              <span className="due-indicator is-soon" aria-hidden="true">
+                <ClockIcon />
+              </span>
+            ) : null}
             {formatEstimatedDaysLabel(completionForecast.estimatedDays)}
           </span>
         ) : null}

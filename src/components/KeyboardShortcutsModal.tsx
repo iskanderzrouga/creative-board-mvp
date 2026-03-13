@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { XIcon } from './icons/AppIcons'
 
 interface KeyboardShortcutsModalProps {
   onClose: () => void
@@ -36,7 +37,7 @@ export function KeyboardShortcutsModal({ onClose }: KeyboardShortcutsModalProps)
       >
         <div className="quick-create-head">
           <div>
-            <strong id="keyboard-shortcuts-title">Keyboard shortcuts</strong>
+            <h2 id="keyboard-shortcuts-title">Keyboard shortcuts</h2>
             <p className="shortcut-modal-copy">
               A few quick commands keep the board moving without hunting through menus.
             </p>
@@ -47,7 +48,7 @@ export function KeyboardShortcutsModal({ onClose }: KeyboardShortcutsModalProps)
             aria-label="Close"
             onClick={onClose}
           >
-            ×
+            <XIcon />
           </button>
         </div>
 

@@ -20,6 +20,58 @@ interface WorkspaceAccessManagerProps {
   onDelete: (email: string) => Promise<void>
 }
 
+const WORKSPACE_ROLE_OPTIONS: Array<{
+  value: RoleMode
+  label: string
+}> = [
+  { value: 'manager', label: 'Manager — Full access, settings, team management' },
+  { value: 'editor', label: 'Editor — Own cards, drag forward, no settings' },
+  { value: 'observer', label: 'Observer — Read-only, analytics access' },
+]
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value))
+}
+
+function getEmailValidationMessage(
+  value: string,
+  entries: WorkspaceAccessEntry[],
+  currentEmail?: string,
+) {
+  const normalizedValue = normalizeEmail(value)
+
+  if (!normalizedValue) {
+    return null
+  }
+
+  if (!isValidEmail(normalizedValue)) {
+    return 'Enter a valid work email.'
+  }
+
+  const normalizedCurrentEmail = currentEmail ? normalizeEmail(currentEmail) : null
+  const duplicate = entries.some(
+    (entry) => normalizeEmail(entry.email) === normalizedValue && normalizeEmail(entry.email) !== normalizedCurrentEmail,
+  )
+
+  if (duplicate) {
+    return 'That email already has workspace access.'
+  }
+
+  return null
+}
+
+function isDirty(entry: WorkspaceAccessEntry, draft: { email: string; roleMode: RoleMode; editorName: string }) {
+  return (
+    normalizeEmail(entry.email) !== normalizeEmail(draft.email) ||
+    entry.roleMode !== draft.roleMode ||
+    (entry.editorName ?? '') !== draft.editorName
+  )
+}
+
 export function WorkspaceAccessManager({
   entries,
   editorOptions,
@@ -29,15 +81,20 @@ export function WorkspaceAccessManager({
   onSave,
   onDelete,
 }: WorkspaceAccessManagerProps) {
-  const [drafts, setDrafts] = useState<Record<string, { email: string; roleMode: RoleMode; editorName: string }>>({})
+  const [drafts, setDrafts] = useState<
+    Record<string, { email: string; roleMode: RoleMode; editorName: string }>
+  >({})
   const [pendingDeleteEmail, setPendingDeleteEmail] = useState<string | null>(null)
   const [newEntry, setNewEntry] = useState({
     email: '',
     roleMode: 'editor' as RoleMode,
     editorName: '',
   })
+
+  const newEntryEmailMessage = getEmailValidationMessage(newEntry.email, entries)
   const canAddNewEntry =
-    Boolean(newEntry.email.trim()) &&
+    !newEntryEmailMessage &&
+    Boolean(normalizeEmail(newEntry.email)) &&
     (newEntry.roleMode !== 'editor' || Boolean(newEntry.editorName))
 
   return (
@@ -47,8 +104,8 @@ export function WorkspaceAccessManager({
           <div>
             <strong>Workspace Access</strong>
             <p className="muted-copy">
-              Add approved work emails here. Once saved, teammates can use the app login page
-              to create their account on first sign-in.
+              Add approved work emails here. Once saved, teammates can use the app login page to
+              create their account on first sign-in.
             </p>
           </div>
         </div>
@@ -71,61 +128,98 @@ export function WorkspaceAccessManager({
               roleMode: entry.roleMode,
               editorName: entry.editorName ?? '',
             }
+            const rowIsDirty = isDirty(entry, draft)
+            const emailMessage = getEmailValidationMessage(draft.email, entries, entry.email)
+            const canSaveRow =
+              rowIsDirty &&
+              !emailMessage &&
+              Boolean(normalizeEmail(draft.email)) &&
+              (draft.roleMode !== 'editor' || Boolean(draft.editorName))
 
             return (
-              <div key={entry.email} className="settings-row workspace-access-row">
-                <input
-                  type="email"
-                  value={draft.email}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [entry.email]: { ...draft, email: event.target.value },
-                    }))
-                  }
-                />
-                <select
-                  value={draft.roleMode}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [entry.email]: {
-                        ...draft,
-                        roleMode: event.target.value as RoleMode,
-                        editorName: event.target.value === 'editor' ? draft.editorName : '',
-                      },
-                    }))
-                  }
-                >
-                  <option value="manager">Manager</option>
-                  <option value="editor">Editor</option>
-                  <option value="observer">Observer</option>
-                </select>
-                <select
-                  value={draft.editorName}
-                  disabled={draft.roleMode !== 'editor'}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [entry.email]: { ...draft, editorName: event.target.value },
-                    }))
-                  }
-                >
-                  <option value="">
-                    {draft.roleMode === 'editor' ? 'Select editor' : 'Not needed'}
-                  </option>
-                  {editorOptions.map((editorName) => (
-                    <option key={editorName} value={editorName}>
-                      {editorName}
+              <div
+                key={entry.email}
+                className={`settings-row workspace-access-row ${rowIsDirty ? 'is-dirty' : ''}`}
+              >
+                <div className="workspace-access-cell">
+                  <input
+                    type="email"
+                    aria-label="Workspace access email"
+                    aria-invalid={emailMessage ? 'true' : 'false'}
+                    value={draft.email}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [entry.email]: { ...draft, email: event.target.value },
+                      }))
+                    }
+                  />
+                  {emailMessage ? (
+                    <p className="field-error" role="alert">
+                      {emailMessage}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="workspace-access-cell">
+                  <select
+                    aria-label={`Workspace access role for ${entry.email}`}
+                    title={WORKSPACE_ROLE_OPTIONS.find((option) => option.value === draft.roleMode)?.label}
+                    value={draft.roleMode}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [entry.email]: {
+                          ...draft,
+                          roleMode: event.target.value as RoleMode,
+                          editorName: event.target.value === 'editor' ? draft.editorName : '',
+                        },
+                      }))
+                    }
+                  >
+                    {WORKSPACE_ROLE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="workspace-access-cell">
+                  <select
+                    aria-label={`Linked editor for ${entry.email}`}
+                    value={draft.editorName}
+                    disabled={draft.roleMode !== 'editor'}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [entry.email]: { ...draft, editorName: event.target.value },
+                      }))
+                    }
+                  >
+                    <option value="">
+                      {draft.roleMode === 'editor' ? 'Select editor' : 'Not needed'}
                     </option>
-                  ))}
-                </select>
-                <span className="muted-copy">{entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}</span>
+                    {editorOptions.map((editorName) => (
+                      <option key={editorName} value={editorName}>
+                        {editorName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="workspace-access-cell workspace-access-meta">
+                  <span className="muted-copy">
+                    {entry.updatedAt ? formatDateTime(entry.updatedAt) : '—'}
+                  </span>
+                  {rowIsDirty ? <span className="dirty-indicator">Unsaved changes</span> : null}
+                </div>
+
                 <div className="task-type-actions">
                   <button
                     type="button"
-                    className="ghost-button"
-                    disabled={pendingEmail === entry.email}
+                    className={rowIsDirty ? 'primary-button compact-button' : 'ghost-button compact-button'}
+                    disabled={!canSaveRow || pendingEmail === entry.email}
                     onClick={() =>
                       void onSave({
                         email: draft.email,
@@ -149,54 +243,83 @@ export function WorkspaceAccessManager({
               </div>
             )
           })}
+        </div>
 
-          <div className="settings-row workspace-access-row is-new">
-            <input
-              type="email"
-              value={newEntry.email}
-              placeholder="teammate@company.com"
-              onChange={(event) =>
-                setNewEntry((current) => ({
-                  ...current,
-                  email: event.target.value,
-                }))
-              }
-            />
-            <select
-              value={newEntry.roleMode}
-              onChange={(event) =>
-                setNewEntry((current) => ({
-                  ...current,
-                  roleMode: event.target.value as RoleMode,
-                  editorName: event.target.value === 'editor' ? current.editorName : '',
-                }))
-              }
-            >
-              <option value="manager">Manager</option>
-              <option value="editor">Editor</option>
-              <option value="observer">Observer</option>
-            </select>
-            <select
-              value={newEntry.editorName}
-              disabled={newEntry.roleMode !== 'editor'}
-              onChange={(event) =>
-                setNewEntry((current) => ({
-                  ...current,
-                  editorName: event.target.value,
-                }))
-              }
-            >
-              <option value="">
-                {newEntry.roleMode === 'editor' ? 'Select editor' : 'Not needed'}
-              </option>
-              {editorOptions.map((editorName) => (
-                <option key={editorName} value={editorName}>
-                  {editorName}
+        <div className="workspace-access-new-card">
+          <div className="settings-section-header">
+            <h3>Add New User</h3>
+            <p className="muted-copy">
+              Add a work email here before sending someone to the login page.
+            </p>
+          </div>
+
+          <div className="workspace-access-new-grid workspace-access-row is-new">
+            <div className="workspace-access-cell">
+              <input
+                type="email"
+                aria-label="Workspace access email"
+                aria-invalid={newEntryEmailMessage ? 'true' : 'false'}
+                value={newEntry.email}
+                placeholder="teammate@company.com"
+                onChange={(event) =>
+                  setNewEntry((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+              />
+              {newEntryEmailMessage ? (
+                <p className="field-error" role="alert">
+                  {newEntryEmailMessage}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="workspace-access-cell">
+              <select
+                aria-label="New workspace access role"
+                title={WORKSPACE_ROLE_OPTIONS.find((option) => option.value === newEntry.roleMode)?.label}
+                value={newEntry.roleMode}
+                onChange={(event) =>
+                  setNewEntry((current) => ({
+                    ...current,
+                    roleMode: event.target.value as RoleMode,
+                    editorName: event.target.value === 'editor' ? current.editorName : '',
+                  }))
+                }
+              >
+                {WORKSPACE_ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="workspace-access-cell">
+              <select
+                aria-label="New linked editor"
+                value={newEntry.editorName}
+                disabled={newEntry.roleMode !== 'editor'}
+                onChange={(event) =>
+                  setNewEntry((current) => ({
+                    ...current,
+                    editorName: event.target.value,
+                  }))
+                }
+              >
+                <option value="">
+                  {newEntry.roleMode === 'editor' ? 'Select editor' : 'Not needed'}
                 </option>
-              ))}
-            </select>
-            <span className="muted-copy">New</span>
-            <div className="task-type-actions">
+                {editorOptions.map((editorName) => (
+                  <option key={editorName} value={editorName}>
+                    {editorName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="workspace-access-new-actions">
               <button
                 type="button"
                 className="primary-button"
