@@ -104,6 +104,65 @@ export function SettingsPage({
     integrations: 'Store external service settings used by your workflow and keep them aligned with deployment.',
     data: 'Export your board data as JSON for backup. Import to restore. Fresh start keeps structure but clears operational clutter.',
   }
+  const SETTINGS_TAB_META: Record<
+    SettingTab,
+    {
+      eyebrow: string
+      summary: string
+      guidance: string
+    }
+  > = {
+    general: {
+      eyebrow: 'Workspace defaults',
+      summary: 'Set the operating defaults that shape how the workspace feels every day.',
+      guidance: 'Use this page for global rules only. If a change belongs to portfolios, people, or permissions, keep it in those dedicated pages.',
+    },
+    portfolios: {
+      eyebrow: 'Business structure',
+      summary: 'Model the real hierarchy: portfolios at the top, then brands, then products.',
+      guidance: 'Treat this as your source of truth for what the business sells. Work cards should inherit from this structure, not redefine it.',
+    },
+    team: {
+      eyebrow: 'People on the board',
+      summary: 'Create teammate profiles for the people who actually do the work inside the workflow.',
+      guidance: 'This page is about job function, capacity, and availability. Sign-in permissions belong in Access.',
+    },
+    access: {
+      eyebrow: 'Permissions and visibility',
+      summary: 'Decide who can enter the product, what they can see, and whether they act as a contributor on the board.',
+      guidance: 'Show the result of each permission clearly. A good access system explains the outcome, not just the raw config.',
+    },
+    'task-library': {
+      eyebrow: 'Workflow rules',
+      summary: 'Define the task language, revision reasons, and workflow structure your team uses repeatedly.',
+      guidance: 'Keep the system opinionated here so card creation stays fast and reporting stays consistent later.',
+    },
+    capacity: {
+      eyebrow: 'Utilization thresholds',
+      summary: 'Set the workload limits that power capacity health across analytics and planning.',
+      guidance: 'These thresholds should stay stable. Change them only when the business operating model actually changes.',
+    },
+    integrations: {
+      eyebrow: 'Connected tools',
+      summary: 'Store the external endpoints and future integrations that connect the board to the rest of your stack.',
+      guidance: 'Keep this page operational and boring. Every field here should map to a real external dependency.',
+    },
+    data: {
+      eyebrow: 'Recovery and cleanup',
+      summary: 'Export, import, and reset workspace data without losing the parts of the system you still want to keep.',
+      guidance: 'Use Fresh start when operations should reset but the business structure should survive.',
+    },
+  }
+  const SETTINGS_NAV_GROUPS: Array<{
+    title: string
+    tabs: SettingTab[]
+  }> = [
+    { title: 'Workspace', tabs: ['general'] },
+    { title: 'Core model', tabs: ['portfolios', 'team', 'access'] },
+    { title: 'Operations', tabs: ['task-library', 'capacity', 'integrations'] },
+    { title: 'Admin', tabs: ['data'] },
+  ]
+  const activeTabMeta = SETTINGS_TAB_META[settingsTab]
   const settingsPortfolio =
     state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
     state.portfolios[0]
@@ -308,16 +367,29 @@ export function SettingsPage({
         <button type="button" className="ghost-button settings-back" onClick={onBackToBoard}>
           ← Back to Board
         </button>
+        <div className="settings-sidebar-meta">
+          <span className="settings-sidebar-eyebrow">Workspace settings</span>
+          <strong className="settings-sidebar-name">{state.settings.general.appName}</strong>
+          <p className="settings-sidebar-description">
+            Keep structure, people, permissions, workflow, and cleanup separated so each page answers one question clearly.
+          </p>
+        </div>
         <div className="settings-tab-list">
-          {(Object.keys(SETTINGS_TAB_LABELS) as SettingTab[]).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              className={`settings-tab ${settingsTab === tab ? 'is-active' : ''}`}
-              onClick={() => onTabChange(tab)}
-            >
-              {SETTINGS_TAB_LABELS[tab]}
-            </button>
+          {SETTINGS_NAV_GROUPS.map((group) => (
+            <div key={group.title} className="settings-nav-group">
+              <span className="settings-nav-caption">{group.title}</span>
+              {group.tabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`settings-tab ${settingsTab === tab ? 'is-active' : ''}`}
+                  onClick={() => onTabChange(tab)}
+                >
+                  <span className="settings-tab-label">{SETTINGS_TAB_LABELS[tab]}</span>
+                  <span className="settings-tab-copy">{SETTINGS_TAB_META[tab].eyebrow}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       </div>
@@ -325,8 +397,22 @@ export function SettingsPage({
       <div className="settings-page-content">
         <PageHeader title="Settings" rightContent={headerUtilityContent} />
 
-        <section className="settings-tab-intro">
-          <p className="muted-copy">{SETTINGS_TAB_HELP_TEXT[settingsTab]}</p>
+        <section className="settings-intro-card">
+          <div className="settings-intro-copy">
+            <span className="settings-intro-eyebrow">{activeTabMeta.eyebrow}</span>
+            <h2>{SETTINGS_TAB_LABELS[settingsTab]}</h2>
+            <p>{SETTINGS_TAB_HELP_TEXT[settingsTab]}</p>
+          </div>
+          <div className="settings-intro-grid">
+            <div className="settings-intro-panel">
+              <strong>What belongs here</strong>
+              <p>{activeTabMeta.summary}</p>
+            </div>
+            <div className="settings-intro-panel">
+              <strong>How to use it well</strong>
+              <p>{activeTabMeta.guidance}</p>
+            </div>
+          </div>
         </section>
 
         {settingsTab === 'general' ? (
