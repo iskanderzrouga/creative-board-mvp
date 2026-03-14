@@ -34,7 +34,9 @@ export const FUNNEL_STAGES = [
   'Promo',
   'Promo Evergreen',
 ] as const
-export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Other'] as const
+export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Google', 'Other'] as const
+export const CARD_PRIORITIES = ['none', 'low', 'medium', 'high'] as const
+export type CardPriority = (typeof CARD_PRIORITIES)[number]
 export const CARD_FIELDS = [
   'hook',
   'angle',
@@ -85,6 +87,7 @@ export interface CommentEntry {
   author: string
   text: string
   timestamp: string
+  imageDataUrl?: string
 }
 
 export interface ActivityEntry {
@@ -116,6 +119,7 @@ export interface StageHistoryEntry {
   movedBack?: boolean
   revisionReason?: string
   revisionEstimatedHours?: number
+  revisionFeedback?: string
 }
 
 export interface BlockedState {
@@ -133,7 +137,6 @@ export interface Card {
   hook: string
   angle: string
   audience: string
-  awarenessLevel: string
   landingPage: string
   funnelStage: FunnelStage
   generatedSheetName: string
@@ -156,8 +159,9 @@ export interface Card {
   dueDate: string | null
   blocked: BlockedState | null
   archivedAt: string | null
+  priority: CardPriority
+  actualHoursLogged: number
   activityLog: ActivityEntry[]
-  note?: string
   legacyNaming?: boolean
 }
 
@@ -169,6 +173,8 @@ export interface Brand {
   color: string
   surfaceColor: string
   textColor: string
+  facebookPage: string
+  defaultLandingPage: string
 }
 
 export interface TeamMember {
@@ -254,6 +260,23 @@ export interface ActiveRole {
   editorId: string | null
 }
 
+export type NotificationType =
+  | 'card_assigned'
+  | 'card_moved'
+  | 'comment_added'
+  | 'revision_requested'
+  | 'card_unblocked'
+
+export interface AppNotification {
+  id: string
+  type: NotificationType
+  message: string
+  cardId: string
+  portfolioId: string
+  createdAt: string
+  read: boolean
+}
+
 export interface PortfolioAccessScope {
   portfolioId: string
   brandNames: string[]
@@ -265,6 +288,7 @@ export interface AppState {
   activePortfolioId: string
   activeRole: ActiveRole
   activePage: AppPage
+  notifications: AppNotification[]
   version: number
 }
 
@@ -508,36 +532,18 @@ export const DEFAULT_QUICK_CREATE_INPUT: QuickCreateInput = {
 }
 
 export const BRAND_PALETTES = [
-  {
-    color: '#7c3aed',
-    surfaceColor: '#f3e8ff',
-    textColor: '#7c3aed',
-  },
-  {
-    color: '#059669',
-    surfaceColor: '#d1fae5',
-    textColor: '#059669',
-  },
-  {
-    color: '#0284c7',
-    surfaceColor: '#e0f2fe',
-    textColor: '#0284c7',
-  },
-  {
-    color: '#db2777',
-    surfaceColor: '#fce7f3',
-    textColor: '#db2777',
-  },
-  {
-    color: '#d97706',
-    surfaceColor: '#fef3c7',
-    textColor: '#d97706',
-  },
-  {
-    color: '#4f46e5',
-    surfaceColor: '#e0e7ff',
-    textColor: '#4f46e5',
-  },
+  { color: '#7c3aed', surfaceColor: '#f3e8ff', textColor: '#5b21b6' },
+  { color: '#059669', surfaceColor: '#d1fae5', textColor: '#047857' },
+  { color: '#0284c7', surfaceColor: '#e0f2fe', textColor: '#0369a1' },
+  { color: '#db2777', surfaceColor: '#fce7f3', textColor: '#be185d' },
+  { color: '#d97706', surfaceColor: '#fef3c7', textColor: '#b45309' },
+  { color: '#4f46e5', surfaceColor: '#e0e7ff', textColor: '#4338ca' },
+  { color: '#dc2626', surfaceColor: '#fee2e2', textColor: '#b91c1c' },
+  { color: '#0d9488', surfaceColor: '#ccfbf1', textColor: '#0f766e' },
+  { color: '#7c3aed', surfaceColor: '#ede9fe', textColor: '#6d28d9' },
+  { color: '#ea580c', surfaceColor: '#ffedd5', textColor: '#c2410c' },
+  { color: '#2563eb', surfaceColor: '#dbeafe', textColor: '#1d4ed8' },
+  { color: '#65a30d', surfaceColor: '#ecfccb', textColor: '#4d7c0f' },
 ] as const
 
 export const ALL_PORTFOLIOS_ID = 'all-portfolios'
@@ -794,6 +800,31 @@ export function formatDateTime(isoString: string) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(isoString))
+}
+
+export function formatRelativeTime(isoString: string, nowMs = Date.now()) {
+  const diffMs = nowMs - new Date(isoString).getTime()
+  if (diffMs < 0) return 'just now'
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 4) return `${weeks}w ago`
+  return formatDateShort(isoString)
+}
+
+export function formatEstimatedDaysLabel(days: number | null) {
+  if (days === null) return 'Unscheduled'
+  if (days <= 0) return 'Today'
+  return `~${days} ${days === 1 ? 'day' : 'days'}`
+}
+
+export function getTypePillLabel(taskType: TaskType) {
+  return `${taskType.icon} ${taskType.name}`
 }
 
 export function formatDurationShort(durationMs: number) {
@@ -1156,6 +1187,7 @@ function createStageHistoryEntry(
   movedBack = false,
   revisionReason?: string,
   revisionEstimatedHours?: number,
+  revisionFeedback?: string,
 ): StageHistoryEntry {
   return {
     stage,
@@ -1166,6 +1198,7 @@ function createStageHistoryEntry(
     movedBack,
     revisionReason,
     revisionEstimatedHours,
+    revisionFeedback: revisionFeedback?.trim() || undefined,
   }
 }
 
@@ -1411,6 +1444,8 @@ function createBrand(
     color: palette.color,
     surfaceColor: palette.surfaceColor,
     textColor: palette.textColor,
+    facebookPage: '',
+    defaultLandingPage: '',
   }
 }
 
@@ -1436,7 +1471,6 @@ function inflateSeedCard(
     hook?: string
     angle?: string
     audience?: string
-    awarenessLevel?: string
     funnelStage: FunnelStage
     owner: string | null
     stage: StageId
@@ -1447,7 +1481,6 @@ function inflateSeedCard(
     attachments?: Attachment[]
     frameioLink?: string
     driveFolderUrl?: string
-    note?: string
     generatedSheetName?: string
     generatedAdName?: string
     customStageHistory?: StageHistoryEntry[]
@@ -1495,7 +1528,6 @@ function inflateSeedCard(
     hook: seed.hook ?? '',
     angle: seed.angle ?? '',
     audience: seed.audience ?? '',
-    awarenessLevel: seed.awarenessLevel ?? '',
     landingPage: '',
     funnelStage: seed.funnelStage,
     generatedSheetName: seed.generatedSheetName ?? seed.title,
@@ -1529,8 +1561,9 @@ function inflateSeedCard(
     dueDate: seed.dueDate ?? null,
     blocked: null,
     archivedAt: null,
+    priority: 'none',
+    actualHoursLogged: 0,
     activityLog,
-    note: seed.note,
     legacyNaming: true,
   }
 
@@ -1616,7 +1649,6 @@ function createImportedSeedCard(
     attachments,
     frameioLink: seed.frameioLink ?? '',
     driveFolderUrl: seed.driveFolderUrl ?? '',
-    note: seed.briefDoc,
     generatedSheetName: seed.generatedSheetName,
     customStageHistory: buildCustomHistory([
       {
@@ -1778,6 +1810,7 @@ export function createSeedState(): AppState {
       editorId: null,
     },
     activePage: 'board',
+    notifications: [],
     version: STATE_VERSION,
   }
 }
@@ -1852,6 +1885,8 @@ function normalizePortfolio(
       color: brand.color ?? fallback.color,
       surfaceColor: brand.surfaceColor ?? fallback.surfaceColor,
       textColor: brand.textColor ?? fallback.textColor,
+      facebookPage: (brand as Brand).facebookPage ?? '',
+      defaultLandingPage: (brand as Brand).defaultLandingPage ?? '',
     }
   })
 
@@ -1901,19 +1936,23 @@ function normalizePortfolio(
               ),
             ]
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = rawCard as any
       return {
         ...rawCard,
         taskTypeId,
         estimatedHours:
           typeof rawCard.estimatedHours === 'number'
             ? rawCard.estimatedHours
-            : typeof (rawCard as unknown as { effortPoints?: number }).effortPoints === 'number'
-              ? (rawCard as unknown as { effortPoints: number }).effortPoints
+            : typeof raw.effortPoints === 'number'
+              ? raw.effortPoints
               : taskType.estimatedHours,
         revisionEstimatedHours:
           typeof (rawCard as Card).revisionEstimatedHours === 'number'
             ? (rawCard as Card).revisionEstimatedHours
             : null,
+        priority: raw.priority ?? 'none',
+        actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
         dueDate: rawCard.dueDate ?? null,
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
@@ -2027,6 +2066,9 @@ export function coerceAppState(raw: unknown): AppState {
       typeof candidate.activePage === 'string' && APP_PAGES.includes(candidate.activePage as AppPage)
         ? (candidate.activePage as AppPage)
         : seed.activePage,
+    notifications: Array.isArray((candidate as Record<string, unknown>).notifications)
+      ? ((candidate as Record<string, unknown>).notifications as AppNotification[])
+      : [],
     version: STATE_VERSION,
   }
 }
@@ -2053,6 +2095,46 @@ export function persistAppState(state: AppState) {
   }
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+}
+
+export function createNotification(
+  type: NotificationType,
+  message: string,
+  cardId: string,
+  portfolioId: string,
+): AppNotification {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    message,
+    cardId,
+    portfolioId,
+    createdAt: new Date().toISOString(),
+    read: false,
+  }
+}
+
+export function markNotificationRead(state: AppState, notificationId: string): AppState {
+  return {
+    ...state,
+    notifications: state.notifications.map((n) =>
+      n.id === notificationId ? { ...n, read: true } : n,
+    ),
+  }
+}
+
+export function markAllNotificationsRead(state: AppState): AppState {
+  return {
+    ...state,
+    notifications: state.notifications.map((n) => ({ ...n, read: true })),
+  }
+}
+
+export function dismissNotification(state: AppState, notificationId: string): AppState {
+  return {
+    ...state,
+    notifications: state.notifications.filter((n) => n.id !== notificationId),
+  }
 }
 
 export function createEmptyPortfolio(name: string, existingCount: number): Portfolio {
@@ -2088,6 +2170,7 @@ export function createFreshStartState(state: AppState): AppState {
     ...state,
     portfolios,
     activePortfolioId: nextActivePortfolioId,
+    notifications: [],
     settings: {
       ...state.settings,
       general: {
@@ -2325,7 +2408,6 @@ export function createCardFromQuickInput(
     hook: '',
     angle: '',
     audience: '',
-    awarenessLevel: '',
     landingPage: '',
     funnelStage: 'Cold',
     generatedSheetName: '',
@@ -2352,6 +2434,8 @@ export function createCardFromQuickInput(
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
     revisionEstimatedHours: null,
+    priority: 'none',
+    actualHoursLogged: 0,
     dueDate: null,
     blocked: null,
     archivedAt: null,
@@ -2365,7 +2449,7 @@ export function createCardFromQuickInput(
 }
 
 function canManageCards(viewer: ViewerContext) {
-  return viewer.mode === 'owner' || viewer.mode === 'manager'
+  return viewer.mode === 'owner' || viewer.mode === 'manager' || viewer.mode === 'contributor'
 }
 
 function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>) {
@@ -2391,6 +2475,13 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('brief')
     allowedKeys.add('attachments')
     allowedKeys.add('frameioLink')
+    allowedKeys.add('dueDate')
+    allowedKeys.add('landingPage')
+    allowedKeys.add('priority')
+    allowedKeys.add('actualHoursLogged')
+    allowedKeys.add('comments')
+    allowedKeys.add('estimatedHours')
+    allowedKeys.add('blocked')
   }
   if (isLaunchOpsRole(viewer.memberRole)) {
     allowedKeys.add('blocked')
@@ -2439,6 +2530,10 @@ function matchesSearch(card: Card, query: string) {
     card.owner ?? '',
     card.hook,
     card.angle,
+    card.brand,
+    card.product,
+    card.platform,
+    card.landingPage,
     card.brief.replace(/<[^>]+>/g, ' '),
   ]
     .join(' ')
@@ -3035,8 +3130,13 @@ export function getCardMoveValidationMessage(
 
   const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? card.owner
   const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(card.stage)
+  const isForwardMove = STAGES.indexOf(destinationStage) > STAGES.indexOf(card.stage)
   const isLaunchOpsViewer = viewer.mode === 'contributor' && isLaunchOpsRole(viewer.memberRole)
   const movingWithinSameSection = destinationStage === card.stage && nextOwner === card.owner
+
+  if (card.blocked && isForwardMove) {
+    return 'Unblock this card before moving it forward.'
+  }
 
   if (viewer.mode === 'viewer') {
     return 'Viewer access is read-only.'
@@ -3075,8 +3175,8 @@ export function getCardMoveValidationMessage(
       return 'Contributors cannot move cards back to Backlog.'
     }
 
-    if (movingWithinSameSection) {
-      return 'Only owners and managers can reorder priority within a section.'
+    if (movingWithinSameSection && card.owner !== viewer.editorName) {
+      return 'Contributors can only reorder their own cards.'
     }
 
     if (!isBackwardMove) {
@@ -3190,6 +3290,7 @@ export function moveCardInPortfolio(
   viewer: ViewerContext,
   revisionReason?: string,
   revisionEstimatedHours?: number | null,
+  revisionFeedback?: string,
 ) {
   const existingCard = portfolio.cards.find((card) => card.id === cardId)
   if (!existingCard) {
@@ -3248,6 +3349,7 @@ export function moveCardInPortfolio(
           movedBack: isBackwardMove || undefined,
           revisionReason: isBackwardMove ? normalizedRevisionReason : undefined,
           revisionEstimatedHours: isBackwardMove ? revisionEstimatedHours ?? undefined : undefined,
+          revisionFeedback: isBackwardMove ? revisionFeedback?.trim() || undefined : undefined,
         },
       ]
     : [...existingCard.stageHistory]

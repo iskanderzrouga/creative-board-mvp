@@ -3,11 +3,16 @@ import { RichTextEditor } from './RichTextEditor'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
   STAGES,
+  PLATFORMS,
+  CARD_PRIORITIES,
   formatDateLong,
   formatDateShort,
   formatDateTime,
   formatDurationShort,
+  formatRelativeTime,
   formatHours,
+  formatEstimatedDaysLabel,
+  getTypePillLabel,
   getAgeToneFromMs,
   getBrandByName,
   getBrandSurface,
@@ -24,10 +29,10 @@ import {
   getTaskTypeGroups,
   isLaunchOpsRole,
   type Card,
+  type CardPriority,
   type GlobalSettings,
   type Portfolio,
   type RoleMode,
-  type TaskType,
 } from '../board'
 import { BlockedIcon, XIcon } from './icons/AppIcons'
 
@@ -50,7 +55,7 @@ interface CardDetailPanelProps {
   onClose: () => void
   onCopy: (key: string, value: string) => void
   onSave: (updates: Partial<Card>) => void
-  onAddComment: (text: string) => void
+  onAddComment: (text: string, imageDataUrl?: string) => void
   onCreateDriveFolder: () => void
   onRequestDelete: () => void
 }
@@ -90,18 +95,6 @@ function formatCompletionDateLabel(dateString: string) {
   return [weekday, month, day].filter(Boolean).join(' ')
 }
 
-function formatEstimatedDaysLabel(days: number | null) {
-  if (days === null) {
-    return 'Unscheduled'
-  }
-
-  if (days <= 0) {
-    return 'Today'
-  }
-
-  return `~${days} ${days === 1 ? 'day' : 'days'}`
-}
-
 function formatEstimatedCompletionLabel(completionDate: string | null, estimatedDays: number | null) {
   if (estimatedDays === null) {
     return 'Unscheduled until assigned'
@@ -120,10 +113,6 @@ function formatDaysSinceBriefedLabel(daysSinceBriefed: number | null) {
   }
 
   return `${daysSinceBriefed} ${daysSinceBriefed === 1 ? 'day' : 'days'}`
-}
-
-function getTypePillLabel(taskType: TaskType) {
-  return `${taskType.icon} ${taskType.name}`
 }
 
 function isHttpUrl(value: string) {
@@ -175,8 +164,10 @@ export function CardDetailPanel({
   const [linkUrl, setLinkUrl] = useState('')
   const [linkErrorMessage, setLinkErrorMessage] = useState<string | null>(null)
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
+  const [commentImageDataUrl, setCommentImageDataUrl] = useState<string | null>(null)
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
+  const commentImageRef = useRef<HTMLInputElement | null>(null)
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
   const isOwnedEditor = viewerMode === 'contributor' && viewerName === card.owner
   const canEditOwnedContent = canManage || isOwnedEditor
@@ -184,8 +175,8 @@ export function CardDetailPanel({
   const canComment = canManage || isLaunchOpsViewer || viewerName === card.owner
   const canEditFrameio = canManage || isOwnedEditor
   const canEditLinks = canManage || isOwnedEditor
-  const canSetBlocked = canManage || isLaunchOpsViewer
-  const canClearBlocked = canManage
+  const canSetBlocked = canManage || isLaunchOpsViewer || isOwnedEditor
+  const canClearBlocked = canManage || isOwnedEditor
   const canClearOwner = card.stage === 'Backlog'
   const dueStatus = getDueStatus(card, nowMs)
   const taskType = getTaskTypeById(settings, card.taskTypeId)
@@ -453,6 +444,9 @@ export function CardDetailPanel({
                               : ''
                           })`
                         : '(moved back)'}
+                      {entry.revisionFeedback ? (
+                        <span className="stage-history-feedback">{entry.revisionFeedback}</span>
+                      ) : null}
                     </span>
                   ) : null}
                   {index < card.stageHistory.length - 1 ? <span className="stage-history-arrow">→</span> : null}
@@ -543,7 +537,7 @@ export function CardDetailPanel({
                       value={card.platform}
                       onChange={(event) => onSave({ platform: event.target.value as Card['platform'] })}
                     >
-                      {['Meta', 'AppLovin', 'TikTok', 'Other'].map((platform) => (
+                      {PLATFORMS.map((platform) => (
                         <option key={platform} value={platform}>
                           {platform}
                         </option>
@@ -596,7 +590,7 @@ export function CardDetailPanel({
               <div className="metadata-grid">
                 <label>
                   <span>Due Date</span>
-                  {canManage ? (
+                  {canEditOwnedContent ? (
                     <input
                       type="date"
                       value={card.dueDate ?? ''}
@@ -645,7 +639,7 @@ export function CardDetailPanel({
               <div className="metadata-grid">
                 <label>
                   <span>Original Estimate</span>
-                  {canManage ? (
+                  {canEditOwnedContent ? (
                     <input
                       type="number"
                       min={1}
@@ -727,6 +721,79 @@ export function CardDetailPanel({
                     />
                   ) : (
                     <strong>{card.audience || '—'}</strong>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Ad Info</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Landing Page</span>
+                  {canEditOwnedContent ? (
+                    <>
+                      {(() => {
+                        const brand = getBrandByName(portfolio, card.brand)
+                        return brand?.defaultLandingPage && !card.landingPage ? (
+                          <button
+                            type="button"
+                            className="clear-link"
+                            onClick={() => onSave({ landingPage: brand.defaultLandingPage })}
+                          >
+                            Use brand default
+                          </button>
+                        ) : null
+                      })()}
+                      <input
+                        value={card.landingPage}
+                        onChange={(event) => onSave({ landingPage: event.target.value })}
+                        placeholder="https://..."
+                      />
+                    </>
+                  ) : (
+                    <strong>{card.landingPage ? (
+                      <a href={card.landingPage} target="_blank" rel="noreferrer">{card.landingPage}</a>
+                    ) : '—'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Facebook Page</span>
+                  <strong>{getBrandByName(portfolio, card.brand)?.facebookPage || '—'}</strong>
+                </label>
+              </div>
+            </div>
+
+            <div className="metadata-group">
+              <h4 className="metadata-group-title">Priority &amp; Tracking</h4>
+              <div className="metadata-grid">
+                <label>
+                  <span>Priority</span>
+                  {canEditOwnedContent ? (
+                    <select
+                      value={card.priority}
+                      onChange={(event) => onSave({ priority: event.target.value as CardPriority })}
+                    >
+                      {CARD_PRIORITIES.map((p) => (
+                        <option key={p} value={p}>{p === 'none' ? 'None' : p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong>{card.priority === 'none' ? '—' : card.priority}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Actual Hours Logged</span>
+                  {canEditOwnedContent ? (
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={card.actualHoursLogged}
+                      onChange={(event) => onSave({ actualHoursLogged: Math.max(0, Number(event.target.value) || 0) })}
+                    />
+                  ) : (
+                    <strong>{card.actualHoursLogged > 0 ? formatHours(card.actualHoursLogged) : '—'}</strong>
                   )}
                 </label>
               </div>
@@ -933,9 +1000,12 @@ export function CardDetailPanel({
                 <div key={`${comment.timestamp}-${comment.text}`} className="comment-card">
                   <div className="comment-meta">
                     <strong>{comment.author}</strong>
-                    <span>{formatDateTime(comment.timestamp)}</span>
+                    <span title={formatDateTime(comment.timestamp)}>{formatRelativeTime(comment.timestamp, nowMs)}</span>
                   </div>
                   <p>{comment.text}</p>
+                  {comment.imageDataUrl ? (
+                    <img src={comment.imageDataUrl} alt="Comment attachment" className="comment-image" />
+                  ) : null}
                 </div>
               ))
             )}
@@ -959,26 +1029,83 @@ export function CardDetailPanel({
                 rows={2}
                 onKeyDown={(event) => {
                   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && commentDraft.trim()) {
-                    onAddComment(commentDraft.trim())
+                    onAddComment(commentDraft.trim(), commentImageDataUrl ?? undefined)
                     setCommentDraft('')
+                    setCommentImageDataUrl(null)
+                  }
+                }}
+                onPaste={(event) => {
+                  const items = event.clipboardData?.items
+                  if (!items) return
+                  for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                      const file = item.getAsFile()
+                      if (!file) continue
+                      const reader = new FileReader()
+                      reader.onload = () => {
+                        if (typeof reader.result === 'string') {
+                          setCommentImageDataUrl(reader.result)
+                        }
+                      }
+                      reader.readAsDataURL(file)
+                      break
+                    }
                   }
                 }}
               />
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  if (!commentDraft.trim()) {
-                    return
-                  }
-                  onAddComment(commentDraft.trim())
-                  setCommentDraft('')
-                }}
-              >
-                Post
-              </button>
+              {commentImageDataUrl ? (
+                <div className="comment-image-preview">
+                  <img src={commentImageDataUrl} alt="Pasted attachment" />
+                  <button
+                    type="button"
+                    className="clear-link"
+                    onClick={() => setCommentImageDataUrl(null)}
+                  >
+                    Remove image
+                  </button>
+                </div>
+              ) : null}
+              <div className="comment-actions-row">
+                <input
+                  ref={commentImageRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      if (typeof reader.result === 'string') {
+                        setCommentImageDataUrl(reader.result)
+                      }
+                    }
+                    reader.readAsDataURL(file)
+                    event.target.value = ''
+                  }}
+                />
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => commentImageRef.current?.click()}
+                >
+                  Attach image
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    if (!commentDraft.trim() && !commentImageDataUrl) return
+                    onAddComment(commentDraft.trim(), commentImageDataUrl ?? undefined)
+                    setCommentDraft('')
+                    setCommentImageDataUrl(null)
+                  }}
+                >
+                  Post
+                </button>
+              </div>
               <div className="comment-helper-row">
-                <p className="comment-hint">Cmd+Enter to post</p>
+                <p className="comment-hint">Cmd+Enter to post · Paste images from clipboard</p>
                 <p className="comment-counter">{`${commentCharactersRemaining} characters remaining`}</p>
               </div>
             </div>
@@ -1000,7 +1127,7 @@ export function CardDetailPanel({
                 <div key={activity.id} className="activity-item">
                   <div className="activity-meta">
                     <strong>{activity.actor}</strong>
-                    <span>{formatDateTime(activity.timestamp)}</span>
+                    <span title={formatDateTime(activity.timestamp)}>{formatRelativeTime(activity.timestamp, nowMs)}</span>
                   </div>
                   <p>{activity.message}</p>
                 </div>

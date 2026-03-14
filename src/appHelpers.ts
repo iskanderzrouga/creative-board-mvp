@@ -14,6 +14,7 @@ export interface BackwardMoveFormState {
   reasonId: string
   otherReason: string
   estimatedHours: number | ''
+  feedback: string
 }
 
 export function getRoleActorName(role: ActiveRole, portfolio: Portfolio | null) {
@@ -35,13 +36,7 @@ export function isLikelyEmail(value: string) {
 }
 
 export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode) {
-  if (page === 'analytics' && roleMode === 'contributor') {
-    return 'board' as AppPage
-  }
-  if (page === 'settings' && roleMode !== 'owner') {
-    return 'board' as AppPage
-  }
-  if (page === 'workload' && roleMode === 'contributor') {
+  if (page === 'settings' && roleMode === 'viewer') {
     return 'board' as AppPage
   }
 
@@ -90,6 +85,7 @@ export function getDefaultBackwardMoveForm(
     reasonId: defaultReason?.id ?? '',
     otherReason: '',
     estimatedHours: defaultReason?.estimatedHours ?? '',
+    feedback: '',
   }
 }
 

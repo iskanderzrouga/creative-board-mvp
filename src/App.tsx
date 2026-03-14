@@ -36,6 +36,7 @@ import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
+import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { PageHeader } from './components/PageHeader'
 import { QuickCreateModal } from './components/QuickCreateModal'
@@ -72,10 +73,15 @@ import {
   getVisibleCards,
   getVisibleColumns,
   isLaunchOpsRole,
+  createNotification,
+  markNotificationRead,
+  markAllNotificationsRead,
+  dismissNotification,
   loadAppState,
   moveCardInPortfolio,
   removeCardFromPortfolio,
   type ActiveRole,
+  type AppNotification,
   type AppPage,
   type AppState,
   type BoardFilters,
@@ -442,6 +448,21 @@ function App() {
       {authEnabled && authStatus === 'signed-in' && authSession ? (
         <span className="session-email">{authSession.email}</span>
       ) : null}
+      <NotificationBell
+        notifications={state.notifications}
+        onMarkRead={(id) => setState((prev) => markNotificationRead(prev, id))}
+        onMarkAllRead={() => setState((prev) => markAllNotificationsRead(prev))}
+        onDismiss={(id) => setState((prev) => dismissNotification(prev, id))}
+        onNotificationClick={(notification: AppNotification) => {
+          if (notification.portfolioId !== state.activePortfolioId) {
+            setState((prev) => ({ ...prev, activePortfolioId: notification.portfolioId }))
+          }
+          setSelectedCard({ portfolioId: notification.portfolioId, cardId: notification.cardId })
+          if (currentPage !== 'board') {
+            setState((prev) => ({ ...prev, activePage: 'board' }))
+          }
+        }}
+      />
       <button
         type="button"
         className="ghost-button shortcut-button"
@@ -948,11 +969,12 @@ function App() {
     }
   }
 
-  function addCommentToCard(text: string) {
+  function addCommentToCard(text: string, imageDataUrl?: string) {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
     const author = getActorName(activeSelectedPortfolio)
+    const commentCard = activeSelectedPortfolio.cards.find((c) => c.id === selectedCard.cardId)
     updatePortfolio(activeSelectedPortfolio.id, (portfolio) => ({
       ...portfolio,
       cards: portfolio.cards.map((card) =>
@@ -965,12 +987,25 @@ function App() {
                   author,
                   text,
                   timestamp: new Date().toISOString(),
+                  ...(imageDataUrl ? { imageDataUrl } : {}),
                 },
               ],
             }
           : card,
       ),
     }))
+    if (commentCard) {
+      const notification = createNotification(
+        'comment_added',
+        `New comment on "${commentCard.title}"`,
+        selectedCard.cardId,
+        activeSelectedPortfolio.id,
+      )
+      setState((prev) => ({
+        ...prev,
+        notifications: [...prev.notifications, notification],
+      }))
+    }
   }
 
   async function createDriveFolder() {
@@ -1142,6 +1177,7 @@ function App() {
     movedAt: string,
     revisionReason?: string,
     revisionEstimatedHours?: number | null,
+    revisionFeedback?: string,
   ) {
     const portfolio = state.portfolios.find((item) => item.id === portfolioId)
     if (!portfolio) {
@@ -1165,6 +1201,7 @@ function App() {
         viewerContext,
         revisionReason,
         revisionEstimatedHours,
+        revisionFeedback,
       )
       moved = nextPortfolio !== currentPortfolio
       return nextPortfolio
@@ -1177,10 +1214,40 @@ function App() {
 
     if (revisionReason) {
       showToast(`${card.id} moved back to ${destinationStage}`, 'amber')
+      const notification = createNotification(
+        'revision_requested',
+        `"${card.title}" moved back to ${destinationStage}`,
+        cardId,
+        portfolioId,
+      )
+      setState((prev) => ({
+        ...prev,
+        notifications: [...prev.notifications, notification],
+      }))
     } else if (card.stage === 'Backlog' && destinationOwner) {
       showToast(`${card.id} assigned to ${destinationOwner}`, 'blue')
+      const notification = createNotification(
+        'card_assigned',
+        `"${card.title}" assigned to ${destinationOwner}`,
+        cardId,
+        portfolioId,
+      )
+      setState((prev) => ({
+        ...prev,
+        notifications: [...prev.notifications, notification],
+      }))
     } else {
       showToast(`${card.id} → ${destinationStage}`, 'green')
+      const notification = createNotification(
+        'card_moved',
+        `"${card.title}" moved to ${destinationStage}`,
+        cardId,
+        portfolioId,
+      )
+      setState((prev) => ({
+        ...prev,
+        notifications: [...prev.notifications, notification],
+      }))
     }
   }
 
@@ -1298,6 +1365,7 @@ function App() {
     if (!reason || revisionEstimatedHours <= 0) {
       return
     }
+    const revisionFeedback = backwardMoveForm.feedback.trim()
     applyMove(
       pendingBackwardMove.portfolioId,
       pendingBackwardMove.cardId,
@@ -1307,6 +1375,7 @@ function App() {
       pendingBackwardMove.movedAt,
       reason,
       revisionEstimatedHours,
+      revisionFeedback,
     )
     setPendingBackwardMove(null)
   }

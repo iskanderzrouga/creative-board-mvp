@@ -9,6 +9,7 @@ import {
   SETTINGS_TAB_LABELS,
   createEmptyPortfolio,
   getBrandRemovalBlocker,
+  getTeamMemberById,
   removeBrandFromPortfolio,
   removePortfolioFromAppState,
   removeTeamMemberFromPortfolio,
@@ -364,6 +365,120 @@ export function SettingsPage({
 
   const settingsDeleteDialog = getSettingsDeleteDialog()
 
+  if (localRole.mode === 'contributor') {
+    let contributorMember: TeamMember | null = null
+    let contributorPortfolioName: string | null = null
+
+    for (const portfolio of state.portfolios) {
+      const member = getTeamMemberById(portfolio, localRole.editorId)
+      if (member) {
+        contributorMember = member
+        contributorPortfolioName = portfolio.name
+        break
+      }
+    }
+
+    return (
+      <div className="settings-page">
+        <div className="settings-page-sidebar">
+          <button type="button" className="ghost-button settings-back" onClick={onBackToBoard}>
+            ← Back to board
+          </button>
+          <div className="settings-sidebar-meta">
+            <strong className="settings-sidebar-name">{state.settings.general.appName}</strong>
+          </div>
+          <div className="settings-tab-list">
+            <button type="button" className="settings-tab is-active">
+              <span className="settings-tab-label">My Profile</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="settings-page-content">
+          <div className="settings-stack">
+            <div className="settings-block">
+              <SettingsToolbar
+                title="My Profile"
+                description="Your team member details (read-only)."
+              />
+
+              {contributorMember ? (
+                <>
+                  <div className="settings-section-divider" />
+                  <div className="settings-section">
+                    <div className="settings-form-grid">
+                      <label>
+                        <span>Name</span>
+                        <input value={contributorMember.name} readOnly />
+                      </label>
+
+                      <label>
+                        <span>Role</span>
+                        <input value={contributorMember.role || 'Not set'} readOnly />
+                      </label>
+
+                      <label>
+                        <span>Portfolio</span>
+                        <input value={contributorPortfolioName ?? 'Unknown'} readOnly />
+                      </label>
+
+                      <label>
+                        <span>Working days</span>
+                        <input
+                          value={
+                            contributorMember.workingDays.length > 0
+                              ? contributorMember.workingDays.join(', ')
+                              : 'Not set'
+                          }
+                          readOnly
+                        />
+                      </label>
+
+                      <label>
+                        <span>Timezone</span>
+                        <input value={contributorMember.timezone || 'Not set'} readOnly />
+                      </label>
+
+                      <label>
+                        <span>Hours per week</span>
+                        <input
+                          value={contributorMember.weeklyHours ?? 'Not set'}
+                          readOnly
+                        />
+                      </label>
+
+                      <label>
+                        <span>Hours per day</span>
+                        <input
+                          value={contributorMember.hoursPerDay ?? 'Not set'}
+                          readOnly
+                        />
+                      </label>
+
+                      <label>
+                        <span>Status</span>
+                        <input value={contributorMember.active ? 'Active' : 'Inactive'} readOnly />
+                      </label>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="settings-section-divider" />
+                  <div className="settings-section">
+                    <p className="muted-copy">
+                      No team member profile found. Contact your workspace owner.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="settings-page">
       <div className="settings-page-sidebar">
@@ -431,7 +546,7 @@ export function SettingsPage({
                         </select>
                       </label>
 
-                      {localRole.mode === 'contributor' ? (
+                      {(localRole.mode as string) === 'contributor' ? (
                         <label>
                           <span>Simulate as</span>
                           <select
@@ -816,6 +931,8 @@ export function SettingsPage({
                                 <span>Prefix</span>
                                 <span>Products</span>
                                 <span>Drive folder</span>
+                                <span>Facebook Page</span>
+                                <span>Default Landing Page</span>
                                 <span />
                               </div>
                               {portfolio.brands.map((brand, brandIndex) => {
@@ -911,6 +1028,42 @@ export function SettingsPage({
                                           }))
                                         }
                                       />
+                                      <input
+                                        aria-label={`${brand.name || 'Brand'} Facebook Page`}
+                                        value={brand.facebookPage ?? ''}
+                                        placeholder="Facebook page"
+                                        onChange={(event) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                            ...currentPortfolio,
+                                            brands: currentPortfolio.brands.map((item, index) =>
+                                              index === brandIndex
+                                                ? {
+                                                    ...item,
+                                                    facebookPage: event.target.value,
+                                                  }
+                                                : item,
+                                            ),
+                                          }))
+                                        }
+                                      />
+                                      <input
+                                        aria-label={`${brand.name || 'Brand'} Default Landing Page`}
+                                        value={brand.defaultLandingPage ?? ''}
+                                        placeholder="https://example.com"
+                                        onChange={(event) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                            ...currentPortfolio,
+                                            brands: currentPortfolio.brands.map((item, index) =>
+                                              index === brandIndex
+                                                ? {
+                                                    ...item,
+                                                    defaultLandingPage: event.target.value,
+                                                  }
+                                                : item,
+                                            ),
+                                          }))
+                                        }
+                                      />
                                       <button
                                         type="button"
                                         className="clear-link danger-link"
@@ -986,6 +1139,8 @@ export function SettingsPage({
                                       prefix: nextPrefix,
                                       products: [],
                                       driveParentFolderId: '',
+                                      facebookPage: '',
+                                      defaultLandingPage: '',
                                       color: nextPalette.color,
                                       surfaceColor: nextPalette.surfaceColor,
                                       textColor: nextPalette.textColor,

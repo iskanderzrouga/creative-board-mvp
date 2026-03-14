@@ -1,18 +1,20 @@
 import { memo } from 'react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import {
+  formatEstimatedDaysLabel,
   getAgeToneFromMs,
   getBrandSurface,
   getBrandTextColor,
   getCardAgeMs,
   getCardCompletionForecast,
   getDueStatus,
+  getRevisionCount,
   getTaskTypeById,
+  getTypePillLabel,
   type Card,
   type GlobalSettings,
   type Portfolio,
   type StageId,
-  type TaskType,
 } from '../board'
 import { BlockedIcon, ClockIcon } from './icons/AppIcons'
 
@@ -30,24 +32,8 @@ interface BoardCardSurfaceProps {
   listeners?: DraggableSyntheticListeners
 }
 
-function getTypePillLabel(taskType: TaskType) {
-  return `${taskType.icon} ${taskType.name}`
-}
-
 function shouldShowBoardEstimate(stage: StageId) {
   return stage === 'Briefed' || stage === 'In Production'
-}
-
-function formatEstimatedDaysLabel(days: number | null) {
-  if (days === null) {
-    return 'Unscheduled'
-  }
-
-  if (days <= 0) {
-    return 'Today'
-  }
-
-  return `~${days} ${days === 1 ? 'day' : 'days'}`
 }
 
 function BoardCardSurfaceComponent({
@@ -69,6 +55,8 @@ function BoardCardSurfaceComponent({
   const dueStatus = getDueStatus(card, nowMs)
   const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
   const showEstimate = shouldShowBoardEstimate(card.stage)
+  const revisionCount = getRevisionCount(card)
+  const priorityColors: Record<string, string> = { high: '#e53e3e', medium: '#dd6b20', low: '#3182ce' }
 
   return (
     <button
@@ -92,9 +80,18 @@ function BoardCardSurfaceComponent({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+        {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 
-      <p className="board-card-title">{card.title}</p>
+      <p className="board-card-title">
+        {card.priority !== 'none' && (
+          <span
+            className="priority-dot"
+            style={{ background: priorityColors[card.priority] }}
+          />
+        )}
+        {card.title}
+      </p>
 
       <div className="board-card-tags">
         <span

@@ -13,6 +13,7 @@ interface BackwardMoveFormState {
   reasonId: string
   otherReason: string
   estimatedHours: number | ''
+  feedback: string
 }
 
 interface BackwardMoveModalProps {
@@ -102,8 +103,18 @@ export function BackwardMoveModal({
               placeholder="Other reason"
             />
           ) : null}
+          <label className="backward-move-feedback">
+            <span>Detailed Feedback</span>
+            <textarea
+              rows={3}
+              maxLength={1000}
+              placeholder="Describe what needs to change..."
+              value={formState.feedback}
+              onChange={(event) => onChange({ feedback: event.target.value })}
+            />
+          </label>
           <label className="backward-move-estimate">
-            <span>Revision estimate</span>
+            <span>Estimated revision time (hours)</span>
             <input
               type="number"
               min={1}

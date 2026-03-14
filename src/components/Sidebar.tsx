@@ -89,18 +89,16 @@ function SidebarComponent({
     { page: 'board', disabled: false },
     {
       page: 'analytics',
-      disabled: role.mode === 'contributor',
-      tooltip: role.mode === 'contributor' ? 'Owner, Manager, and Viewer only' : undefined,
+      disabled: false,
     },
     {
       page: 'workload',
-      disabled: role.mode === 'contributor',
-      tooltip: role.mode === 'contributor' ? 'Owner, Manager, and Viewer only' : undefined,
+      disabled: false,
     },
     {
       page: 'settings',
-      disabled: role.mode !== 'owner',
-      tooltip: role.mode !== 'owner' ? 'Owner only' : undefined,
+      disabled: role.mode === 'viewer',
+      tooltip: role.mode === 'viewer' ? 'Owner, Manager, and Contributor only' : undefined,
     },
   ]
   const avatarSource = userName || userSecondaryLabel || 'User'

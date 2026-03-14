@@ -261,6 +261,30 @@ export async function signInWithMagicLink(email: string) {
   return { deliveredInstantly: data?.deliveredInstantly ?? false }
 }
 
+export async function resetPasswordForEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+  if (!normalizedEmail) {
+    throw new Error('Enter your email.')
+  }
+
+  if (isE2ESupabaseMode()) {
+    return
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+    redirectTo: getMagicLinkRedirectUrl(),
+  })
+
+  if (error) {
+    throw error
+  }
+}
+
 export async function signInWithPassword(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase()
   if (!normalizedEmail) {

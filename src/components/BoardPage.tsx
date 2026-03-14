@@ -131,7 +131,7 @@ export function BoardPage({
         searchRef={searchRef}
         rightContent={
           <>
-            {activeRoleMode === 'owner' || activeRoleMode === 'manager' ? (
+            {activeRoleMode !== 'viewer' ? (
               <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
                 + Add card
               </button>
@@ -176,7 +176,7 @@ export function BoardPage({
             </div>
           ))}
           <div className="stat-inline-item">
-            <span className="stat-inline-label">Stuck 5+d</span>
+            <span className="stat-inline-label">{`Stuck ${settings.general.timeInStageThresholds.redStart}+d`}</span>
             <strong className={stats.stuck > 0 ? 'is-highlight' : ''}>{stats.stuck}</strong>
             <span className="stat-divider">·</span>
           </div>
@@ -187,7 +187,7 @@ export function BoardPage({
         </section>
       ) : null}
 
-      {activeRoleMode !== 'contributor' ? (
+      {activeRoleMode !== 'viewer' ? (
         <section className="manager-filter-bar">
           <div className="manager-filter-cluster">
             <span className="filter-group-label">Brand</span>
@@ -226,7 +226,7 @@ export function BoardPage({
                       brandNames: current.brandNames.includes(brand.name)
                         ? current.brandNames.filter((item) => item !== brand.name).length > 0
                           ? current.brandNames.filter((item) => item !== brand.name)
-                          : portfolio.brands.map((item) => item.name)
+                          : []
                         : [...current.brandNames, brand.name],
                     }))
                   }
@@ -237,32 +237,35 @@ export function BoardPage({
             </div>
           </div>
 
-          <span className="filter-group-divider" aria-hidden="true" />
-
-          <div className="manager-filter-cluster">
-            <span className="filter-group-label">Teammate</span>
-            <div className="manager-editor-pills">
-              {getEditorOptions(portfolio).map((member) => (
-                <button
-                  key={member.id}
-                  type="button"
-                  className={`editor-pill ${
-                    boardFilters.ownerNames.includes(member.name) ? 'is-active' : ''
-                  }`}
-                  onClick={() =>
-                    setBoardFilters((current) => ({
-                      ...current,
-                      ownerNames: current.ownerNames.includes(member.name)
-                        ? current.ownerNames.filter((item) => item !== member.name)
-                        : [...current.ownerNames, member.name],
-                    }))
-                  }
-                >
-                  {member.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          {activeRoleMode !== 'contributor' ? (
+            <>
+              <span className="filter-group-divider" aria-hidden="true" />
+              <div className="manager-filter-cluster">
+                <span className="filter-group-label">Teammate</span>
+                <div className="manager-editor-pills">
+                  {getEditorOptions(portfolio).map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      className={`editor-pill ${
+                        boardFilters.ownerNames.includes(member.name) ? 'is-active' : ''
+                      }`}
+                      onClick={() =>
+                        setBoardFilters((current) => ({
+                          ...current,
+                          ownerNames: current.ownerNames.includes(member.name)
+                            ? current.ownerNames.filter((item) => item !== member.name)
+                            : [...current.ownerNames, member.name],
+                        }))
+                      }
+                    >
+                      {member.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : null}
 
           <span className="filter-group-divider" aria-hidden="true" />
 
@@ -329,6 +332,12 @@ export function BoardPage({
         </section>
       ) : null}
 
+      {boardFilters.brandNames.length === 0 && portfolio.brands.length > 0 ? (
+        <section className="empty-filter-notice">
+          <p className="muted-copy">No brands selected. Click a brand above to filter, or click &ldquo;All&rdquo; to see everything.</p>
+        </section>
+      ) : null}
+
       {summary ? (
         <section className="editor-summary-bar">
           <div className="editor-summary-name">
@@ -366,27 +375,31 @@ export function BoardPage({
                 <strong>
                   {hasActiveFilters
                     ? 'No cards match the current filters'
-                    : hasBoardCards
-                      ? 'Nothing is visible in this board view yet'
-                      : 'This board is ready for its first card'}
+                    : activeRoleMode === 'contributor' && !hasBoardCards
+                      ? 'Welcome! You\'re all set up'
+                      : hasBoardCards
+                        ? 'Nothing is visible in this board view yet'
+                        : 'This board is ready for its first card'}
                 </strong>
                 <p>
                   {hasActiveFilters
                     ? 'Clear the current filters or search to bring cards back into view.'
-                    : hasBoardCards
-                      ? 'Adjust the current role or filters, or open an existing card from another view.'
-                      : activeRoleMode === 'owner' || activeRoleMode === 'manager'
-                        ? 'Add a first card to the backlog so the shared workflow has something to track.'
-                        : 'An owner or manager can add the first backlog card to start the shared workflow.'}
+                    : activeRoleMode === 'contributor' && !hasBoardCards
+                      ? 'Once cards are assigned to you or you create new ones, they\'ll appear here. You can also create cards yourself using the + Add card button.'
+                      : hasBoardCards
+                        ? 'Adjust the current role or filters, or open an existing card from another view.'
+                        : activeRoleMode === 'owner' || activeRoleMode === 'manager'
+                          ? 'Add a first card to the backlog so the shared workflow has something to track.'
+                          : 'An owner or manager can add the first backlog card to start the shared workflow.'}
                 </p>
                 <div className="board-empty-actions">
                   {hasActiveFilters ? (
                     <button type="button" className="primary-button" onClick={onResetFilters}>
                       Reset filters
                     </button>
-                  ) : activeRoleMode === 'owner' || activeRoleMode === 'manager' ? (
+                  ) : activeRoleMode !== 'viewer' ? (
                     <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
-                      Add first card
+                      {activeRoleMode === 'contributor' ? '+ Add card' : 'Add first card'}
                     </button>
                   ) : null}
                 </div>

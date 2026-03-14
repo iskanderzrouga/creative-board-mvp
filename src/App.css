@@ -1,3 +1,8 @@
+/* Gray scale intent:
+   --muted       (#5e6c84)  Base muted text
+   --muted-soft  (#8c8c8c)  Lighter / quieter gray
+   --muted-strong(#475569)  Darker / more prominent gray
+   These three tokens form the gray ramp used throughout the UI. */
 :root {
   --bg: #f4f5f7;
   --surface: #ffffff;
@@ -606,7 +611,7 @@ button {
 }
 
 .primary-button:hover:not(:disabled) {
-  background-color: var(--blue-hover);
+  background-color: #0f1d33;
 }
 
 .primary-button:disabled {
@@ -3349,7 +3354,7 @@ button {
 
 .brand-head,
 .brand-row {
-  grid-template-columns: 40px minmax(140px, 1fr) 90px minmax(180px, 1.2fr) minmax(180px, 1fr) 72px;
+  grid-template-columns: 40px minmax(140px, 1fr) 90px minmax(180px, 1.2fr) minmax(180px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) 72px;
 }
 
 /* Brand color swatch & picker */
@@ -4618,6 +4623,197 @@ button {
   border-color: var(--line-strong);
 }
 
+/* ── Priority dot on board cards ── */
+.priority-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Revision badge on board cards ── */
+.revision-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  margin-left: 4px;
+}
+
+/* ── Comment image styles ── */
+.comment-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 6px;
+  margin-top: 6px;
+  border: 1px solid var(--line-control);
+}
+.comment-image-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.comment-image-preview img {
+  max-width: 120px;
+  max-height: 80px;
+  border-radius: 4px;
+  border: 1px solid var(--line-control);
+}
+.comment-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ── Stage history feedback ── */
+.stage-history-feedback {
+  display: block;
+  font-style: italic;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ── Empty filter notice ── */
+.empty-filter-notice {
+  padding: 8px 20px;
+  text-align: center;
+}
+
+/* ── Notification Bell ── */
+.notification-bell-container {
+  position: relative;
+}
+.notification-bell-trigger {
+  position: relative;
+  font-size: 18px;
+  padding: 4px;
+}
+.notification-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+  pointer-events: none;
+}
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-height: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.notification-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.notification-panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.notification-mark-all {
+  font-size: 12px;
+  color: var(--blue);
+}
+.notification-list {
+  overflow-y: auto;
+  flex: 1;
+}
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--border-soft, var(--border));
+}
+.notification-item:hover {
+  background: var(--row-hover);
+}
+.notification-item.is-unread {
+  background: rgba(59, 130, 246, 0.04);
+}
+.notification-type-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.notification-type-card_assigned { background: var(--blue); }
+.notification-type-card_moved { background: var(--green); }
+.notification-type-comment_added { background: var(--amber); }
+.notification-type-revision_requested { background: var(--red); }
+.notification-type-card_unblocked { background: var(--green); }
+.notification-content {
+  flex: 1;
+  min-width: 0;
+}
+.notification-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.notification-time {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  display: block;
+}
+.notification-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.notification-item:hover .notification-dismiss {
+  opacity: 1;
+}
+.notification-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 @media (max-width: 1180px) {
   .settings-page {
     grid-template-columns: 1fr;
@@ -4648,6 +4844,12 @@ button {
   .dashboard-card-row,
   .stuck-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .board-grid {
+    grid-template-columns: repeat(4, 260px);
   }
 }
 
@@ -4807,7 +5009,10 @@ button {
     justify-content: flex-start;
   }
 
-  .board-grid,
+  .board-grid {
+    grid-template-columns: repeat(3, 240px);
+  }
+
   .remote-loading-columns,
   .revision-grid,
   .task-type-expanded {
@@ -5021,5 +5226,37 @@ button {
     height: auto;
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --bg-surface: #1e293b;
+    --bg-raised: #334155;
+    --bg-hover: #1e293b;
+    --bg-active: #334155;
+    --bg-shell: #0f172a;
+    --bg-input: #1e293b;
+    --text: #f1f5f9;
+    --text-title: #f8fafc;
+    --muted: #94a3b8;
+    --muted-soft: #64748b;
+    --muted-strong: #cbd5e1;
+    --line-weak: #334155;
+    --line-control: #475569;
+    --line-input: #475569;
+    --line-shell: rgba(248, 250, 252, 0.08);
+    --line-shell-soft: rgba(248, 250, 252, 0.06);
+    --line-strong: #475569;
+    --line-muted: #334155;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.4);
+    --shadow-xl: 0 24px 60px rgba(0, 0, 0, 0.5);
+    --shadow-card: var(--shadow-sm);
+    --shadow-card-hover: 0 10px 28px rgba(0, 0, 0, 0.4);
+    --shadow-panel: -4px 0 24px rgba(0, 0, 0, 0.4);
   }
 }
