@@ -7,15 +7,12 @@ import type { WorkspaceAccessEntry } from '../supabase'
 import {
   BRAND_PALETTES,
   SETTINGS_TAB_LABELS,
-  WORKING_DAYS,
   createEmptyPortfolio,
   getBrandRemovalBlocker,
-  getTeamMemberRemovalBlocker,
   removeBrandFromPortfolio,
   removePortfolioFromAppState,
   removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
-  renameTeamMemberInPortfolio,
   syncPortfolioCardProducts,
   type AccessScopeMode,
   type ActiveRole,
@@ -25,7 +22,6 @@ import {
   type RoleMode,
   type SettingTab,
   type TeamMember,
-  type WorkingDay,
 } from '../board'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
@@ -86,26 +82,6 @@ function SettingsToolbar({
       {actions ? <div className="settings-page-toolbar-actions">{actions}</div> : null}
     </div>
   )
-}
-
-function formatWorkingDaysSummary(workingDays: WorkingDay[]) {
-  if (workingDays.length === 0) {
-    return 'No days set'
-  }
-
-  if (workingDays.length === WORKING_DAYS.length) {
-    return 'Mon–Sun'
-  }
-
-  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  if (
-    workingDays.length === weekdays.length &&
-    weekdays.every((day) => workingDays.includes(day as WorkingDay))
-  ) {
-    return 'Mon–Fri'
-  }
-
-  return workingDays.join(', ')
 }
 
 function ProductTagInput({
@@ -173,27 +149,11 @@ function ProductTagInput({
   )
 }
 
-function createTeamMemberDraft(portfolio: Portfolio): TeamMember {
-  const matchingMember = portfolio.team.find((member) => member.weeklyHours)
-
-  return {
-    id: `member-${Date.now()}`,
-    name: 'Untitled member',
-    role: 'Editor',
-    weeklyHours: matchingMember?.weeklyHours ?? 40,
-    hoursPerDay: 8,
-    workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    wipCap: 3,
-    active: true,
-  }
-}
-
 export function SettingsPage({
   state,
   authEnabled,
   settingsTab,
-  settingsPortfolioId,
+  settingsPortfolioId: _settingsPortfolioId,
   headerUtilityContent,
   workspaceAccessEntries,
   workspaceAccessStatus,
@@ -214,65 +174,17 @@ export function SettingsPage({
   onWorkspaceAccessDelete,
   showToast,
 }: SettingsPageProps) {
-  const settingsPortfolio =
-    state.portfolios.find((portfolio) => portfolio.id === settingsPortfolioId) ??
-    state.portfolios[0]
-  const intlWithSupportedValues = Intl as typeof Intl & {
-    supportedValuesOf?: (key: 'timeZone') => string[]
-  }
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
-  const [expandedTeamRowKey, setExpandedTeamRowKey] = useState<string | null>(null)
   const [colorPickerOpenKey, setColorPickerOpenKey] = useState<string | null>(null)
   const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(
     null,
   )
-  const teamRoleOptions = ['Editor', 'Designer', 'Developer', 'Launch Ops', 'Manager']
-  const timezoneOptions =
-    typeof intlWithSupportedValues.supportedValuesOf === 'function'
-      ? intlWithSupportedValues.supportedValuesOf('timeZone')
-      : ['UTC', 'Asia/Bangkok', 'America/New_York', 'Europe/London']
-  const workspaceEditorOptions = Array.from(
-    new Set(
-      state.portfolios.flatMap((portfolio) =>
-        portfolio.team
-          .filter((member) => member.active && !member.role.toLowerCase().includes('manager'))
-          .map((member) => member.name),
-      ),
-    ),
-  ).sort((left, right) => left.localeCompare(right))
-  const peopleRows = state.portfolios
-    .flatMap((portfolio) =>
-      portfolio.team.map((member, memberIndex) => ({
-        portfolio,
-        member,
-        memberIndex,
-      })),
-    )
-    .sort((left, right) => {
-      const portfolioComparison = left.portfolio.name.localeCompare(right.portfolio.name)
-      return portfolioComparison !== 0
-        ? portfolioComparison
-        : left.member.name.localeCompare(right.member.name)
-    })
 
   function updatePortfolio(portfolioId: string, updater: (portfolio: Portfolio) => Portfolio) {
     onStateChange((current) => ({
       ...current,
       portfolios: current.portfolios.map((portfolio) =>
         portfolio.id === portfolioId ? updater(portfolio) : portfolio,
-      ),
-    }))
-  }
-
-  function updateTeamMember(
-    portfolioId: string,
-    memberIndex: number,
-    updater: (member: TeamMember) => TeamMember,
-  ) {
-    updatePortfolio(portfolioId, (currentPortfolio) => ({
-      ...currentPortfolio,
-      team: currentPortfolio.team.map((member, index) =>
-        index === memberIndex ? updater(member) : member,
       ),
     }))
   }

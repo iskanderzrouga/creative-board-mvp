@@ -593,7 +593,6 @@ function PersonDrawer({
               value={draft.accessLevel}
               onChange={(e) => {
                 const nextLevel = e.target.value as RoleMode
-                const needsTeam = nextLevel === 'contributor' || nextLevel === 'manager'
                 onDraftChange({
                   ...draft,
                   accessLevel: nextLevel,
