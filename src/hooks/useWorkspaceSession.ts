@@ -279,6 +279,29 @@ export function useWorkspaceSession({
     closeEditorMenuRef.current()
   }, [getAllowedPageForRole, getRoleFromWorkspaceAccess, setState, state.activePortfolioId, state.portfolios, workspaceAccess])
 
+  // Re-fetch workspace access when the window regains focus (e.g. after admin edits scope)
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !workspaceAccess) {
+      return
+    }
+
+    const handleFocus = () => {
+      void getWorkspaceAccess()
+        .then((access) => {
+          if (!access) {
+            return
+          }
+          setWorkspaceAccess(access)
+        })
+        .catch(() => {
+          // Silently ignore transient network errors on refocus
+        })
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [authEnabled, authStatus, accessStatus, workspaceAccess !== null])
+
   useEffect(() => {
     if (
       !authEnabled ||

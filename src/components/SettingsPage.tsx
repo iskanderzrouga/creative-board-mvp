@@ -395,7 +395,7 @@ export function SettingsPage({
           <strong className="settings-sidebar-name">{state.settings.general.appName}</strong>
         </div>
         <div className="settings-tab-list">
-          {(['general', 'portfolios', 'team', 'access', 'workflow'] as SettingTab[]).map((tab) => (
+          {(['general', 'portfolios', 'people', 'workflow'] as SettingTab[]).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -1008,12 +1008,27 @@ export function SettingsPage({
           </div>
         ) : null}
 
-        {settingsTab === 'team' ? (
+        {settingsTab === 'people' ? (
           <div className="settings-stack">
-            <div className="settings-block">
+            <WorkspaceAccessManager
+              entries={workspaceAccessEntries}
+              editorOptions={workspaceEditorOptions}
+              portfolios={state.portfolios}
+              status={workspaceAccessStatus}
+              errorMessage={workspaceAccessErrorMessage}
+              pendingEmail={workspaceAccessPendingEmail}
+              headerUtilityContent={headerUtilityContent}
+              onOpenTeam={() => {
+                document.getElementById('people-team-section')?.scrollIntoView({ behavior: 'smooth' })
+              }}
+              onSave={onWorkspaceAccessSave}
+              onDelete={onWorkspaceAccessDelete}
+            />
+
+            <div className="settings-block" id="people-team-section">
               <SettingsToolbar
                 title="Team"
-                description="Team members on the board. Sign-in accounts are managed in Access."
+                description="Board identities — the people who work on cards."
                 actions={
                   <>
                     {headerUtilityContent}
@@ -1326,23 +1341,6 @@ export function SettingsPage({
                 })}
               </div>
             </div>
-          </div>
-        ) : null}
-
-        {settingsTab === 'access' ? (
-          <div className="settings-stack">
-            <WorkspaceAccessManager
-              entries={workspaceAccessEntries}
-              editorOptions={workspaceEditorOptions}
-              portfolios={state.portfolios}
-              status={workspaceAccessStatus}
-              errorMessage={workspaceAccessErrorMessage}
-              pendingEmail={workspaceAccessPendingEmail}
-              headerUtilityContent={headerUtilityContent}
-              onOpenTeam={() => onTabChange('team')}
-              onSave={onWorkspaceAccessSave}
-              onDelete={onWorkspaceAccessDelete}
-            />
           </div>
         ) : null}
 

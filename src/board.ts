@@ -56,8 +56,7 @@ export const TASK_TYPE_CATEGORIES = [
 export const SETTING_TABS = [
   'general',
   'portfolios',
-  'team',
-  'access',
+  'people',
   'workflow',
 ] as const
 
@@ -545,8 +544,7 @@ export const ALL_PORTFOLIOS_ID = 'all-portfolios'
 export const SETTINGS_TAB_LABELS: Record<SettingTab, string> = {
   general: 'General',
   portfolios: 'Portfolios',
-  team: 'Team',
-  access: 'Access',
+  people: 'People',
   workflow: 'Workflow',
 }
 
