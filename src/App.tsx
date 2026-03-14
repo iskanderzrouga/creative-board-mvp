@@ -61,6 +61,7 @@ import {
   getActivePortfolio,
   getAttentionSummary,
   getBoardStats,
+  getCardFolderName,
   getCardMoveValidationMessage,
   getDefaultBoardFilters,
   getEditorOptions,
@@ -980,17 +981,55 @@ function App() {
     const webhookUrl =
       activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl
     if (!webhookUrl) {
-      showToast('No Drive webhook configured', 'red')
+      showToast('No Drive webhook configured — add one in Settings → General or the portfolio.', 'red')
+      return
+    }
+
+    const brand = activeSelectedPortfolio.brands.find(
+      (b) => b.name === selectedCardData.brand,
+    )
+    if (!brand?.driveParentFolderId) {
+      showToast(
+        `No Drive folder ID configured for brand "${selectedCardData.brand}" — add one in Settings → Portfolios.`,
+        'red',
+      )
       return
     }
 
     setCreatingDriveCardId(selectedCardData.id)
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 500))
-      showToast(
-        `Drive folder creation is staged for the backend pass. Saved webhook target: ${webhookUrl}`,
-        'blue',
-      )
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cardId: selectedCardData.id,
+          cardTitle: selectedCardData.title,
+          productName: selectedCardData.product,
+          brandName: selectedCardData.brand,
+          parentFolderId: brand.driveParentFolderId,
+          folderName: getCardFolderName(selectedCardData),
+        }),
+      })
+
+      let folderUrl: string | null = null
+      try {
+        const result = await response.json()
+        folderUrl = result?.folderUrl ?? result?.folder_url ?? null
+      } catch {
+        // response may not be JSON (e.g. plain text from Apps Script)
+      }
+
+      if (folderUrl) {
+        saveOpenCard({ driveFolderUrl: folderUrl, driveFolderCreated: true })
+        showToast('Drive folder created!', 'green')
+      } else {
+        // Mark as created even without URL — user can find it in Drive
+        saveOpenCard({ driveFolderCreated: true })
+        showToast('Drive folder request sent — check your Google Drive.', 'blue')
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      showToast(`Drive folder creation failed: ${message}`, 'red')
     } finally {
       setCreatingDriveCardId(null)
     }
