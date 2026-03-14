@@ -8,6 +8,7 @@ import {
 import {
   clearStoredAuthSession,
   deleteWorkspaceAccessEntry,
+  ensureWorkspaceAccessSchema,
   getAuthSession,
   getWorkspaceAccessCheckTimeoutMs,
   getWorkspaceAccess,
@@ -319,7 +320,7 @@ export function useWorkspaceSession({
     setWorkspaceAccessStatus('loading')
     setWorkspaceAccessErrorMessage(null)
 
-    void listWorkspaceAccessEntries()
+    void ensureWorkspaceAccessSchema().then(() => listWorkspaceAccessEntries())
       .then((entries) => {
         if (cancelled) {
           return

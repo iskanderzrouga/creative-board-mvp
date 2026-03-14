@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,7 +10,7 @@ interface RequestBody {
   email?: string
   password?: string
   redirectTo?: string
-  action?: 'sign-in' | 'sign-up'
+  action?: 'sign-in' | 'sign-up' | 'ensure-schema'
 }
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -45,9 +46,94 @@ Deno.serve(async (request) => {
   }
 
   const body = (await request.json()) as RequestBody
+  const action = body.action ?? 'sign-in'
+
+  // ---------- Auto-migration: ensure scope columns exist ----------
+  if (action === 'ensure-schema') {
+    const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+    if (!dbUrl) {
+      return json({ error: 'SUPABASE_DB_URL not available.' }, 500)
+    }
+
+    try {
+      const sql = postgres(dbUrl, { prepare: false })
+
+      // Add scope columns if missing (idempotent)
+      await sql`
+        ALTER TABLE public.workspace_access
+          ADD COLUMN IF NOT EXISTS scope_mode text NOT NULL DEFAULT 'all-portfolios',
+          ADD COLUMN IF NOT EXISTS scope_assignments jsonb NOT NULL DEFAULT '[]'::jsonb
+      `
+
+      // Normalize legacy role_mode values
+      await sql`UPDATE public.workspace_access SET role_mode = 'contributor' WHERE role_mode = 'editor'`
+      await sql`UPDATE public.workspace_access SET role_mode = 'viewer' WHERE role_mode = 'observer'`
+
+      // Promote first manager to owner if no owner exists
+      await sql`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM public.workspace_access WHERE role_mode = 'owner') THEN
+            UPDATE public.workspace_access
+            SET role_mode = 'owner',
+                scope_mode = 'all-portfolios',
+                scope_assignments = '[]'::jsonb,
+                updated_at = timezone('utc', now())
+            WHERE email = (
+              SELECT email FROM public.workspace_access
+              WHERE role_mode = 'manager'
+              ORDER BY created_at ASC, email ASC
+              LIMIT 1
+            );
+          END IF;
+        END; $$
+      `
+
+      // Ensure constraints exist (drop old + recreate)
+      await sql`
+        ALTER TABLE public.workspace_access
+          DROP CONSTRAINT IF EXISTS workspace_access_role_mode_check,
+          DROP CONSTRAINT IF EXISTS workspace_access_scope_mode_check,
+          DROP CONSTRAINT IF EXISTS workspace_access_scope_assignments_is_array
+      `
+      await sql`
+        ALTER TABLE public.workspace_access
+          ADD CONSTRAINT workspace_access_role_mode_check
+            CHECK (role_mode IN ('owner', 'manager', 'contributor', 'viewer')),
+          ADD CONSTRAINT workspace_access_scope_mode_check
+            CHECK (scope_mode IN ('all-portfolios', 'selected-portfolios', 'selected-brands')),
+          ADD CONSTRAINT workspace_access_scope_assignments_is_array
+            CHECK (jsonb_typeof(scope_assignments) = 'array')
+      `
+
+      // Ensure RLS policies for owner access exist
+      await sql`
+        DO $$ BEGIN
+          -- Create helper function if missing
+          CREATE OR REPLACE FUNCTION public.current_user_is_workspace_owner()
+          RETURNS boolean
+          LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $fn$
+            SELECT EXISTS (
+              SELECT 1 FROM public.workspace_access access
+              WHERE access.email = public.current_request_email()
+                AND access.role_mode = 'owner'
+            );
+          $fn$;
+
+          GRANT EXECUTE ON FUNCTION public.current_user_is_workspace_owner() TO authenticated;
+        END; $$
+      `
+
+      await sql.end()
+      return json({ migrated: true })
+    } catch (err) {
+      return json({ error: (err as Error).message, migrated: false }, 500)
+    }
+  }
+
+  // ---------- Auth flows below require email + password ----------
   const email = normalizeEmail(body.email)
   const password = body.password?.trim() ?? ''
-  const action = body.action ?? 'sign-in'
 
   if (!email) {
     return json({ error: 'Email is required.' }, 400)

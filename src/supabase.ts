@@ -490,6 +490,49 @@ export async function getWorkspaceAccess() {
   } satisfies WorkspaceAccessState
 }
 
+let schemaMigrationAttempted = false
+
+export async function ensureWorkspaceAccessSchema() {
+  if (schemaMigrationAttempted) return
+  schemaMigrationAttempted = true
+
+  if (isE2ESupabaseMode()) return
+
+  const supabase = getSupabaseClient()
+  if (!supabase) return
+
+  try {
+    const { error } = await supabase
+      .from('workspace_access')
+      .select('scope_mode')
+      .limit(1)
+
+    if (!error) return // columns exist
+
+    // Columns are missing — call edge function to auto-migrate
+    console.warn('workspace_access: scope columns missing, attempting auto-migration...')
+    const { data, error: fnError } = await supabase.functions.invoke<{
+      migrated?: boolean
+      error?: string
+    }>(MAGIC_LINK_FUNCTION_NAME, {
+      body: { action: 'ensure-schema' },
+    })
+
+    if (fnError) {
+      console.error('Auto-migration edge function call failed:', fnError)
+      return
+    }
+
+    if (data?.migrated) {
+      console.info('workspace_access: scope columns auto-migrated successfully.')
+    } else {
+      console.warn('Auto-migration returned:', data)
+    }
+  } catch (err) {
+    console.error('Schema check failed:', err)
+  }
+}
+
 export async function listWorkspaceAccessEntries() {
   if (isE2ESupabaseMode()) {
     const session = getE2EAuthSession()
