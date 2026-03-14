@@ -1,10 +1,11 @@
 import { Fragment, useState, type ReactNode } from 'react'
 import { ConfirmDialog } from './ConfirmDialog'
+import { PeopleSection } from './PeopleSection'
 import { RevisionReasonLibraryEditor } from './RevisionReasonLibraryEditor'
 import { TaskLibraryEditor } from './TaskLibraryEditor'
-import { WorkspaceAccessManager } from './WorkspaceAccessManager'
 import type { WorkspaceAccessEntry } from '../supabase'
 import {
+  BRAND_PALETTES,
   SETTINGS_TAB_LABELS,
   WORKING_DAYS,
   createEmptyPortfolio,
@@ -107,6 +108,71 @@ function formatWorkingDaysSummary(workingDays: WorkingDay[]) {
   return workingDays.join(', ')
 }
 
+function ProductTagInput({
+  products,
+  brandName,
+  onChange,
+}: {
+  products: string[]
+  brandName: string
+  onChange: (products: string[]) => void
+}) {
+  const [inputValue, setInputValue] = useState('')
+
+  function commitTag() {
+    const trimmed = inputValue.trim()
+    if (trimmed && !products.includes(trimmed)) {
+      onChange([...products, trimmed])
+    }
+    setInputValue('')
+  }
+
+  return (
+    <div className="product-tags-container" aria-label={`${brandName || 'Brand'} products`}>
+      {products.map((product, index) => (
+        <span key={`${product}-${index}`} className="product-tag">
+          {product}
+          <button
+            type="button"
+            className="product-tag-remove"
+            aria-label={`Remove ${product}`}
+            onClick={() => onChange(products.filter((_, i) => i !== index))}
+          >
+            &times;
+          </button>
+        </span>
+      ))}
+      <input
+        className="product-tag-input"
+        value={inputValue}
+        placeholder={products.length === 0 ? 'Add product...' : '+'}
+        onChange={(event) => {
+          const value = event.target.value
+          if (value.endsWith(',')) {
+            const trimmed = value.slice(0, -1).trim()
+            if (trimmed && !products.includes(trimmed)) {
+              onChange([...products, trimmed])
+            }
+            setInputValue('')
+          } else {
+            setInputValue(value)
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            commitTag()
+          }
+          if (event.key === 'Backspace' && inputValue === '' && products.length > 0) {
+            onChange(products.slice(0, -1))
+          }
+        }}
+        onBlur={commitTag}
+      />
+    </div>
+  )
+}
+
 function createTeamMemberDraft(portfolio: Portfolio): TeamMember {
   const matchingMember = portfolio.team.find((member) => member.weeklyHours)
 
@@ -156,6 +222,7 @@ export function SettingsPage({
   }
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
   const [expandedTeamRowKey, setExpandedTeamRowKey] = useState<string | null>(null)
+  const [colorPickerOpenKey, setColorPickerOpenKey] = useState<string | null>(null)
   const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(
     null,
   )
@@ -414,7 +481,7 @@ export function SettingsPage({
             <div className="settings-block">
               <SettingsToolbar
                 title="General"
-                description="Workspace defaults, thresholds, shared connections, and cleanup."
+                description="Workspace defaults and preferences."
                 actions={headerUtilityContent}
               />
 
@@ -533,25 +600,21 @@ export function SettingsPage({
                       ))}
                     </select>
                   </label>
-
-                  <label>
-                    <span>Theme</span>
-                    <input aria-label="Theme" value="Light" disabled />
-                  </label>
                 </div>
               </div>
+            </div>
 
-              <div className="settings-section-divider" />
+            <div className="settings-block">
               <div className="settings-section">
                 <div className="settings-section-header">
-                  <h3>Card thresholds</h3>
+                  <h3>Thresholds</h3>
                   <p className="muted-copy">
-                    How long a card can sit in a stage before it gets flagged.
+                    Card stage limits, auto-archiving, and team capacity bands.
                   </p>
                 </div>
                 <div className="settings-form-grid">
                   <label>
-                    <span>Warning (amber) after days</span>
+                    <span>Card warning (amber) after days</span>
                     <input
                       aria-label="Warning (amber) after days"
                       type="number"
@@ -562,7 +625,7 @@ export function SettingsPage({
                   </label>
 
                   <label>
-                    <span>Warning (red) after days</span>
+                    <span>Card warning (red) after days</span>
                     <input
                       aria-label="Warning (red) after days"
                       type="number"
@@ -614,18 +677,7 @@ export function SettingsPage({
                       }
                     />
                   </label>
-                </div>
-              </div>
 
-              <div className="settings-section-divider" />
-              <div className="settings-section">
-                <div className="settings-section-header">
-                  <h3>Capacity thresholds</h3>
-                  <p className="muted-copy">
-                    When team members are considered healthy, stretched, or overloaded.
-                  </p>
-                </div>
-                <div className="settings-form-grid">
                   <label>
                     <span>Default hours per week</span>
                     <input
@@ -682,11 +734,15 @@ export function SettingsPage({
                   </label>
                 </div>
               </div>
+            </div>
 
-              <div className="settings-section-divider" />
+            <div className="settings-block">
               <div className="settings-section">
                 <div className="settings-section-header">
                   <h3>Connections</h3>
+                  <p className="muted-copy">
+                    Integrations with external services.
+                  </p>
                 </div>
                 <div className="settings-form-grid">
                   <label className="full-width">
@@ -721,11 +777,15 @@ export function SettingsPage({
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="settings-section-divider is-danger" />
-              <div className="settings-section settings-danger-zone">
+            <div className="settings-block settings-danger-block">
+              <div className="settings-section">
                 <div className="settings-section-header">
                   <h3>Data management</h3>
+                  <p className="muted-copy">
+                    Export, import, or reset your workspace data.
+                  </p>
                 </div>
                 <div className="data-actions">
                   <button type="button" className="primary-button" onClick={onExportData}>
@@ -839,123 +899,172 @@ export function SettingsPage({
                             <div className="nested-settings-title">Brands</div>
                             <div className="settings-table full-table">
                               <div className="settings-row settings-head brand-head">
+                                <span />
                                 <span>Name</span>
                                 <span>Prefix</span>
                                 <span>Products</span>
                                 <span>Drive folder</span>
                                 <span />
                               </div>
-                              {portfolio.brands.map((brand, brandIndex) => (
-                                <div
-                                  key={`${portfolio.id}-${brand.prefix}-${brandIndex}`}
-                                  className="settings-row brand-row"
-                                >
-                                  <input
-                                    aria-label={`${portfolio.name} brand name`}
-                                    value={brand.name}
-                                    placeholder="Brand name"
-                                    onChange={(event) =>
-                                      updatePortfolio(portfolio.id, (currentPortfolio) =>
-                                        renameBrandInPortfolio(
-                                          currentPortfolio,
-                                          brandIndex,
-                                          event.target.value,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  <input
-                                    aria-label={`${brand.name || 'Brand'} prefix`}
-                                    value={brand.prefix}
-                                    placeholder="AB"
-                                    onChange={(event) => {
-                                      const nextPrefix = event.target.value
-                                        .toUpperCase()
-                                        .slice(0, 2)
-                                      if (
-                                        nextPrefix &&
-                                        getAllBrandPrefixes({
-                                          portfolioId: portfolio.id,
-                                          brandIndex,
-                                        }).includes(nextPrefix)
-                                      ) {
-                                        showToast('That prefix is already in use.', 'red')
-                                        return
-                                      }
-                                      updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                                        ...currentPortfolio,
-                                        brands: currentPortfolio.brands.map((item, index) =>
-                                          index === brandIndex
-                                            ? { ...item, prefix: nextPrefix }
-                                            : item,
-                                        ),
-                                      }))
-                                    }}
-                                  />
-                                  <input
-                                    aria-label={`${brand.name || 'Brand'} products`}
-                                    value={brand.products.join(', ')}
-                                    placeholder="Product A, Product B"
-                                    onChange={(event) =>
-                                      updatePortfolio(portfolio.id, (currentPortfolio) =>
-                                        syncPortfolioCardProducts({
-                                          ...currentPortfolio,
-                                          brands: currentPortfolio.brands.map((item, index) =>
-                                            index === brandIndex
-                                              ? {
-                                                  ...item,
-                                                  products: event.target.value
-                                                    .split(',')
-                                                    .map((product) => product.trim())
-                                                    .filter(Boolean),
-                                                }
-                                              : item,
-                                          ),
-                                        }),
-                                      )
-                                    }
-                                  />
-                                  <input
-                                    aria-label={`${brand.name || 'Brand'} Drive folder`}
-                                    value={brand.driveParentFolderId}
-                                    placeholder="Folder ID"
-                                    onChange={(event) =>
-                                      updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                                        ...currentPortfolio,
-                                        brands: currentPortfolio.brands.map((item, index) =>
-                                          index === brandIndex
-                                            ? { ...item, driveParentFolderId: event.target.value }
-                                            : item,
-                                        ),
-                                      }))
-                                    }
-                                  />
-                                  <button
-                                    type="button"
-                                    className="clear-link danger-link"
-                                    onClick={() => {
-                                      const blocker = getBrandRemovalBlocker(portfolio, brandIndex)
-                                      if (blocker) {
-                                        showToast(blocker, 'amber')
-                                        return
-                                      }
-                                      setPendingSettingsDelete({
-                                        kind: 'brand',
-                                        portfolioId: portfolio.id,
-                                        brandIndex,
-                                      })
-                                    }}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              ))}
+                              {portfolio.brands.map((brand, brandIndex) => {
+                                const pickerKey = `${portfolio.id}-${brandIndex}`
+                                const isPickerOpen = colorPickerOpenKey === pickerKey
+                                return (
+                                  <Fragment key={`${portfolio.id}-${brand.prefix}-${brandIndex}`}>
+                                    <div className="settings-row brand-row">
+                                      <div className="brand-color-cell">
+                                        <button
+                                          type="button"
+                                          className="brand-color-swatch"
+                                          style={{ background: brand.color }}
+                                          aria-label={`Pick color for ${brand.name || 'brand'}`}
+                                          onClick={() =>
+                                            setColorPickerOpenKey(isPickerOpen ? null : pickerKey)
+                                          }
+                                        />
+                                      </div>
+                                      <input
+                                        aria-label={`${portfolio.name} brand name`}
+                                        value={brand.name}
+                                        placeholder="Brand name"
+                                        onChange={(event) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) =>
+                                            renameBrandInPortfolio(
+                                              currentPortfolio,
+                                              brandIndex,
+                                              event.target.value,
+                                            ),
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        aria-label={`${brand.name || 'Brand'} prefix`}
+                                        value={brand.prefix}
+                                        placeholder="AB"
+                                        onChange={(event) => {
+                                          const nextPrefix = event.target.value
+                                            .toUpperCase()
+                                            .slice(0, 2)
+                                          if (
+                                            nextPrefix &&
+                                            getAllBrandPrefixes({
+                                              portfolioId: portfolio.id,
+                                              brandIndex,
+                                            }).includes(nextPrefix)
+                                          ) {
+                                            showToast('That prefix is already in use.', 'red')
+                                            return
+                                          }
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                            ...currentPortfolio,
+                                            brands: currentPortfolio.brands.map((item, index) =>
+                                              index === brandIndex
+                                                ? { ...item, prefix: nextPrefix }
+                                                : item,
+                                            ),
+                                          }))
+                                        }}
+                                      />
+                                      <ProductTagInput
+                                        products={brand.products}
+                                        brandName={brand.name}
+                                        onChange={(nextProducts) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) =>
+                                            syncPortfolioCardProducts({
+                                              ...currentPortfolio,
+                                              brands: currentPortfolio.brands.map((item, index) =>
+                                                index === brandIndex
+                                                  ? { ...item, products: nextProducts }
+                                                  : item,
+                                              ),
+                                            }),
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        aria-label={`${brand.name || 'Brand'} Drive folder`}
+                                        value={brand.driveParentFolderId}
+                                        placeholder="Folder ID"
+                                        onChange={(event) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                            ...currentPortfolio,
+                                            brands: currentPortfolio.brands.map((item, index) =>
+                                              index === brandIndex
+                                                ? {
+                                                    ...item,
+                                                    driveParentFolderId: event.target.value,
+                                                  }
+                                                : item,
+                                            ),
+                                          }))
+                                        }
+                                      />
+                                      <button
+                                        type="button"
+                                        className="clear-link danger-link"
+                                        onClick={() => {
+                                          const blocker = getBrandRemovalBlocker(
+                                            portfolio,
+                                            brandIndex,
+                                          )
+                                          if (blocker) {
+                                            showToast(blocker, 'amber')
+                                            return
+                                          }
+                                          setPendingSettingsDelete({
+                                            kind: 'brand',
+                                            portfolioId: portfolio.id,
+                                            brandIndex,
+                                          })
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                    {isPickerOpen ? (
+                                      <div className="brand-color-picker">
+                                        {BRAND_PALETTES.map((palette) => (
+                                          <button
+                                            key={palette.color}
+                                            type="button"
+                                            className={`brand-color-option${palette.color === brand.color ? ' is-selected' : ''}`}
+                                            style={{ background: palette.color }}
+                                            aria-label={`Select color ${palette.color}`}
+                                            onClick={() => {
+                                              updatePortfolio(
+                                                portfolio.id,
+                                                (currentPortfolio) => ({
+                                                  ...currentPortfolio,
+                                                  brands: currentPortfolio.brands.map(
+                                                    (item, index) =>
+                                                      index === brandIndex
+                                                        ? {
+                                                            ...item,
+                                                            color: palette.color,
+                                                            surfaceColor: palette.surfaceColor,
+                                                            textColor: palette.textColor,
+                                                          }
+                                                        : item,
+                                                  ),
+                                                }),
+                                              )
+                                              setColorPickerOpenKey(null)
+                                            }}
+                                          />
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </Fragment>
+                                )
+                              })}
                             </div>
                             <button
                               type="button"
                               className="ghost-button"
                               onClick={() => {
                                 const nextPrefix = getSuggestedPrefix()
+                                const nextPalette =
+                                  BRAND_PALETTES[portfolio.brands.length % BRAND_PALETTES.length]
                                 updatePortfolio(portfolio.id, (currentPortfolio) => ({
                                   ...currentPortfolio,
                                   brands: [
@@ -963,11 +1072,11 @@ export function SettingsPage({
                                     {
                                       name: 'Untitled brand',
                                       prefix: nextPrefix,
-                                      products: ['Untitled product'],
+                                      products: [],
                                       driveParentFolderId: '',
-                                      color: '#94a3b8',
-                                      surfaceColor: '#e2e8f0',
-                                      textColor: '#334155',
+                                      color: nextPalette.color,
+                                      surfaceColor: nextPalette.surfaceColor,
+                                      textColor: nextPalette.textColor,
                                     },
                                   ],
                                   lastIdPerPrefix: {
@@ -1010,337 +1119,19 @@ export function SettingsPage({
 
         {settingsTab === 'people' ? (
           <div className="settings-stack">
-            <WorkspaceAccessManager
-              entries={workspaceAccessEntries}
-              editorOptions={workspaceEditorOptions}
+            <PeopleSection
               portfolios={state.portfolios}
-              status={workspaceAccessStatus}
-              errorMessage={workspaceAccessErrorMessage}
-              pendingEmail={workspaceAccessPendingEmail}
+              accessEntries={workspaceAccessEntries}
+              accessStatus={workspaceAccessStatus}
+              accessErrorMessage={workspaceAccessErrorMessage}
+              accessPendingEmail={workspaceAccessPendingEmail}
+              authEnabled={authEnabled}
               headerUtilityContent={headerUtilityContent}
-              onOpenTeam={() => {
-                document.getElementById('people-team-section')?.scrollIntoView({ behavior: 'smooth' })
-              }}
-              onSave={onWorkspaceAccessSave}
-              onDelete={onWorkspaceAccessDelete}
+              onAccessSave={onWorkspaceAccessSave}
+              onAccessDelete={onWorkspaceAccessDelete}
+              onPortfolioUpdate={updatePortfolio}
+              showToast={showToast}
             />
-
-            <div className="settings-block" id="people-team-section">
-              <SettingsToolbar
-                title="Team"
-                description="Board identities — the people who work on cards."
-                actions={
-                  <>
-                    {headerUtilityContent}
-                    {state.portfolios.length === 1 ? (
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => {
-                          const portfolio = state.portfolios[0]
-                          if (!portfolio) return
-                          const nextMember = createTeamMemberDraft(portfolio)
-                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
-                            ...currentPortfolio,
-                            team: [...currentPortfolio.team, nextMember],
-                          }))
-                          setExpandedTeamRowKey(`${portfolio.id}:${nextMember.id}`)
-                        }}
-                      >
-                        Add member
-                      </button>
-                    ) : (
-                      <div className="settings-add-member-group">
-                        <select
-                          className="settings-portfolio-select"
-                          aria-label="Portfolio for new team member"
-                          value={settingsPortfolio?.id ?? ''}
-                          onChange={(event) => onSettingsPortfolioChange(event.target.value)}
-                        >
-                          {state.portfolios.map((portfolio) => (
-                            <option key={portfolio.id} value={portfolio.id}>
-                              {portfolio.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => {
-                            if (!settingsPortfolio) return
-                            const nextMember = createTeamMemberDraft(settingsPortfolio)
-                            updatePortfolio(settingsPortfolio.id, (currentPortfolio) => ({
-                              ...currentPortfolio,
-                              team: [...currentPortfolio.team, nextMember],
-                            }))
-                            setExpandedTeamRowKey(`${settingsPortfolio.id}:${nextMember.id}`)
-                          }}
-                        >
-                          Add to {settingsPortfolio?.name ?? 'portfolio'}
-                        </button>
-                      </div>
-                    )}
-                  </>
-                }
-              />
-
-              <div className="team-table">
-                <div className="team-table-head">
-                  <span>Portfolio</span>
-                  <span>Name</span>
-                  <span>Role</span>
-                  <span>Working days</span>
-                  <span>Status</span>
-                  <span />
-                </div>
-
-                {peopleRows.map(({ portfolio, member, memberIndex }) => {
-                  const rowKey = `${portfolio.id}:${member.id}`
-                  const isExpanded = expandedTeamRowKey === rowKey
-                  return (
-                    <Fragment key={rowKey}>
-                      <div
-                        className={`team-table-row ${isExpanded ? 'is-expanded' : ''}`}
-                      >
-                        <span>{portfolio.name}</span>
-                        <span className="team-table-primary">{member.name}</span>
-                        <span>{member.role}</span>
-                        <span>{formatWorkingDaysSummary(member.workingDays)}</span>
-                        <span>
-                          <span
-                            className={`team-status-badge ${member.active ? 'is-active' : 'is-inactive'}`}
-                          >
-                            {member.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </span>
-                        <span className="team-row-actions-cell">
-                          <button
-                            type="button"
-                            className="team-edit-button"
-                            onClick={() =>
-                              setExpandedTeamRowKey((current) => (current === rowKey ? null : rowKey))
-                            }
-                          >
-                            {isExpanded ? 'Close' : 'Edit'}
-                          </button>
-                        </span>
-                      </div>
-
-                      {isExpanded ? (
-                        <div className="team-detail-row">
-                          <div className="team-detail-panel">
-                            <div className="settings-form-grid">
-                              <label>
-                                <span>Name</span>
-                                <input
-                                  aria-label={`${member.name} team member name`}
-                                  value={member.name}
-                                  onChange={(event) =>
-                                    updatePortfolio(portfolio.id, (currentPortfolio) =>
-                                      renameTeamMemberInPortfolio(
-                                        currentPortfolio,
-                                        memberIndex,
-                                        event.target.value,
-                                      ),
-                                    )
-                                  }
-                                />
-                              </label>
-
-                              <label>
-                                <span>Role</span>
-                                <select
-                                  aria-label={`${member.name} role`}
-                                  value={member.role}
-                                  onChange={(event) => {
-                                    const nextRole = event.target.value
-                                    const removingLastManager =
-                                      member.role.toLowerCase().includes('manager') &&
-                                      !nextRole.toLowerCase().includes('manager') &&
-                                      portfolio.team.filter(
-                                        (item, index) =>
-                                          index !== memberIndex &&
-                                          item.role.toLowerCase().includes('manager'),
-                                      ).length === 0
-
-                                    if (removingLastManager) {
-                                      showToast(
-                                        'Each portfolio needs at least one manager.',
-                                        'amber',
-                                      )
-                                      return
-                                    }
-
-                                    updateTeamMember(portfolio.id, memberIndex, (currentMember) => ({
-                                      ...currentMember,
-                                      role: nextRole,
-                                    }))
-                                  }}
-                                >
-                                  {teamRoleOptions.map((roleOption) => (
-                                    <option key={roleOption} value={roleOption}>
-                                      {roleOption}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-
-                              <label>
-                                <span>Hrs/week</span>
-                                <input
-                                  aria-label={`${member.name} Hrs/week`}
-                                  type="number"
-                                  min={0}
-                                  value={member.weeklyHours ?? ''}
-                                  onChange={(event) =>
-                                    updateTeamMember(portfolio.id, memberIndex, (currentMember) => ({
-                                      ...currentMember,
-                                      weeklyHours: event.target.value
-                                        ? Number(event.target.value)
-                                        : null,
-                                    }))
-                                  }
-                                />
-                              </label>
-
-                              <label>
-                                <span>Hrs/day</span>
-                                <input
-                                  aria-label={`${member.name} Hrs/day`}
-                                  type="number"
-                                  min={0}
-                                  step={0.5}
-                                  value={member.hoursPerDay ?? ''}
-                                  onChange={(event) =>
-                                    updateTeamMember(portfolio.id, memberIndex, (currentMember) => ({
-                                      ...currentMember,
-                                      hoursPerDay: event.target.value
-                                        ? Number(event.target.value)
-                                        : null,
-                                    }))
-                                  }
-                                />
-                              </label>
-
-                              <label>
-                                <span>Timezone</span>
-                                <select
-                                  aria-label={`${member.name} timezone`}
-                                  value={member.timezone}
-                                  onChange={(event) =>
-                                    updateTeamMember(portfolio.id, memberIndex, (currentMember) => ({
-                                      ...currentMember,
-                                      timezone: event.target.value,
-                                    }))
-                                  }
-                                >
-                                  {timezoneOptions.map((timezone) => (
-                                    <option key={timezone} value={timezone}>
-                                      {timezone}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-
-                              <label>
-                                <span>Max cards</span>
-                                <input
-                                  aria-label={`${member.name} Max cards`}
-                                  type="number"
-                                  min={0}
-                                  value={member.wipCap ?? ''}
-                                  onChange={(event) =>
-                                    updateTeamMember(portfolio.id, memberIndex, (currentMember) => ({
-                                      ...currentMember,
-                                      wipCap: event.target.value ? Number(event.target.value) : null,
-                                    }))
-                                  }
-                                />
-                              </label>
-                            </div>
-
-                            <div className="team-detail-secondary">
-                              <label className="workspace-access-field">
-                                <span className="workspace-access-field-label">Working days</span>
-                                <div className="working-days-grid" aria-label={`${member.name} working days`}>
-                                  {WORKING_DAYS.map((day) => (
-                                    <label key={day} className="working-day-toggle">
-                                      <input
-                                        type="checkbox"
-                                        aria-label={`${member.name} works ${day}`}
-                                        checked={member.workingDays.includes(day)}
-                                        onChange={(event) =>
-                                          updateTeamMember(
-                                            portfolio.id,
-                                            memberIndex,
-                                            (currentMember) => ({
-                                              ...currentMember,
-                                              workingDays: event.target.checked
-                                                ? WORKING_DAYS.filter((workingDay) =>
-                                                    workingDay === day
-                                                      ? true
-                                                      : currentMember.workingDays.includes(
-                                                          workingDay,
-                                                        ),
-                                                  )
-                                                : currentMember.workingDays.filter(
-                                                    (workingDay) => workingDay !== day,
-                                                  ),
-                                            }),
-                                          )
-                                        }
-                                      />
-                                      <span>{day}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              </label>
-
-                              <label className="toggle-row team-active-toggle">
-                                <span>Active</span>
-                                <input
-                                  type="checkbox"
-                                  aria-label={`${member.name} active status`}
-                                  checked={member.active}
-                                  onChange={(event) =>
-                                    updateTeamMember(portfolio.id, memberIndex, (currentMember) => ({
-                                      ...currentMember,
-                                      active: event.target.checked,
-                                    }))
-                                  }
-                                />
-                              </label>
-                            </div>
-
-                            <button
-                              type="button"
-                              className="clear-link danger-link"
-                              onClick={() => {
-                                const blocker = getTeamMemberRemovalBlocker(
-                                  portfolio,
-                                  memberIndex,
-                                )
-                                if (blocker) {
-                                  showToast(blocker, 'amber')
-                                  return
-                                }
-                                setPendingSettingsDelete({
-                                  kind: 'member',
-                                  portfolioId: portfolio.id,
-                                  memberIndex,
-                                })
-                              }}
-                            >
-                              Remove member
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </Fragment>
-                  )
-                })}
-              </div>
-            </div>
           </div>
         ) : null}
 

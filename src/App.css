@@ -3349,7 +3349,124 @@ button {
 
 .brand-head,
 .brand-row {
-  grid-template-columns: minmax(140px, 1fr) 90px minmax(180px, 1.2fr) minmax(180px, 1fr) 72px;
+  grid-template-columns: 40px minmax(140px, 1fr) 90px minmax(180px, 1.2fr) minmax(180px, 1fr) 72px;
+}
+
+/* Brand color swatch & picker */
+.brand-color-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  padding: 0;
+  outline: none;
+}
+
+.brand-color-swatch:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+}
+
+.brand-color-picker {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 4px 40px;
+}
+
+.brand-color-option {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  padding: 0;
+  outline: none;
+}
+
+.brand-color-option:hover {
+  transform: scale(1.15);
+}
+
+.brand-color-option.is-selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text);
+}
+
+/* Product tag input */
+.product-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 34px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-input);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.product-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface-raised);
+  color: var(--text);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.product-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.product-tag-remove:hover {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.product-tag-input {
+  flex: 1;
+  min-width: 60px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  padding: 2px 4px;
+  outline: none;
+  color: var(--text);
+}
+
+.product-tag-input::placeholder {
+  color: var(--muted);
+}
+
+/* General page danger block */
+.settings-danger-block {
+  border: 1px solid var(--danger-line, rgba(220, 38, 38, 0.2));
 }
 
 .team-head,
@@ -3903,6 +4020,85 @@ button {
   color: var(--muted-strong);
 }
 
+/* ── Unified people table ─────────────────────────── */
+
+.people-table {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.people-table-head,
+.people-table-row {
+  display: grid;
+  grid-template-columns:
+    minmax(140px, 1.2fr)
+    minmax(160px, 1.4fr)
+    minmax(90px, 0.8fr)
+    minmax(100px, 0.8fr)
+    minmax(120px, 1fr)
+    72px;
+  gap: 12px;
+  align-items: center;
+}
+
+.people-table-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.people-table-row {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-shell);
+  font-size: 14px;
+}
+
+.people-table-row:last-child {
+  border-bottom: none;
+}
+
+.people-table-row.is-active {
+  background: var(--surface-tint);
+}
+
+.people-table-row.is-inactive {
+  opacity: 0.55;
+}
+
+.people-table-primary {
+  font-weight: 600;
+}
+
+.people-table-email {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.people-table-muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.people-row-actions-cell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.people-schedule-panel {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--surface-subtle);
+  border-radius: 6px;
+}
+
+/* ── Team table (legacy) ──────────────────────────── */
+
 .team-table {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -4441,6 +4637,8 @@ button {
   .brand-row,
   .team-table-head,
   .team-table-row,
+  .people-table-head,
+  .people-table-row,
   .analytics-team-grid,
   .brand-health-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

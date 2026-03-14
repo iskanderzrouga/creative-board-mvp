@@ -622,7 +622,16 @@ export async function upsertWorkspaceAccessEntry(entry: {
     throw legacyResponse.error
   }
 
-  return mapLegacyWorkspaceAccessRows([legacyResponse.data as LegacyWorkspaceAccessRow])[0]!
+  console.warn(
+    'workspace_access: scope_mode / scope_assignments columns are missing — scope changes are stored locally but not persisted to the database. Run the latest migration.',
+  )
+
+  const legacyEntry = mapLegacyWorkspaceAccessRows([legacyResponse.data as LegacyWorkspaceAccessRow])[0]!
+  return {
+    ...legacyEntry,
+    scopeMode: entry.scopeMode,
+    scopeAssignments: entry.scopeAssignments,
+  }
 }
 
 export async function deleteWorkspaceAccessEntry(email: string) {

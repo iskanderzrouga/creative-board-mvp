@@ -507,7 +507,7 @@ export const DEFAULT_QUICK_CREATE_INPUT: QuickCreateInput = {
   taskTypeId: 'video-ugc-short',
 }
 
-const BRAND_PALETTES = [
+export const BRAND_PALETTES = [
   {
     color: '#7c3aed',
     surfaceColor: '#f3e8ff',

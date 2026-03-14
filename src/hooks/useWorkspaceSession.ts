@@ -396,11 +396,18 @@ export function useWorkspaceSession({
         }
       }
 
-      setWorkspaceAccessEntries((current) =>
-        [...current.filter((item) => item.email !== previousEmail && item.email !== normalizedEmail), saved].sort((left, right) =>
-          left.email.localeCompare(right.email),
-        ),
-      )
+      // Re-fetch entries from Supabase to confirm the round-trip (especially scope fields)
+      try {
+        const refreshedEntries = await listWorkspaceAccessEntries()
+        setWorkspaceAccessEntries(refreshedEntries)
+      } catch {
+        // If re-fetch fails, fall back to local state update
+        setWorkspaceAccessEntries((current) =>
+          [...current.filter((item) => item.email !== previousEmail && item.email !== normalizedEmail), saved].sort((left, right) =>
+            left.email.localeCompare(right.email),
+          ),
+        )
+      }
       setWorkspaceAccessStatus('ready')
       showToast(
         isExistingEntry
