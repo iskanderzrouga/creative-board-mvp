@@ -65,6 +65,14 @@ Deno.serve(async (request) => {
           ADD COLUMN IF NOT EXISTS scope_assignments jsonb NOT NULL DEFAULT '[]'::jsonb
       `
 
+      // Drop old constraints FIRST so we can update role_mode values freely
+      await sql`
+        ALTER TABLE public.workspace_access
+          DROP CONSTRAINT IF EXISTS workspace_access_role_mode_check,
+          DROP CONSTRAINT IF EXISTS workspace_access_scope_mode_check,
+          DROP CONSTRAINT IF EXISTS workspace_access_scope_assignments_is_array
+      `
+
       // Normalize legacy role_mode values
       await sql`UPDATE public.workspace_access SET role_mode = 'contributor' WHERE role_mode = 'editor'`
       await sql`UPDATE public.workspace_access SET role_mode = 'viewer' WHERE role_mode = 'observer'`
@@ -88,13 +96,7 @@ Deno.serve(async (request) => {
         END; $$
       `
 
-      // Ensure constraints exist (drop old + recreate)
-      await sql`
-        ALTER TABLE public.workspace_access
-          DROP CONSTRAINT IF EXISTS workspace_access_role_mode_check,
-          DROP CONSTRAINT IF EXISTS workspace_access_scope_mode_check,
-          DROP CONSTRAINT IF EXISTS workspace_access_scope_assignments_is_array
-      `
+      // Recreate constraints with new values
       await sql`
         ALTER TABLE public.workspace_access
           ADD CONSTRAINT workspace_access_role_mode_check

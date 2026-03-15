@@ -3,8 +3,8 @@ import type { AccessScopeMode, PortfolioAccessScope, RoleMode } from './board'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
 const supabasePublishableKey =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ??
   import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ??
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ??
   ''
 const magicLinkRedirectUrl = import.meta.env.VITE_MAGIC_LINK_REDIRECT_URL?.trim() ?? ''
 
