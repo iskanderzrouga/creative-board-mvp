@@ -92,41 +92,41 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RSTRC-01 | — | Pending |
-| RSTRC-02 | — | Pending |
-| RSTRC-03 | — | Pending |
-| RSTRC-04 | — | Pending |
-| RSTRC-05 | — | Pending |
-| RSTRC-06 | — | Pending |
-| RSTRC-07 | — | Pending |
-| RSTRC-08 | — | Pending |
-| RSTRC-09 | — | Pending |
-| RSTRC-10 | — | Pending |
-| TYPE-01 | — | Pending |
-| TYPE-02 | — | Pending |
-| TYPE-03 | — | Pending |
-| TYPE-04 | — | Pending |
-| TYPE-05 | — | Pending |
-| TYPE-06 | — | Pending |
-| BRAND-01 | — | Pending |
-| BRAND-02 | — | Pending |
-| BRAND-03 | — | Pending |
-| STAB-01 | — | Pending |
-| STAB-02 | — | Pending |
-| STAB-03 | — | Pending |
-| STAB-04 | — | Pending |
-| STAB-05 | — | Pending |
-| STAB-06 | — | Pending |
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
+| RSTRC-01 | Phase 3 — App Shell Extraction | Pending |
+| RSTRC-02 | Phase 4 — Component Decomposition | Pending |
+| RSTRC-03 | Phase 3 — App Shell Extraction | Pending |
+| RSTRC-04 | Phase 2 — State Infrastructure | Pending |
+| RSTRC-05 | Phase 2 — State Infrastructure | Pending |
+| RSTRC-06 | Phase 4 — Component Decomposition | Pending |
+| RSTRC-07 | Phase 4 — Component Decomposition | Pending |
+| RSTRC-08 | Phase 4 — Component Decomposition | Pending |
+| RSTRC-09 | Phase 2 — State Infrastructure | Pending |
+| RSTRC-10 | Phase 2 — State Infrastructure | Pending |
+| TYPE-01 | Phase 5 — Task Type Features | Pending |
+| TYPE-02 | Phase 5 — Task Type Features | Pending |
+| TYPE-03 | Phase 5 — Task Type Features | Pending |
+| TYPE-04 | Phase 5 — Task Type Features | Pending |
+| TYPE-05 | Phase 5 — Task Type Features | Pending |
+| TYPE-06 | Phase 5 — Task Type Features | Pending |
+| BRAND-01 | Phase 1 — Rebrand | Pending |
+| BRAND-02 | Phase 1 — Rebrand | Pending |
+| BRAND-03 | Phase 1 — Rebrand | Pending |
+| STAB-01 | Phase 7 — Stabilization & Verification | Pending |
+| STAB-02 | Phase 7 — Stabilization & Verification | Pending |
+| STAB-03 | Phase 7 — Stabilization & Verification | Pending |
+| STAB-04 | Phase 7 — Stabilization & Verification | Pending |
+| STAB-05 | Phase 3 — App Shell Extraction | Pending |
+| STAB-06 | Phase 3 — App Shell Extraction | Pending |
+| INFRA-01 | Phase 6 — Infrastructure Cleanup | Pending |
+| INFRA-02 | Phase 6 — Infrastructure Cleanup | Pending |
+| INFRA-03 | Phase 6 — Infrastructure Cleanup | Pending |
+| INFRA-04 | Phase 3 — App Shell Extraction | Pending |
 
 **Coverage:**
 - v1 requirements: 29 total
-- Mapped to phases: 0
-- Unmapped: 29
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-16*
-*Last updated: 2026-03-16 after initial definition*
+*Last updated: 2026-03-16 after roadmap creation — all 29 requirements mapped to phases*
