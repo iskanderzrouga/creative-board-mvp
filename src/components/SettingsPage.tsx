@@ -1004,7 +1004,7 @@ export function SettingsPage({
                                                   ? { ...item, products: nextProducts }
                                                   : item,
                                               ),
-                                            }),
+                                            }, state.settings),
                                           )
                                         }
                                       />
@@ -1212,37 +1212,29 @@ export function SettingsPage({
 
             <TaskLibraryEditor
               settings={state.settings}
-              portfolios={state.portfolios}
-              onTaskTypeChange={(updater) =>
+              onTaskTypeHoursChange={(taskTypeId, estimatedHours) =>
                 onStateChange((current) => ({
                   ...current,
                   settings: {
                     ...current.settings,
-                    taskLibrary: updater(current.settings.taskLibrary)
-                      .slice()
-                      .sort((left, right) => left.order - right.order)
-                      .map((taskType, order) => ({ ...taskType, order })),
-                  },
-                }))
-              }
-              onDeleteTaskType={(taskTypeId) =>
-                onStateChange((current) => ({
-                  ...current,
-                  portfolios: current.portfolios.map((portfolio) => ({
-                    ...portfolio,
-                    cards: portfolio.cards.map((card) =>
-                      card.taskTypeId === taskTypeId ? { ...card, taskTypeId: 'custom' } : card,
+                    taskLibrary: current.settings.taskLibrary.map((taskType) =>
+                      taskType.id === taskTypeId ? { ...taskType, estimatedHours } : taskType,
                     ),
-                  })),
-                  settings: {
-                    ...current.settings,
-                    taskLibrary: current.settings.taskLibrary
-                      .filter((taskType) => taskType.id !== taskTypeId)
-                      .map((taskType, order) => ({ ...taskType, order })),
                   },
                 }))
               }
-              showToast={showToast}
+              onAdNamingTemplateChange={(platform, template) =>
+                onStateChange((current) => ({
+                  ...current,
+                  settings: {
+                    ...current.settings,
+                    adNamingTemplates: {
+                      ...current.settings.adNamingTemplates,
+                      [platform]: template,
+                    },
+                  },
+                }))
+              }
             />
 
             <RevisionReasonLibraryEditor

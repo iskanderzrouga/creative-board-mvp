@@ -55,8 +55,9 @@ test('owner can create a card and the state survives reload', async ({ page }) =
   })
 
   await page.getByRole('button', { name: '+ Add card' }).click()
-  await page.getByLabel('Title').fill('Phase 1 smoke test card')
-  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByLabel('Concept').fill('Phase 1 smoke test card')
+  await page.getByRole('button', { name: 'Create card' }).click()
 
   await expect(page.getByRole('button', { name: /Phase 1 smoke test card/ })).toBeVisible()
 

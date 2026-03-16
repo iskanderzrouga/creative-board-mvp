@@ -25,9 +25,10 @@ async function openFreshApp(page: Page) {
 
 async function createCardAndCloseDetail(page: Page, title: string) {
   await page.getByRole('button', { name: '+ Add card' }).click()
-  await page.getByLabel('Title').fill(title)
-  await page.getByRole('button', { name: /Create & Open Detail/ }).click()
-  await expect(page.getByLabel('Card title')).toHaveValue(title)
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByLabel('Concept').fill(title)
+  await page.getByRole('button', { name: 'Create card' }).click()
+  await expect(page.getByLabel('Concept')).toHaveValue(title)
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
   await expect(page.getByRole('button', { name: new RegExp(title) })).toBeVisible()
 }

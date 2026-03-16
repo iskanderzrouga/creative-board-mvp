@@ -1,22 +1,20 @@
 import { memo } from 'react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import {
-  formatEstimatedDaysLabel,
+  formatDateShort,
   getAgeToneFromMs,
   getBrandSurface,
   getBrandTextColor,
   getCardAgeMs,
-  getCardCompletionForecast,
-  getDueStatus,
-  getRevisionCount,
   getTaskTypeById,
   getTypePillLabel,
+  isCreativeTaskTypeId,
+  getRevisionCount,
   type Card,
   type GlobalSettings,
   type Portfolio,
-  type StageId,
 } from '../board'
-import { BlockedIcon, ClockIcon } from './icons/AppIcons'
+import { BlockedIcon } from './icons/AppIcons'
 
 interface BoardCardSurfaceProps {
   card: Card
@@ -30,10 +28,6 @@ interface BoardCardSurfaceProps {
   isInvalid?: boolean
   attributes?: DraggableAttributes
   listeners?: DraggableSyntheticListeners
-}
-
-function shouldShowBoardEstimate(stage: StageId) {
-  return stage === 'Briefed' || stage === 'In Production'
 }
 
 function BoardCardSurfaceComponent({
@@ -52,11 +46,8 @@ function BoardCardSurfaceComponent({
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
   const tone = getAgeToneFromMs(ageMs, settings)
-  const dueStatus = getDueStatus(card, nowMs)
-  const completionForecast = getCardCompletionForecast(portfolio, card, nowMs)
-  const showEstimate = shouldShowBoardEstimate(card.stage)
   const revisionCount = getRevisionCount(card)
-  const priorityColors: Record<string, string> = { high: '#e53e3e', medium: '#dd6b20', low: '#3182ce' }
+  const showFunnelStage = isCreativeTaskTypeId(taskType.id)
 
   return (
     <button
@@ -83,15 +74,7 @@ function BoardCardSurfaceComponent({
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 
-      <p className="board-card-title">
-        {card.priority !== 'none' && (
-          <span
-            className="priority-dot"
-            style={{ background: priorityColors[card.priority] }}
-          />
-        )}
-        {card.title}
-      </p>
+      <p className="board-card-title">{card.title}</p>
 
       <div className="board-card-tags">
         <span
@@ -112,27 +95,18 @@ function BoardCardSurfaceComponent({
         >
           {getTypePillLabel(taskType)}
         </span>
+        {showFunnelStage ? (
+          <span className={`funnel-pill funnel-${card.funnelStage.toLowerCase().replace(/\s+/g, '-')}`}>
+            {card.funnelStage}
+          </span>
+        ) : null}
       </div>
 
       <div className="board-card-footer">
         <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
           {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
         </span>
-        {showEstimate ? (
-          <span className={`card-age ${completionForecast.isScheduled ? `tone-${tone}` : 'is-unscheduled'}`}>
-            {dueStatus === 'overdue' ? (
-              <span className="due-indicator is-overdue" aria-hidden="true">
-                <ClockIcon />
-              </span>
-            ) : null}
-            {dueStatus === 'soon' ? (
-              <span className="due-indicator is-soon" aria-hidden="true">
-                <ClockIcon />
-              </span>
-            ) : null}
-            {formatEstimatedDaysLabel(completionForecast.estimatedDays)}
-          </span>
-        ) : null}
+        <span className={`card-age tone-${tone}`}>{formatDateShort(card.dateCreated)}</span>
       </div>
     </button>
   )

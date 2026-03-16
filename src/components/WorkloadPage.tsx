@@ -2,11 +2,9 @@ import { useMemo, type ReactNode } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  formatDateShort,
   formatDurationShort,
   formatHours,
   getCardAgeMs,
-  getDueStatus,
   getTaskTypeById,
   getWorkloadData,
   type Card,
@@ -52,7 +50,6 @@ function WorkloadQueueCard({
     disabled: !canDrag,
   })
   const taskType = getTaskTypeById(settings, card.taskTypeId)
-  const dueStatus = getDueStatus(card)
 
   return (
     <button
@@ -72,18 +69,6 @@ function WorkloadQueueCard({
       <span className="queue-card-effort">{formatHours(card.estimatedHours)}</span>
       <div className="queue-card-meta">
         <span className="queue-card-age">{formatDurationShort(getCardAgeMs(card))}</span>
-        {card.dueDate ? (
-          <span
-            className={`queue-card-due ${
-              dueStatus === 'overdue' ? 'is-overdue' : dueStatus === 'soon' ? 'is-soon' : ''
-            }`}
-          >
-            {dueStatus === 'overdue' ? (
-              <span className="queue-card-badge">OVERDUE</span>
-            ) : null}
-            {`Due ${formatDateShort(card.dueDate)}`}
-          </span>
-        ) : null}
       </div>
     </button>
   )

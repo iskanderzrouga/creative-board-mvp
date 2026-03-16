@@ -42,9 +42,10 @@ function getCardButton(page: Page, titlePattern: RegExp) {
 
 async function createCardAndOpenDetail(page: Page, title: string) {
   await page.getByRole('button', { name: '+ Add card' }).click()
-  await page.getByLabel('Title').fill(title)
-  await page.getByRole('button', { name: /Create & Open Detail/ }).click()
-  await expect(page.getByLabel('Card title')).toHaveValue(title)
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByLabel('Concept').fill(title)
+  await page.getByRole('button', { name: 'Create card' }).click()
+  await expect(page.getByLabel('Concept')).toHaveValue(title)
 }
 
 async function dragLocatorToTarget(page: Page, source: ReturnType<Page['locator']>, target: ReturnType<Page['locator']>) {
@@ -180,10 +181,15 @@ test('contributor can update owned card content and move it forward one stage', 
   await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
 
   await page.getByRole('button', { name: /PX0020 PRICE \/ Color/ }).click()
-  const titleInput = page.getByLabel('Card title')
-  await expect(titleInput).toHaveValue('PX0020 PRICE / Color')
-  await titleInput.fill('PX0020 Editor Updated')
-  await page.getByRole('button', { name: 'Details' }).click()
+  await page.getByRole('button', { name: 'Brief' }).click()
+  const briefEditor = page
+    .locator('.panel-section')
+    .filter({ has: page.getByText('Brief') })
+    .locator('[contenteditable="true"]')
+    .first()
+  await expect(briefEditor).toBeVisible()
+  await briefEditor.fill('Contributor-owned update for coverage')
+  await page.getByRole('button', { name: 'Links' }).click()
 
   const addLinkForm = page.locator('.add-link-form')
   await addLinkForm.getByPlaceholder('Link label').fill('Editor note')
@@ -192,18 +198,18 @@ test('contributor can update owned card content and move it forward one stage', 
   await expect(page.getByText('Editor note')).toBeVisible()
 
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
-  await expect(page.getByRole('button', { name: /PX0020 Editor Updated/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /PX0020 PRICE \/ Color/ })).toBeVisible()
 
   const briefedLane = page.getByRole('group', { name: 'Briefed lane for Daniel T' })
   const inProductionLane = page.getByRole('group', { name: 'In Production lane for Daniel T' })
   await dragLocatorToTarget(
     page,
-    briefedLane.getByRole('button', { name: /PX0020 Editor Updated/ }),
+    briefedLane.getByRole('button', { name: /PX0020 PRICE \/ Color/ }),
     inProductionLane.getByRole('button').first(),
   )
 
   await expect(page.locator('.toast').filter({ hasText: /→ In Production/ })).toHaveCount(1)
-  await expect(inProductionLane.getByRole('button', { name: /PX0020 Editor Updated/ })).toBeVisible()
+  await expect(inProductionLane.getByRole('button', { name: /PX0020 PRICE \/ Color/ })).toBeVisible()
   await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
 })
 

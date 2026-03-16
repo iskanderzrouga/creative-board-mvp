@@ -42,25 +42,26 @@ export const FUNNEL_STAGES = [
   'Promo Evergreen',
 ] as const
 export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Google', 'Other'] as const
+export const DESIGN_TYPES = ['Packaging', 'Logo', 'Brand Asset', 'Other'] as const
 export const CARD_PRIORITIES = ['none', 'low', 'medium', 'high'] as const
 export type CardPriority = (typeof CARD_PRIORITIES)[number]
 export const CARD_FIELDS = [
-  'hook',
   'angle',
   'funnelStage',
   'audience',
   'landingPage',
   'product',
   'platform',
-  'dueDate',
+  'designType',
+  'figmaUrl',
+  'sourceCardId',
+  'relatedLpDesignCardId',
 ] as const
 export const TASK_TYPE_CATEGORIES = [
   'Creative',
-  'Page',
-  'Strategy',
-  'Copy',
-  'Ops',
-  'Other',
+  'Design',
+  'Dev',
+  'General',
 ] as const
 export const SETTING_TABS = [
   'general',
@@ -79,6 +80,7 @@ export type Timeframe = (typeof TIMEFRAMES)[number]
 export type WorkingDay = (typeof WORKING_DAYS)[number]
 export type FunnelStage = (typeof FUNNEL_STAGES)[number]
 export type Platform = (typeof PLATFORMS)[number]
+export type DesignType = (typeof DESIGN_TYPES)[number]
 export type CardFieldKey = (typeof CARD_FIELDS)[number]
 export type TaskTypeCategory = (typeof TASK_TYPE_CATEGORIES)[number]
 export type SettingTab = (typeof SETTING_TABS)[number]
@@ -146,6 +148,10 @@ export interface Card {
   audience: string
   landingPage: string
   funnelStage: FunnelStage
+  designType: DesignType | null
+  figmaUrl: string
+  sourceCardId: string | null
+  relatedLpDesignCardId: string | null
   generatedSheetName: string
   generatedAdName: string
   owner: string | null
@@ -255,12 +261,15 @@ export interface IntegrationsSettings {
   globalDriveWebhookUrl: string
 }
 
+export type AdNamingTemplateMap = Record<Platform, string>
+
 export interface GlobalSettings {
   general: GeneralSettings
   capacity: CapacitySettings
   taskLibrary: TaskType[]
   revisionReasons: RevisionReason[]
   integrations: IntegrationsSettings
+  adNamingTemplates: AdNamingTemplateMap
 }
 
 export interface ActiveRole {
@@ -528,15 +537,21 @@ export interface AttentionSummary {
 }
 
 export interface QuickCreateInput {
-  title: string
   brand: string
+  product?: string
   taskTypeId: string
+  title: string
+  angle?: string
+  sourceCardId?: string | null
 }
 
 export const DEFAULT_QUICK_CREATE_INPUT: QuickCreateInput = {
-  title: '',
   brand: '',
+  product: '',
   taskTypeId: 'video-ugc-short',
+  title: '',
+  angle: '',
+  sourceCardId: null,
 }
 
 export const BRAND_PALETTES = [
@@ -1044,30 +1059,40 @@ function getPrimaryProductForBrand(brand: Brand | null) {
   return brand?.products[0] ?? ''
 }
 
-export function syncCardProductWithBrand(portfolio: Portfolio, card: Card) {
+export function syncCardProductWithBrand(
+  portfolio: Portfolio,
+  card: Card,
+  settings?: Pick<GlobalSettings, 'adNamingTemplates'>,
+) {
   const brand = getBrandByName(portfolio, card.brand)
   if (!brand) {
     return card
   }
 
   if (brand.products.length === 0) {
-    return card.product === '' ? card : syncGeneratedNames({ ...card, product: '' })
+    return card.product === '' ? card : syncGeneratedNames({ ...card, product: '' }, settings)
   }
 
   if (brand.products.includes(card.product)) {
     return card
   }
 
-  return syncGeneratedNames({
-    ...card,
-    product: getPrimaryProductForBrand(brand),
-  })
+  return syncGeneratedNames(
+    {
+      ...card,
+      product: getPrimaryProductForBrand(brand),
+    },
+    settings,
+  )
 }
 
-export function syncPortfolioCardProducts(portfolio: Portfolio) {
+export function syncPortfolioCardProducts(
+  portfolio: Portfolio,
+  settings?: Pick<GlobalSettings, 'adNamingTemplates'>,
+) {
   return {
     ...portfolio,
-    cards: portfolio.cards.map((card) => syncCardProductWithBrand(portfolio, card)),
+    cards: portfolio.cards.map((card) => syncCardProductWithBrand(portfolio, card, settings)),
   }
 }
 
@@ -1089,6 +1114,39 @@ export function getTaskTypeById(settings: GlobalSettings, taskTypeId: string) {
     settings.taskLibrary.find((taskType) => taskType.id === 'custom') ??
     settings.taskLibrary[0]
   )
+}
+
+export function isCreativeTaskTypeId(taskTypeId: string) {
+  return (
+    taskTypeId === 'video-ugc-short' ||
+    taskTypeId === 'video-ugc-medium' ||
+    taskTypeId === 'iteration' ||
+    taskTypeId === 'static-single'
+  )
+}
+
+export function isIterationTaskTypeId(taskTypeId: string) {
+  return taskTypeId === 'iteration'
+}
+
+export function isPackagingBrandingTaskTypeId(taskTypeId: string) {
+  return taskTypeId === 'packaging-branding'
+}
+
+export function isLpDesignTaskTypeId(taskTypeId: string) {
+  return taskTypeId === 'lp-design'
+}
+
+export function isLpDevTaskTypeId(taskTypeId: string) {
+  return taskTypeId === 'lp-dev'
+}
+
+export function getCardTitleLabel(taskTypeId: string) {
+  return isCreativeTaskTypeId(taskTypeId) ? 'Concept' : 'Title'
+}
+
+export function getStageLabel(stage: StageId | BoardColumnId) {
+  return stage === 'Live' ? 'Done/Live' : stage
 }
 
 export function getRevisionReasonById(settings: GlobalSettings, revisionReasonId: string | null) {
@@ -1150,12 +1208,16 @@ export function getCardFolderName(card: Card) {
 }
 
 export function generateSheetName(
-  card: Pick<Card, 'id' | 'product' | 'platform' | 'hook' | 'angle' | 'funnelStage'>,
+  card: Pick<Card, 'id' | 'product' | 'platform' | 'title' | 'angle' | 'funnelStage' | 'taskTypeId'>,
 ) {
   const left = [card.id, sanitizeSegment(card.product), sanitizeSegment(card.platform)]
     .filter(Boolean)
     .join('_')
-  const right = [card.hook, card.angle, card.funnelStage]
+  const right = [
+    card.title,
+    card.angle,
+    isCreativeTaskTypeId(card.taskTypeId) ? card.funnelStage : '',
+  ]
     .map((value) => sanitizeSegment(value))
     .filter(Boolean)
     .join('_')
@@ -1163,29 +1225,54 @@ export function generateSheetName(
   return right ? `${left}__${right}` : left
 }
 
-export function generateAdName(
-  card: Pick<Card, 'id' | 'title' | 'hook' | 'angle' | 'audience' | 'owner' | 'brand' | 'funnelStage'>,
-) {
-  return [
-    card.funnelStage,
-    card.hook || card.title,
-    card.angle || card.title,
-    card.audience || card.owner || card.brand,
-    card.id,
-  ]
-    .filter((value) => value && value.trim().length > 0)
+function renderAdNameTemplate(template: string, values: Record<string, string>) {
+  const rendered = template.replace(/\{(\w+)\}/g, (_, token: string) => values[token] ?? '')
+
+  return rendered
+    .split('|')
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
     .join(' | ')
 }
 
-export function syncGeneratedNames(card: Card) {
-  if (card.legacyNaming) {
-    return card
+export function generateAdName(
+  card: Pick<
+    Card,
+    'id' | 'title' | 'angle' | 'audience' | 'owner' | 'brand' | 'product' | 'platform' | 'funnelStage' | 'taskTypeId'
+  >,
+  templates: Partial<AdNamingTemplateMap> | undefined = undefined,
+) {
+  if (!isCreativeTaskTypeId(card.taskTypeId)) {
+    return ''
   }
 
+  const activeTemplates = {
+    ...createDefaultAdNamingTemplates(),
+    ...(templates ?? {}),
+  }
+
+  return renderAdNameTemplate(activeTemplates[card.platform], {
+    id: card.id,
+    title: card.title,
+    angle: card.angle,
+    audience: card.audience,
+    owner: card.owner ?? '',
+    brand: card.brand,
+    product: card.product,
+    platform: card.platform,
+    funnelStage: card.funnelStage,
+  })
+}
+
+export function syncGeneratedNames(
+  card: Card,
+  settings?: Pick<GlobalSettings, 'adNamingTemplates'>,
+) {
   return {
     ...card,
-    generatedSheetName: generateSheetName(card),
-    generatedAdName: generateAdName(card),
+    generatedSheetName:
+      card.legacyNaming && card.generatedSheetName ? card.generatedSheetName : generateSheetName(card),
+    generatedAdName: generateAdName(card, settings?.adNamingTemplates),
   }
 }
 
@@ -1240,29 +1327,53 @@ function buildDefaultStageHistory(stage: StageId, dateCreated: string) {
 function inferTaskTypeId(
   taskLibrary: TaskType[],
   legacyType: string,
-  legacyTitle: string,
+  _legacyTitle: string,
   legacyVideoType: string,
 ) {
-  if (legacyType === 'Landing Page') {
-    return 'landing-page'
-  }
-  if (legacyType === 'Offer') {
-    return 'offer'
-  }
   if (legacyType === 'Video') {
     if (legacyVideoType.includes('1-2 min')) {
       return 'video-ugc-medium'
     }
     if (legacyVideoType.toLowerCase().includes('relaunch')) {
-      return 'video-relaunch'
+      return 'iteration'
     }
     return 'video-ugc-short'
   }
   if (legacyType === 'Static') {
-    return legacyTitle.toLowerCase().includes('statics') ? 'static-set' : 'static-single'
+    return 'static-single'
+  }
+  if (legacyType === 'Landing Page') {
+    return 'lp-design'
+  }
+  if (legacyType === 'Offer' || legacyType === 'Ad Copy' || legacyType === 'Launch Prep') {
+    return 'custom'
   }
 
   return taskLibrary.find((taskType) => taskType.id === 'custom')?.id ?? taskLibrary[0].id
+}
+
+function normalizeStoredTaskTypeId(taskLibrary: TaskType[], rawTaskTypeId: string | undefined) {
+  if (!rawTaskTypeId) {
+    return taskLibrary[0]?.id ?? 'custom'
+  }
+
+  const normalizedTaskTypeId =
+    rawTaskTypeId === 'video-relaunch'
+      ? 'iteration'
+      : rawTaskTypeId === 'static-set'
+        ? 'static-single'
+        : rawTaskTypeId === 'landing-page'
+          ? 'lp-design'
+          : rawTaskTypeId === 'offer' || rawTaskTypeId === 'ad-copy' || rawTaskTypeId === 'launch-prep'
+            ? 'custom'
+            : rawTaskTypeId
+
+  return (
+    taskLibrary.find((taskType) => taskType.id === normalizedTaskTypeId)?.id ??
+    taskLibrary.find((taskType) => taskType.id === 'custom')?.id ??
+    taskLibrary[0]?.id ??
+    'custom'
+  )
 }
 
 function createSeedTaskLibrary(): TaskType[] {
@@ -1275,9 +1386,10 @@ function createSeedTaskLibrary(): TaskType[] {
       color: '#e0f2fe',
       textColor: '#0284c7',
       estimatedHours: 8,
-      requiredFields: ['hook', 'angle', 'funnelStage'],
-      optionalFields: ['audience', 'landingPage'],
+      requiredFields: ['angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage', 'platform'],
       isDefault: true,
+      locked: true,
     },
     {
       id: 'video-ugc-medium',
@@ -1287,104 +1399,99 @@ function createSeedTaskLibrary(): TaskType[] {
       color: '#bfdbfe',
       textColor: '#1d4ed8',
       estimatedHours: 16,
-      requiredFields: ['hook', 'angle', 'funnelStage'],
-      optionalFields: ['audience', 'landingPage'],
+      requiredFields: ['angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage', 'platform'],
       isDefault: true,
+      locked: true,
     },
     {
-      id: 'video-relaunch',
-      name: 'Video (Relaunch)',
+      id: 'iteration',
+      name: 'Iteration',
       category: 'Creative',
       icon: '🔄',
       color: '#dbeafe',
       textColor: '#2563eb',
       estimatedHours: 4,
-      requiredFields: ['hook', 'funnelStage'],
-      optionalFields: ['angle', 'audience'],
+      requiredFields: ['sourceCardId', 'funnelStage'],
+      optionalFields: ['angle', 'audience', 'landingPage', 'platform'],
       isDefault: true,
+      locked: true,
     },
     {
       id: 'static-single',
-      name: 'Static (Single)',
+      name: 'Static',
       category: 'Creative',
       icon: '🖼',
       color: '#fef3c7',
       textColor: '#d97706',
       estimatedHours: 4,
-      requiredFields: ['hook'],
-      optionalFields: ['angle', 'audience', 'funnelStage'],
+      requiredFields: [],
+      optionalFields: ['angle', 'audience', 'funnelStage', 'landingPage', 'platform'],
       isDefault: true,
+      locked: true,
     },
     {
-      id: 'static-set',
-      name: 'Static (Set)',
-      category: 'Creative',
-      icon: '🖼',
-      color: '#fde68a',
-      textColor: '#b45309',
-      estimatedHours: 8,
-      requiredFields: ['hook'],
-      optionalFields: ['angle', 'audience', 'funnelStage'],
-      isDefault: true,
-    },
-    {
-      id: 'landing-page',
-      name: 'Landing Page',
-      category: 'Page',
-      icon: '📄',
+      id: 'packaging-branding',
+      name: 'Packaging/Branding',
+      category: 'Design',
+      icon: '📦',
       color: '#fce7f3',
-      textColor: '#db2777',
-      estimatedHours: 20,
-      requiredFields: ['product', 'platform'],
-      optionalFields: ['landingPage', 'dueDate'],
-      isDefault: true,
-    },
-    {
-      id: 'offer',
-      name: 'Offer',
-      category: 'Strategy',
-      icon: '🏷',
-      color: '#f3f4f6',
-      textColor: '#6b7280',
+      textColor: '#be185d',
       estimatedHours: 12,
-      requiredFields: ['funnelStage'],
-      optionalFields: ['audience', 'dueDate'],
+      requiredFields: ['designType'],
+      optionalFields: [],
       isDefault: true,
+      locked: true,
     },
     {
-      id: 'ad-copy',
-      name: 'Ad Copy',
-      category: 'Copy',
-      icon: '✍️',
-      color: '#dcfce7',
-      textColor: '#15803d',
-      estimatedHours: 3,
-      requiredFields: ['funnelStage'],
-      optionalFields: ['hook', 'angle', 'audience'],
+      id: 'lp-design',
+      name: 'LP Design',
+      category: 'Design',
+      icon: '📄',
+      color: '#fae8ff',
+      textColor: '#a21caf',
+      estimatedHours: 20,
+      requiredFields: [],
+      optionalFields: ['figmaUrl'],
       isDefault: true,
+      locked: true,
     },
     {
-      id: 'launch-prep',
-      name: 'Launch Prep',
-      category: 'Ops',
-      icon: '🚀',
-      color: '#ede9fe',
-      textColor: '#7c3aed',
-      estimatedHours: 2,
-      requiredFields: ['dueDate'],
-      optionalFields: ['platform'],
+      id: 'bug-fix',
+      name: 'Bug Fix',
+      category: 'Dev',
+      icon: '🐛',
+      color: '#fee2e2',
+      textColor: '#dc2626',
+      estimatedHours: 4,
+      requiredFields: [],
+      optionalFields: [],
       isDefault: true,
+      locked: true,
+    },
+    {
+      id: 'lp-dev',
+      name: 'LP Dev',
+      category: 'Dev',
+      icon: '📄',
+      color: '#e0e7ff',
+      textColor: '#4338ca',
+      estimatedHours: 14,
+      requiredFields: [],
+      optionalFields: ['relatedLpDesignCardId'],
+      isDefault: true,
+      locked: true,
     },
     {
       id: 'custom',
       name: 'Custom',
-      category: 'Other',
+      category: 'General',
       icon: '⚡',
       color: '#e5e7eb',
       textColor: '#4b5563',
       estimatedHours: 5,
       requiredFields: [],
-      optionalFields: ['hook', 'angle', 'funnelStage', 'audience', 'landingPage'],
+      optionalFields: [],
       isDefault: true,
       locked: true,
     },
@@ -1394,6 +1501,16 @@ function createSeedTaskLibrary(): TaskType[] {
     ...definition,
     order: index,
   }))
+}
+
+function createDefaultAdNamingTemplates(): AdNamingTemplateMap {
+  return {
+    Meta: '{funnelStage} | {angle} | {title} | {audience} | {id}',
+    AppLovin: '{title} | {angle} | {id}',
+    TikTok: '{title} | {angle} | {id}',
+    Google: '{title} | {angle} | {id}',
+    Other: '{title} | {id}',
+  }
 }
 
 function createSeedRevisionReasons(): RevisionReason[] {
@@ -1539,18 +1656,24 @@ function inflateSeedCard(
     audience: seed.audience ?? '',
     landingPage: '',
     funnelStage: seed.funnelStage,
+    designType: null,
+    figmaUrl: '',
+    sourceCardId: null,
+    relatedLpDesignCardId: null,
     generatedSheetName: seed.generatedSheetName ?? seed.title,
     generatedAdName:
       seed.generatedAdName ??
       generateAdName({
         id: seed.id,
         title: seed.title,
-        hook: seed.hook ?? '',
         angle: seed.angle ?? '',
         audience: seed.audience ?? '',
         owner: seed.owner,
         brand: seed.brand,
+        product: seed.product,
+        platform: seed.platform,
         funnelStage: seed.funnelStage,
+        taskTypeId,
       }),
     owner: seed.stage === 'Backlog' ? null : seed.owner,
     stage: seed.stage,
@@ -1812,6 +1935,7 @@ export function createSeedState(): AppState {
       integrations: {
         globalDriveWebhookUrl: '',
       },
+      adNamingTemplates: createDefaultAdNamingTemplates(),
     },
     activePortfolioId: portfolios[0]?.id ?? '',
     activeRole: {
@@ -1826,23 +1950,31 @@ export function createSeedState(): AppState {
 
 function normalizeTaskLibrary(raw: TaskType[] | undefined) {
   const seed = createSeedTaskLibrary()
-  const source = Array.isArray(raw) && raw.length > 0 ? raw : seed
+  const source = Array.isArray(raw) && raw.length > 0 ? raw : []
+  const estimatedHoursById = new Map(
+    source.map((taskType) => [taskType.id, taskType.estimatedHours] as const),
+  )
 
-  const taskLibrary = source.map((taskType, index) => ({
+  return seed.map((taskType, index) => ({
     ...taskType,
-    requiredFields: taskType.requiredFields ?? [],
-    optionalFields: taskType.optionalFields ?? [],
-    order: typeof taskType.order === 'number' ? taskType.order : index,
+    estimatedHours:
+      typeof estimatedHoursById.get(taskType.id) === 'number' &&
+      (estimatedHoursById.get(taskType.id) ?? 0) > 0
+        ? estimatedHoursById.get(taskType.id)!
+        : taskType.estimatedHours,
+    order: index,
   }))
+}
 
-  if (!taskLibrary.some((taskType) => taskType.id === 'custom')) {
-    taskLibrary.push({
-      ...seed.find((taskType) => taskType.id === 'custom')!,
-      order: taskLibrary.length,
-    })
-  }
+function normalizeAdNamingTemplates(raw: Partial<AdNamingTemplateMap> | undefined) {
+  const defaults = createDefaultAdNamingTemplates()
 
-  return taskLibrary
+  return Object.fromEntries(
+    PLATFORMS.map((platform) => {
+      const candidate = raw?.[platform]
+      return [platform, typeof candidate === 'string' && candidate.trim() ? candidate.trim() : defaults[platform]]
+    }),
+  ) as AdNamingTemplateMap
 }
 
 function normalizeTeamMemberAccessEmail(value: unknown) {
@@ -1929,7 +2061,9 @@ function normalizePortfolio(
   const normalizedCards = reindexCards(
     portfolio.cards.map((rawCard) => {
       const taskTypeId =
-        rawCard.taskTypeId ?? inferTaskTypeId(taskLibrary, 'Video', rawCard.title, '')
+        rawCard.taskTypeId
+          ? normalizeStoredTaskTypeId(taskLibrary, rawCard.taskTypeId)
+          : inferTaskTypeId(taskLibrary, 'Video', rawCard.title, '')
       const taskType = getTaskTypeById({ ...settings, taskLibrary }, taskTypeId)
       const activityLog =
         rawCard.activityLog && rawCard.activityLog.length > 0
@@ -1945,7 +2079,7 @@ function normalizePortfolio(
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = rawCard as any
-      return {
+      return syncGeneratedNames({
         ...rawCard,
         taskTypeId,
         estimatedHours:
@@ -1961,12 +2095,26 @@ function normalizePortfolio(
         priority: raw.priority ?? 'none',
         actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
         dueDate: rawCard.dueDate ?? null,
+        designType:
+          raw.designType === 'Packaging' ||
+          raw.designType === 'Logo' ||
+          raw.designType === 'Brand Asset' ||
+          raw.designType === 'Other'
+            ? raw.designType
+            : null,
+        figmaUrl: typeof raw.figmaUrl === 'string' ? raw.figmaUrl : '',
+        sourceCardId: typeof raw.sourceCardId === 'string' && raw.sourceCardId ? raw.sourceCardId : null,
+        relatedLpDesignCardId:
+          typeof raw.relatedLpDesignCardId === 'string' && raw.relatedLpDesignCardId
+            ? raw.relatedLpDesignCardId
+            : null,
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
         activityLog,
         stageEnteredAt:
           rawCard.stageHistory[rawCard.stageHistory.length - 1]?.enteredAt ?? rawCard.stageEnteredAt,
-      }
+        legacyNaming: typeof raw.legacyNaming === 'boolean' ? raw.legacyNaming : false,
+      }, { adNamingTemplates: settings.adNamingTemplates })
     }),
   )
 
@@ -2013,6 +2161,7 @@ function normalizeSettings(raw: Partial<GlobalSettings> | undefined, fallbackPor
       ...seed.integrations,
       ...(raw?.integrations ?? {}),
     },
+    adNamingTemplates: normalizeAdNamingTemplates(raw?.adNamingTemplates),
   } satisfies GlobalSettings
 }
 
@@ -2383,23 +2532,162 @@ export function getNextCardId(portfolio: Portfolio, brandName: string) {
 }
 
 export function getQuickCreateDefaults(portfolio: Portfolio, settings: GlobalSettings): QuickCreateInput {
+  const brand = portfolio.brands[0]?.name ?? ''
+  const product = portfolio.brands[0]?.products[0] ?? ''
+
   return {
-    title: '',
-    brand: portfolio.brands[0]?.name ?? '',
+    brand,
+    product,
     taskTypeId: settings.taskLibrary[0]?.id ?? 'custom',
+    title: '',
+    angle: '',
+    sourceCardId: null,
   }
+}
+
+function sortRelationCards(cards: Card[], brand: string, product: string) {
+  return cards.slice().sort((left, right) => {
+    const leftScore =
+      (left.brand === brand ? 2 : 0) +
+      (left.product === product ? 1 : 0)
+    const rightScore =
+      (right.brand === brand ? 2 : 0) +
+      (right.product === product ? 1 : 0)
+
+    if (leftScore !== rightScore) {
+      return rightScore - leftScore
+    }
+    if (left.dateCreated !== right.dateCreated) {
+      return right.dateCreated.localeCompare(left.dateCreated)
+    }
+    return left.id.localeCompare(right.id)
+  })
+}
+
+export function getIterationSourceCards(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  brand: string,
+  product: string,
+  excludeCardId?: string,
+) {
+  return sortRelationCards(
+    portfolio.cards.filter(
+      (card) =>
+        !card.archivedAt &&
+        card.id !== excludeCardId &&
+        isCreativeTaskTypeId(getTaskTypeById(settings, card.taskTypeId).id),
+    ),
+    brand,
+    product,
+  )
+}
+
+export function getRelatedLpDesignCards(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  brand: string,
+  product: string,
+  excludeCardId?: string,
+) {
+  return sortRelationCards(
+    portfolio.cards.filter(
+      (card) =>
+        !card.archivedAt &&
+        card.id !== excludeCardId &&
+        isLpDesignTaskTypeId(getTaskTypeById(settings, card.taskTypeId).id),
+    ),
+    brand,
+    product,
+  )
+}
+
+export function shouldUseCreativeCreationFlow(taskTypeId: string) {
+  return isCreativeTaskTypeId(taskTypeId)
+}
+
+export function shouldUseIterationCreationFlow(taskTypeId: string) {
+  return isIterationTaskTypeId(taskTypeId)
+}
+
+export function isTaskTypeManagerOwned(taskTypeId: string) {
+  return isCreativeTaskTypeId(taskTypeId)
+}
+
+export function getDefaultDesignType(taskTypeId: string): DesignType | null {
+  return isPackagingBrandingTaskTypeId(taskTypeId) ? 'Packaging' : null
+}
+
+function getQuickCreateSourceCard(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  input: QuickCreateInput,
+) {
+  if (!input.sourceCardId) {
+    return null
+  }
+
+  return getIterationSourceCards(portfolio, settings, input.brand, input.product ?? '').find(
+    (card) => card.id === input.sourceCardId,
+  ) ?? null
+}
+
+function getQuickCreateTitle(taskTypeId: string, input: QuickCreateInput, sourceCard: Card | null) {
+  if (isIterationTaskTypeId(taskTypeId)) {
+    return sourceCard?.title ?? ''
+  }
+
+  return input.title.trim()
+}
+
+function getQuickCreateAngle(taskTypeId: string, input: QuickCreateInput) {
+  return shouldUseCreativeCreationFlow(taskTypeId) ? (input.angle ?? '').trim() : ''
+}
+
+function getQuickCreatePlatform(taskTypeId: string) {
+  return shouldUseCreativeCreationFlow(taskTypeId) ? 'Meta' : 'Other'
+}
+
+function getQuickCreateFunnelStage(taskTypeId: string): FunnelStage {
+  return shouldUseCreativeCreationFlow(taskTypeId) ? 'Cold' : 'Cold'
+}
+
+function getQuickCreateGeneratedSheetName(taskTypeId: string, title: string, angle: string) {
+  if (!shouldUseCreativeCreationFlow(taskTypeId)) {
+    return ''
+  }
+
+  return [title, angle].filter(Boolean).join(' / ')
 }
 
 function getQuickCreateValidationMessage(
   portfolio: Portfolio,
+  settings: GlobalSettings,
   input: QuickCreateInput,
 ) {
-  if (!input.title.trim()) {
-    return 'Enter a card title before creating it.'
-  }
-
   if (!getBrandByName(portfolio, input.brand)) {
     return 'Pick a valid brand before creating a card.'
+  }
+
+  if (
+    input.product &&
+    !getBrandByName(portfolio, input.brand)?.products.includes(input.product)
+  ) {
+    return 'Pick a valid product before creating a card.'
+  }
+
+  const taskType = getQuickCreateTaskType(settings, input.taskTypeId)
+  const sourceCard = getQuickCreateSourceCard(portfolio, settings, input)
+  const title = getQuickCreateTitle(taskType.id, input, sourceCard)
+
+  if (isIterationTaskTypeId(taskType.id) && !sourceCard) {
+    return 'Choose a source card for this iteration before creating it.'
+  }
+
+  if (!title) {
+    return shouldUseCreativeCreationFlow(taskType.id)
+      ? 'Enter a concept before creating the card.'
+      : 'Enter a title before creating the card.'
   }
 
   return null
@@ -2420,29 +2708,36 @@ export function createCardFromQuickInput(
   actor: string,
   createdAt = new Date().toISOString(),
 ) {
-  const validationMessage = getQuickCreateValidationMessage(portfolio, input)
+  const validationMessage = getQuickCreateValidationMessage(portfolio, settings, input)
   if (validationMessage) {
     throw new Error(validationMessage)
   }
 
   const taskType = getQuickCreateTaskType(settings, input.taskTypeId)
   const brand = getBrandByName(portfolio, input.brand)
+  const sourceCard = getQuickCreateSourceCard(portfolio, settings, input)
+  const title = getQuickCreateTitle(taskType.id, input, sourceCard)
+  const angle = getQuickCreateAngle(taskType.id, input)
   const cardId = getNextCardId(portfolio, brand?.name ?? input.brand)
   const dateOnly = createdAt.slice(0, 10)
 
   const baseCard: Card = {
     id: cardId,
-    title: input.title.trim(),
+    title,
     brand: brand?.name ?? input.brand,
-    product: brand?.products[0] ?? '',
-    platform: 'Meta',
+    product: input.product || brand?.products[0] || '',
+    platform: getQuickCreatePlatform(taskType.id),
     taskTypeId: taskType.id,
     hook: '',
-    angle: '',
+    angle,
     audience: '',
     landingPage: '',
-    funnelStage: 'Cold',
-    generatedSheetName: '',
+    funnelStage: getQuickCreateFunnelStage(taskType.id),
+    designType: getDefaultDesignType(taskType.id),
+    figmaUrl: '',
+    sourceCardId: isIterationTaskTypeId(taskType.id) ? sourceCard?.id ?? null : null,
+    relatedLpDesignCardId: null,
+    generatedSheetName: getQuickCreateGeneratedSheetName(taskType.id, title, angle),
     generatedAdName: '',
     owner: null,
     stage: 'Backlog',
@@ -2477,7 +2772,7 @@ export function createCardFromQuickInput(
     legacyNaming: false,
   }
 
-  return syncGeneratedNames(baseCard)
+  return syncGeneratedNames(baseCard, settings)
 }
 
 function canManageCards(viewer: ViewerContext) {
@@ -2501,19 +2796,19 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
   const allowedKeys = new Set<keyof Card>()
   if (viewer.editorName === card.owner) {
     allowedKeys.add('title')
-    allowedKeys.add('hook')
     allowedKeys.add('angle')
     allowedKeys.add('audience')
     allowedKeys.add('brief')
     allowedKeys.add('attachments')
     allowedKeys.add('frameioLink')
-    allowedKeys.add('dueDate')
     allowedKeys.add('landingPage')
-    allowedKeys.add('priority')
     allowedKeys.add('actualHoursLogged')
     allowedKeys.add('comments')
     allowedKeys.add('estimatedHours')
     allowedKeys.add('blocked')
+    allowedKeys.add('figmaUrl')
+    allowedKeys.add('designType')
+    allowedKeys.add('relatedLpDesignCardId')
   }
   if (isLaunchOpsRole(viewer.memberRole)) {
     allowedKeys.add('blocked')
@@ -2560,7 +2855,6 @@ function matchesSearch(card: Card, query: string) {
     card.id,
     card.title,
     card.owner ?? '',
-    card.hook,
     card.angle,
     card.brand,
     card.product,
@@ -2609,9 +2903,6 @@ export function getVisibleCards(
       }
     }
     if (!matchesSearch(card, filters.searchQuery)) {
-      return false
-    }
-    if (filters.overdueOnly && getDueStatus(card, nowMs) !== 'overdue') {
       return false
     }
     if (filters.stuckOnly && getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) !== 'stuck') {
@@ -2749,7 +3040,7 @@ export function getVisibleColumns(
       const cards = getOrderedLaneCards(visibleCards, stage, null)
       return {
         id: stage,
-        label: stage,
+        label: getStageLabel(stage),
         grouped: false,
         count: cards.length,
         lanes: [
@@ -2824,7 +3115,7 @@ export function getVisibleColumns(
 
     return {
       id: stage,
-      label: stage,
+      label: getStageLabel(stage),
       grouped: !showSingle,
       count: visibleLanes.reduce((sum, lane) => sum + lane.cards.length, 0),
       lanes: visibleLanes,
@@ -2889,14 +3180,10 @@ export function getBoardStats(
 
   const byStage = Object.fromEntries(STAGES.map((stage) => [stage, 0])) as Record<StageId, number>
   let stuck = 0
-  let overdue = 0
   for (const card of cards) {
     byStage[card.stage] += 1
     if (getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck') {
       stuck += 1
-    }
-    if (getDueStatus(card, nowMs) === 'overdue') {
-      overdue += 1
     }
   }
 
@@ -2904,7 +3191,7 @@ export function getBoardStats(
     total: cards.length,
     byStage,
     stuck,
-    overdue,
+    overdue: 0,
   } satisfies BoardStats
 }
 
@@ -3323,6 +3610,7 @@ export function moveCardInPortfolio(
   revisionReason?: string,
   revisionEstimatedHours?: number | null,
   revisionFeedback?: string,
+  settings?: Pick<GlobalSettings, 'adNamingTemplates'>,
 ) {
   const existingCard = portfolio.cards.find((card) => card.id === cardId)
   if (!existingCard) {
@@ -3435,13 +3723,13 @@ export function moveCardInPortfolio(
 
   return {
     ...portfolio,
-    cards: reindexCards([...updatedCards, syncGeneratedNames(updatedCard)]),
+    cards: reindexCards([...updatedCards, syncGeneratedNames(updatedCard, settings)]),
   }
 }
 
 export function applyCardUpdates(
   portfolio: Portfolio,
-  _settings: GlobalSettings,
+  settings: GlobalSettings,
   cardId: string,
   updates: Partial<Card>,
   actor: string,
@@ -3469,11 +3757,14 @@ export function applyCardUpdates(
             : updates.owner
       const normalizedUpdates =
         normalizedOwner === undefined ? updates : { ...updates, owner: normalizedOwner }
-      let nextCard = syncGeneratedNames({
-        ...card,
-        ...normalizedUpdates,
-      })
-      nextCard = syncCardProductWithBrand(portfolio, nextCard)
+      let nextCard = syncGeneratedNames(
+        {
+          ...card,
+          ...normalizedUpdates,
+        },
+        settings,
+      )
+      nextCard = syncCardProductWithBrand(portfolio, nextCard, settings)
 
       if (
         normalizedOwner !== undefined &&
@@ -3514,20 +3805,6 @@ export function applyCardUpdates(
         nextCard = appendActivity(
           nextCard,
           createActivityEntry(actor, message, 'effort', timestamp),
-        )
-      }
-
-      if (updates.dueDate !== undefined && updates.dueDate !== previous.dueDate) {
-        nextCard = appendActivity(
-          nextCard,
-          createActivityEntry(
-            actor,
-            updates.dueDate
-              ? `set due date to ${formatDateShort(updates.dueDate)}`
-              : 'cleared the due date',
-            'due-date',
-            timestamp,
-          ),
         )
       }
 
@@ -3661,7 +3938,7 @@ function buildDashboardCardRow(portfolio: Portfolio, card: Card, nowMs: number):
     daysInStage: Math.max(0, Math.round(getCardAgeMs(card, nowMs) / DAY_MS)),
     isBlocked: Boolean(card.blocked),
     blockedReason: card.blocked?.reason ?? null,
-    isOverdue: getDueStatus(card, nowMs) === 'overdue',
+    isOverdue: false,
   }
 }
 
@@ -3787,8 +4064,7 @@ function buildStuckCardsList(
         .filter(
           (card) =>
             !isArchivedCard(card) &&
-            (getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck' ||
-              getDueStatus(card, nowMs) === 'overdue'),
+            getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck',
         )
         .map((card) => buildDashboardCardRow(portfolio, card, nowMs)),
     )
@@ -3966,17 +4242,16 @@ export function getAttentionSummary(
   }
 
   const cards = portfolio.cards.filter((card) => !isArchivedCard(card))
-  const overdueCount = cards.filter((card) => getDueStatus(card, nowMs) === 'overdue').length
   const stuckCount = cards.filter(
     (card) => getAgeToneFromMs(getCardAgeMs(card, nowMs), settings) === 'stuck',
   ).length
   const blockedCount = cards.filter((card) => card.blocked !== null).length
 
   return {
-    overdueCount,
+    overdueCount: 0,
     stuckCount,
     blockedCount,
-    hasAttention: overdueCount > 0 || stuckCount > 0 || blockedCount > 0,
+    hasAttention: stuckCount > 0 || blockedCount > 0,
   } satisfies AttentionSummary
 }
 

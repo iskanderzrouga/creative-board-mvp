@@ -44,8 +44,9 @@ test('tablet layout keeps board navigation, detail, and settings usable', async 
   expect(distinctColumnOffsets).toBeGreaterThan(1)
 
   await page.getByRole('button', { name: '+ Add card' }).click()
-  await page.getByLabel('Title').fill('Tablet responsive card')
-  await page.getByRole('button', { name: /Create & Open Detail/ }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByLabel('Concept').fill('Tablet responsive card')
+  await page.getByRole('button', { name: 'Create card' }).click()
 
   const slidePanelBox = await page.locator('.slide-panel').boundingBox()
   expect(slidePanelBox?.width ?? 0).toBeGreaterThan(740)

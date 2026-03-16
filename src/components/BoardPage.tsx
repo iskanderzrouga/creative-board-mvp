@@ -21,6 +21,7 @@ import {
   STAGES,
   formatHours,
   getEditorOptions,
+  getStageLabel,
   type BoardFilters,
   type BoardStats,
   type Card,
@@ -170,7 +171,7 @@ export function BoardPage({
           </div>
           {STAGES.map((stage) => (
             <div key={stage} className="stat-inline-item">
-              <span className="stat-inline-label">{stage}</span>
+              <span className="stat-inline-label">{getStageLabel(stage)}</span>
               <strong>{stats.byStage[stage]}</strong>
               <span className="stat-divider">·</span>
             </div>
@@ -178,11 +179,6 @@ export function BoardPage({
           <div className="stat-inline-item">
             <span className="stat-inline-label">{`Stuck ${settings.general.timeInStageThresholds.redStart}+d`}</span>
             <strong className={stats.stuck > 0 ? 'is-highlight' : ''}>{stats.stuck}</strong>
-            <span className="stat-divider">·</span>
-          </div>
-          <div className="stat-inline-item">
-            <span className="stat-inline-label">Overdue</span>
-            <strong className={stats.overdue > 0 ? 'is-highlight' : ''}>{stats.overdue}</strong>
           </div>
         </section>
       ) : null}
@@ -272,18 +268,6 @@ export function BoardPage({
           <div className="manager-filter-cluster">
             <span className="filter-group-label">Flags</span>
             <div className="manager-flag-pills">
-              <button
-                type="button"
-                className={`filter-pill ${boardFilters.overdueOnly ? 'is-active is-danger' : ''}`}
-                onClick={() =>
-                  setBoardFilters((current) => ({
-                    ...current,
-                    overdueOnly: !current.overdueOnly,
-                  }))
-                }
-              >
-                Overdue
-              </button>
               <button
                 type="button"
                 className={`filter-pill ${boardFilters.stuckOnly ? 'is-active is-warning' : ''}`}

@@ -25,9 +25,10 @@ async function openFreshApp(page: Page) {
 
 async function createCardAndOpenDetail(page: Page, title: string) {
   await page.getByRole('button', { name: '+ Add card' }).click()
-  await page.getByLabel('Title').fill(title)
-  await page.getByRole('button', { name: /Create & Open Detail/ }).click()
-  await expect(page.getByLabel('Card title')).toHaveValue(title)
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByLabel('Concept').fill(title)
+  await page.getByRole('button', { name: 'Create card' }).click()
+  await expect(page.getByLabel('Concept')).toHaveValue(title)
 }
 
 test('manager can edit and delete a card from the detail panel', async ({ page }) => {
@@ -35,7 +36,7 @@ test('manager can edit and delete a card from the detail panel', async ({ page }
 
   await createCardAndOpenDetail(page, 'Phase 9 CRUD card')
 
-  await page.getByLabel('Card title').fill('Phase 9 CRUD card updated')
+  await page.getByLabel('Concept').fill('Phase 9 CRUD card updated')
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
 
   await expect(

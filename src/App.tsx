@@ -317,7 +317,6 @@ function App() {
   const hasActiveBoardFilters = Boolean(
     boardFilters.searchQuery.trim() ||
       boardFilters.ownerNames.length > 0 ||
-      boardFilters.overdueOnly ||
       boardFilters.stuckOnly ||
       boardFilters.blockedOnly ||
       boardFilters.showArchived ||
@@ -781,18 +780,13 @@ function App() {
       return
     }
 
-    if (attention.overdueCount > 0) {
-      setBoardFilters((current) => ({ ...current, overdueOnly: true, stuckOnly: false, blockedOnly: false }))
-      return
-    }
-
     if (attention.stuckCount > 0) {
-      setBoardFilters((current) => ({ ...current, overdueOnly: false, stuckOnly: true, blockedOnly: false }))
+      setBoardFilters((current) => ({ ...current, stuckOnly: true, blockedOnly: false }))
       return
     }
 
     if (attention.blockedCount > 0) {
-      setBoardFilters((current) => ({ ...current, overdueOnly: false, stuckOnly: false, blockedOnly: true }))
+      setBoardFilters((current) => ({ ...current, stuckOnly: false, blockedOnly: true }))
     }
   }
 
@@ -849,7 +843,7 @@ function App() {
     void copyToClipboard(value).then(() => setCopyState({ key }))
   }
 
-  function handleQuickCreate(openDetail: boolean) {
+  function handleQuickCreate() {
     if (!activePortfolioView) {
       return
     }
@@ -879,13 +873,10 @@ function App() {
     setQuickCreateOpen(false)
     setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
     showToast(`${card.id} created`, 'green')
-
-    if (openDetail) {
-      setSelectedCard({
-        portfolioId: activePortfolioView.id,
-        cardId: card.id,
-      })
-    }
+    setSelectedCard({
+      portfolioId: activePortfolioView.id,
+      cardId: card.id,
+    })
   }
 
   function openCard(portfolioId: string, cardId: string) {
@@ -1208,6 +1199,7 @@ function App() {
         revisionReason,
         revisionEstimatedHours,
         revisionFeedback,
+        state.settings,
       )
       moved = nextPortfolio !== currentPortfolio
       return nextPortfolio

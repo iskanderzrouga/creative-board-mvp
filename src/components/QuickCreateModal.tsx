@@ -1,6 +1,11 @@
-import { useId, useRef } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import {
+  getCardTitleLabel,
+  getIterationSourceCards,
+  getTaskTypeById,
   getTaskTypeGroups,
+  isIterationTaskTypeId,
+  shouldUseCreativeCreationFlow,
   type GlobalSettings,
   type Portfolio,
   type QuickCreateInput,
@@ -14,7 +19,7 @@ interface QuickCreateModalProps {
   value: QuickCreateInput
   onChange: (updates: Partial<QuickCreateInput>) => void
   onClose: () => void
-  onCreate: (openDetail: boolean) => void
+  onCreate: () => void
 }
 
 export function QuickCreateModal({
@@ -27,7 +32,107 @@ export function QuickCreateModal({
 }: QuickCreateModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
+  const [step, setStep] = useState(1)
   useModalAccessibility(modalRef, true)
+
+  const selectedBrand = portfolio.brands.find((brand) => brand.name === value.brand) ?? null
+  const taskType = getTaskTypeById(settings, value.taskTypeId)
+  const creativeFlow = shouldUseCreativeCreationFlow(taskType.id)
+  const iterationFlow = isIterationTaskTypeId(taskType.id)
+  const sourceCards = useMemo(
+    () =>
+      getIterationSourceCards(
+        portfolio,
+        settings,
+        value.brand,
+        value.product ?? selectedBrand?.products[0] ?? '',
+      ),
+    [portfolio, selectedBrand?.products, settings, value.brand, value.product],
+  )
+  const selectedSourceCard =
+    sourceCards.find((card) => card.id === value.sourceCardId) ?? null
+  const canAdvanceFromStepOne = Boolean(
+    value.brand &&
+      value.taskTypeId &&
+      ((selectedBrand?.products.length ?? 0) === 0 || value.product),
+  )
+  const finalTitle = iterationFlow ? selectedSourceCard?.title ?? '' : value.title.trim()
+  const canCreate = iterationFlow ? Boolean(selectedSourceCard) : Boolean(finalTitle)
+
+  function handleBrandChange(nextBrandName: string) {
+    const nextBrand = portfolio.brands.find((brand) => brand.name === nextBrandName) ?? null
+    onChange({
+      brand: nextBrandName,
+      product: nextBrand?.products[0] ?? '',
+      sourceCardId: null,
+    })
+  }
+
+  function handleTaskTypeChange(nextTaskTypeId: string) {
+    const nextTaskType = getTaskTypeById(settings, nextTaskTypeId)
+    onChange({
+      taskTypeId: nextTaskTypeId,
+      angle: shouldUseCreativeCreationFlow(nextTaskType.id) ? value.angle ?? '' : '',
+      sourceCardId: isIterationTaskTypeId(nextTaskType.id) ? value.sourceCardId ?? null : null,
+    })
+  }
+
+  function renderStepTwo() {
+    if (iterationFlow) {
+      return (
+        <label className="quick-create-field full-width">
+          <span>Source card</span>
+          <select
+            autoFocus
+            value={value.sourceCardId ?? ''}
+            onChange={(event) => onChange({ sourceCardId: event.target.value || null })}
+          >
+            <option value="">Select source card</option>
+            {sourceCards.map((card) => (
+              <option key={card.id} value={card.id}>
+                {`${card.id} · ${card.title}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )
+    }
+
+    return (
+      <>
+        <label className="quick-create-field full-width">
+          <span>{getCardTitleLabel(taskType.id)}</span>
+          <input
+            autoFocus
+            value={value.title}
+            onChange={(event) => onChange({ title: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && canCreate) {
+                event.preventDefault()
+                onCreate()
+              }
+            }}
+          />
+        </label>
+
+        {creativeFlow ? (
+          <label className="quick-create-field full-width">
+            <span>Angle / Theme</span>
+            <input
+              value={value.angle ?? ''}
+              onChange={(event) => onChange({ angle: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && canCreate) {
+                  event.preventDefault()
+                  onCreate()
+                }
+              }}
+            />
+          </label>
+        ) : null}
+      </>
+    )
+  }
 
   return (
     <>
@@ -39,9 +144,14 @@ export function QuickCreateModal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        >
+      >
         <div className="quick-create-head">
-          <h2 id={titleId}>New Card</h2>
+          <div>
+            <h2 id={titleId}>New Card</h2>
+            <p className="muted-copy">
+              {step === 1 ? 'Step 1 of 3' : 'Step 2 of 3 · Step 3 opens the full card'}
+            </p>
+          </div>
           <button
             type="button"
             className="close-icon-button"
@@ -52,86 +162,92 @@ export function QuickCreateModal({
           </button>
         </div>
 
-        <label className="quick-create-field full-width">
-          <span>Title</span>
-          <input
-            autoFocus
-            value={value.title}
-            onChange={(event) => onChange({ title: event.target.value })}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && value.title.trim()) {
-                event.preventDefault()
-                onCreate(event.shiftKey)
-              }
-            }}
-          />
-        </label>
-
-        <div className="quick-create-row">
-          <div className="quick-create-brand-toggle">
-            {portfolio.brands.map((brand) => (
-              <button
-                key={brand.name}
-                type="button"
-                className={`filter-pill ${value.brand === brand.name ? 'is-active' : ''}`}
-                style={
-                  value.brand === brand.name
-                    ? {
-                        background: brand.color,
-                        borderColor: brand.color,
-                        color: '#fff',
-                      }
-                    : undefined
-                }
-                onClick={() => onChange({ brand: brand.name })}
+        {step === 1 ? (
+          <>
+            <label className="quick-create-field full-width">
+              <span>Brand</span>
+              <select
+                autoFocus
+                value={value.brand}
+                onChange={(event) => handleBrandChange(event.target.value)}
               >
-                {brand.name}
-              </button>
-            ))}
-          </div>
+                {portfolio.brands.map((brand) => (
+                  <option key={brand.name} value={brand.name}>
+                    {brand.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="quick-create-field">
-            <span>Type</span>
-            <select
-              value={value.taskTypeId}
-              onChange={(event) => onChange({ taskTypeId: event.target.value })}
-            >
-              {getTaskTypeGroups(settings).map((group) => (
-                <optgroup key={group.category} label={group.category}>
-                  {group.items.map((taskType) => (
-                    <option key={taskType.id} value={taskType.id}>
-                      {`${taskType.icon} ${taskType.name}`}
+            <label className="quick-create-field full-width">
+              <span>Product</span>
+              <select
+                value={value.product ?? ''}
+                onChange={(event) => onChange({ product: event.target.value, sourceCardId: null })}
+              >
+                {(selectedBrand?.products ?? []).length === 0 ? (
+                  <option value="">No products yet</option>
+                ) : (
+                  (selectedBrand?.products ?? []).map((product) => (
+                    <option key={product} value={product}>
+                      {product}
                     </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-        </div>
+                  ))
+                )}
+              </select>
+            </label>
+
+            <label className="quick-create-field full-width">
+              <span>Task type</span>
+              <select
+                value={value.taskTypeId}
+                onChange={(event) => handleTaskTypeChange(event.target.value)}
+              >
+                {getTaskTypeGroups(settings).map((group) => (
+                  <optgroup key={group.category} label={group.category}>
+                    {group.items.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {`${option.icon} ${option.name}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : (
+          renderStepTwo()
+        )}
 
         <div className="quick-create-actions">
-          <button
-            type="button"
-            className="primary-button"
-            disabled={!value.title.trim() || !value.brand}
-            onClick={() => onCreate(false)}
-          >
-            <span>Create</span>
-            <span className="button-shortcut-hint" aria-hidden="true">
-              Enter
-            </span>
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={!value.title.trim() || !value.brand}
-            onClick={() => onCreate(true)}
-          >
-            <span>Create &amp; Open Detail →</span>
-            <span className="button-shortcut-hint" aria-hidden="true">
-              Shift+Enter
-            </span>
-          </button>
+          {step === 1 ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!canAdvanceFromStepOne}
+              onClick={() => setStep(2)}
+            >
+              Continue
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setStep(1)}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!canCreate}
+                onClick={onCreate}
+              >
+                Create card
+              </button>
+            </>
+          )}
         </div>
       </div>
     </>

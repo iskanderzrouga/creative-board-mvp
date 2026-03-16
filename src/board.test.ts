@@ -524,7 +524,7 @@ describe('board integrity helpers', () => {
     ).toBe(portfolio)
   })
 
-  it('allows contributors to update their own content fields but not owner-or-manager metadata', () => {
+  it('allows contributors to update their own content fields but not manager-only metadata', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]
     const sourceCard = portfolio.cards.find((card) => card.owner)
@@ -564,17 +564,17 @@ describe('board integrity helpers', () => {
 
     expect(titleUpdated.cards.find((card) => card.id === sourceCard!.id)?.title).toBe('Edited title')
 
-    const dueDateUpdated = applyCardUpdates(
+    const ownerUpdated = applyCardUpdates(
       portfolio,
       state.settings,
       sourceCard!.id,
-      { dueDate: '2026-03-20' },
+      { owner: 'Another Editor' },
       'Naomi',
       '2026-03-12T14:15:00Z',
       editorViewer,
     )
 
-    expect(dueDateUpdated.cards.find((card) => card.id === sourceCard!.id)?.dueDate).toBe('2026-03-20')
+    expect(ownerUpdated.cards.find((card) => card.id === sourceCard!.id)?.owner).toBe(sourceCard!.owner)
   })
 
   it('requires manager permissions to add or remove cards', () => {
@@ -611,7 +611,7 @@ describe('board integrity helpers', () => {
         },
         'Naomi',
       ),
-    ).toThrow('Enter a card title before creating it.')
+    ).toThrow('Enter a concept before creating the card.')
 
     expect(() =>
       createCardFromQuickInput(
@@ -795,7 +795,7 @@ describe('board integrity helpers', () => {
     expect(movedCard?.activityLog.some((entry) => entry.type === 'moved-forward')).toBe(true)
   })
 
-  it('records activity entries for blocked, unblocked, estimate, due date, archive, and unarchive updates', () => {
+  it('records activity entries for blocked, unblocked, estimate, archive, and unarchive updates', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]
     const sourceCard = portfolio.cards[0]
@@ -834,17 +834,8 @@ describe('board integrity helpers', () => {
       '2026-03-12T15:30:00Z',
       MANAGER_VIEWER,
     )
-    const dueDatedPortfolio = applyCardUpdates(
-      estimatedPortfolio,
-      state.settings,
-      sourceCard!.id,
-      { dueDate: '2026-03-15' },
-      'Naomi',
-      '2026-03-12T15:35:00Z',
-      MANAGER_VIEWER,
-    )
     const archivedPortfolio = applyCardUpdates(
-      dueDatedPortfolio,
+      estimatedPortfolio,
       state.settings,
       sourceCard!.id,
       { archivedAt: '2026-03-12T15:40:00Z' },
@@ -866,7 +857,6 @@ describe('board integrity helpers', () => {
     expect(updatedCard?.activityLog.some((entry) => entry.type === 'blocked')).toBe(true)
     expect(updatedCard?.activityLog.some((entry) => entry.type === 'unblocked')).toBe(true)
     expect(updatedCard?.activityLog.filter((entry) => entry.type === 'effort').length).toBeGreaterThan(0)
-    expect(updatedCard?.activityLog.some((entry) => entry.type === 'due-date')).toBe(true)
     expect(updatedCard?.activityLog.some((entry) => entry.type === 'archive')).toBe(true)
     expect(updatedCard?.activityLog.some((entry) => entry.type === 'unarchive')).toBe(true)
   })
@@ -885,12 +875,9 @@ describe('board integrity helpers', () => {
         owner: index === 0 ? editorName ?? null : index === 1 ? 'Another Editor' : null,
         stage: index === 2 ? ('Backlog' as const) : ('Briefed' as const),
         blocked: index === 0 ? { reason: 'Blocked asset', at: '2026-03-10T09:00:00Z' } : null,
-        dueDate:
-          index === 0 ? '2026-03-10' : index === 1 ? '2026-03-13' : null,
         stageEnteredAt:
           index === 0 ? '2026-03-01T09:00:00Z' : '2026-03-11T09:00:00Z',
         title: index === 3 ? 'Search target card' : card.title,
-        hook: index === 3 ? 'Search hook' : card.hook,
         brief: index === 3 ? '<p>Unique findable brief</p>' : card.brief,
       })),
     }
@@ -922,15 +909,6 @@ describe('board integrity helpers', () => {
         tunedPortfolio,
         MANAGER_VIEWER,
         { ...baseFilters, blockedOnly: true },
-        state.settings,
-        nowMs,
-      ),
-    ).toHaveLength(1)
-    expect(
-      getVisibleCards(
-        tunedPortfolio,
-        MANAGER_VIEWER,
-        { ...baseFilters, overdueOnly: true },
         state.settings,
         nowMs,
       ),
