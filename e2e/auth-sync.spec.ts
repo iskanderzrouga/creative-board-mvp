@@ -33,6 +33,18 @@ async function openFreshAuthGate(page: Page) {
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
 }
 
+test('sign-in screen does not expose public account creation', async ({ page }) => {
+  await openFreshAuthGate(page)
+
+  await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0)
+  await expect(page.getByText("Don't have an account?")).toHaveCount(0)
+  await expect(
+    page.getByText(
+      'Sign in with your approved work email and password. Need to set a password for the first time? Use Forgot password.',
+    ),
+  ).toBeVisible()
+})
+
 test('sign-in validates email and password format before submit', async ({ page }) => {
   await openFreshAuthGate(page)
 
@@ -64,17 +76,19 @@ test('forgot password shows clearer reset guidance', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Reset password' })).toBeVisible()
   await expect(
-    page.getByText('Enter your email and we will send you a link to reset your password.'),
+    page.getByText(
+      'Enter your approved work email and we will send you a link to set or reset your password.',
+    ),
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Send reset link' }).click()
 
   await expect(
-    page.getByText('If this email already has a password-based account, a reset link is on the way.'),
+    page.getByText('If this email is approved for the workspace, a password email is on the way.'),
   ).toBeVisible()
   await expect(
     page.getByText(
-      'Sent to team@example.com. Check spam too. If nothing arrives, make sure you are using the same email you sign in with.',
+      'Sent to team@example.com. Check spam too. If you were just added to the workspace, this email also helps finish setting up your account.',
     ),
   ).toBeVisible()
 })

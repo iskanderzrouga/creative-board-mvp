@@ -3,7 +3,6 @@ import { ButtonSpinner } from './ButtonSpinner'
 import { resetPasswordForEmail } from '../supabase'
 
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
-type AuthMode = 'sign-in' | 'sign-up'
 type AuthView = 'auth' | 'forgot-password'
 
 interface AuthGateProps {
@@ -13,7 +12,7 @@ interface AuthGateProps {
   errorMessage: string | null
   infoMessage: string | null
   onEmailChange: (value: string) => void
-  onPasswordSubmit: (password: string, mode: AuthMode) => void
+  onPasswordSubmit: (password: string) => void
 }
 
 function isLikelyEmail(value: string) {
@@ -30,7 +29,6 @@ export function AuthGate({
   onPasswordSubmit,
 }: AuthGateProps) {
   const [password, setPassword] = useState('')
-  const [mode, setMode] = useState<AuthMode>('sign-in')
   const [view, setView] = useState<AuthView>('auth')
   const [resetEmail, setResetEmail] = useState('')
   const [resetPending, setResetPending] = useState(false)
@@ -48,7 +46,7 @@ export function AuthGate({
 
   function handleSubmit() {
     if (!canSubmit || pending) return
-    onPasswordSubmit(password, mode)
+    onPasswordSubmit(password)
   }
 
   function handleForgotPasswordClick() {
@@ -103,15 +101,15 @@ export function AuthGate({
             <h1>Reset password</h1>
             <p>
               {resetSuccess
-                ? 'If this email already has a password-based account, a reset link is on the way.'
-                : 'Enter your email and we will send you a link to reset your password.'}
+                ? 'If this email is approved for the workspace, a password email is on the way.'
+                : 'Enter your approved work email and we will send you a link to set or reset your password.'}
             </p>
           </div>
 
           {resetSuccess ? (
             <div className="auth-form">
               <p className="auth-helper">
-                Sent to {resetEmail.trim().toLowerCase()}. Check spam too. If nothing arrives, make sure you are using the same email you sign in with.
+                Sent to {resetEmail.trim().toLowerCase()}. Check spam too. If you were just added to the workspace, this email also helps finish setting up your account.
               </p>
               <div className="auth-switch">
                 <p className="auth-switch-text">
@@ -191,11 +189,10 @@ export function AuthGate({
       <div className="auth-card">
         <div className="auth-copy">
           <span className="auth-kicker">Editors Board</span>
-          <h1>{mode === 'sign-in' ? 'Sign in' : 'Create account'}</h1>
+          <h1>Sign in</h1>
           <p>
-            {mode === 'sign-in'
-              ? 'Sign in with your email and password to access the workspace.'
-              : 'Create your account to get started. Your email must be pre-approved by the workspace owner.'}
+            Sign in with your approved work email and password. Need to set a password for the
+            first time? Use Forgot password.
           </p>
         </div>
 
@@ -229,7 +226,7 @@ export function AuthGate({
               <input
                 type="password"
                 value={password}
-                placeholder={mode === 'sign-up' ? 'At least 6 characters' : 'Your password'}
+                placeholder="Your password"
                 onChange={(event) => setPassword(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !pending) {
@@ -250,57 +247,24 @@ export function AuthGate({
                 {pending ? (
                   <>
                     <ButtonSpinner />
-                    <span>{mode === 'sign-in' ? 'Signing in...' : 'Creating account...'}</span>
+                    <span>Signing in...</span>
                   </>
-                ) : mode === 'sign-in' ? (
-                  'Sign in'
                 ) : (
-                  'Create account'
+                  'Sign in'
                 )}
               </button>
             </div>
 
             <div className="auth-switch">
-              {mode === 'sign-in' ? (
-                <p className="auth-switch-text">
-                  Don&apos;t have an account?{' '}
-                  <button
-                    type="button"
-                    className="clear-link"
-                    onClick={() => {
-                      setMode('sign-up')
-                      setPassword('')
-                    }}
-                  >
-                    Create one
-                  </button>
-                </p>
-              ) : (
-                <p className="auth-switch-text">
-                  Already have an account?{' '}
-                  <button
-                    type="button"
-                    className="clear-link"
-                    onClick={() => {
-                      setMode('sign-in')
-                      setPassword('')
-                    }}
-                  >
-                    Sign in
-                  </button>
-                </p>
-              )}
-              {mode === 'sign-in' ? (
-                <p className="auth-switch-text">
-                  <button
-                    type="button"
-                    className="clear-link"
-                    onClick={handleForgotPasswordClick}
-                  >
-                    Forgot password?
-                  </button>
-                </p>
-              ) : null}
+              <p className="auth-switch-text">
+                <button
+                  type="button"
+                  className="clear-link"
+                  onClick={handleForgotPasswordClick}
+                >
+                  Forgot password?
+                </button>
+              </p>
             </div>
 
             {infoMessage ? <p className="auth-helper">{infoMessage}</p> : null}

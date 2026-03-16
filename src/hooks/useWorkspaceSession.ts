@@ -15,9 +15,9 @@ import {
   isPasswordRecoveryFlowPending,
   listWorkspaceAccessEntries,
   onAuthStateChange,
+  sendPasswordSetupEmail,
   signInWithMagicLink,
   signInWithPassword,
-  signUpWithPassword,
   signOutOfSupabase,
   updatePassword,
   upsertWorkspaceAccessEntry,
@@ -413,6 +413,14 @@ export function useWorkspaceSession({
 
     try {
       const saved = await upsertWorkspaceAccessEntry(entry)
+      const shouldSendPasswordSetupEmail =
+        !isExistingEntry || previousEmail !== normalizedEmail
+      let passwordSetupEmailResult:
+        | {
+            emailSent: boolean
+            createdUser: boolean
+          }
+        | null = null
 
       if (isExistingEntry && previousEmail !== normalizedEmail) {
         try {
@@ -445,12 +453,34 @@ export function useWorkspaceSession({
         )
       }
       setWorkspaceAccessStatus('ready')
+
+      if (shouldSendPasswordSetupEmail) {
+        try {
+          passwordSetupEmailResult = await sendPasswordSetupEmail(normalizedEmail)
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Could not send the password setup email.'
+          setWorkspaceAccessErrorMessage(message)
+          showToast(
+            `Saved access for ${normalizedEmail}, but the password email could not be sent. They can still use Forgot password from sign in.`,
+            'amber',
+          )
+          return
+        }
+      }
+
       showToast(
-        isExistingEntry
-          ? previousEmail === normalizedEmail
-            ? `Updated access for ${normalizedEmail}`
-            : `Updated login access email to ${normalizedEmail}`
-          : `Added ${normalizedEmail} to login access`,
+        shouldSendPasswordSetupEmail
+          ? passwordSetupEmailResult?.createdUser
+            ? isExistingEntry && previousEmail !== normalizedEmail
+              ? `Updated login access email to ${normalizedEmail} and sent a setup email`
+              : `Added ${normalizedEmail} to login access and sent a setup email`
+            : isExistingEntry && previousEmail !== normalizedEmail
+              ? `Updated login access email to ${normalizedEmail} and sent a password email`
+              : `Saved access for ${normalizedEmail} and sent a password email`
+          : `Updated access for ${normalizedEmail}`,
         'green',
       )
     } catch (error) {
@@ -623,7 +653,7 @@ export function useWorkspaceSession({
     }
   }
 
-  async function handlePasswordAuth(password: string, mode: 'sign-in' | 'sign-up') {
+  async function handlePasswordAuth(password: string) {
     const normalizedEmail = loginEmail.trim()
 
     if (!normalizedEmail) {
@@ -646,11 +676,7 @@ export function useWorkspaceSession({
     setLoginInfoMessage(null)
 
     try {
-      if (mode === 'sign-up') {
-        await signUpWithPassword(normalizedEmail, password)
-      } else {
-        await signInWithPassword(normalizedEmail, password)
-      }
+      await signInWithPassword(normalizedEmail, password)
 
       const session = await getAuthSession()
       if (session) {
@@ -660,20 +686,18 @@ export function useWorkspaceSession({
         return
       }
 
-      setLoginInfoMessage(
-        mode === 'sign-up'
-          ? 'Account created. Check your email to confirm, then sign in.'
-          : 'Signed in. Loading the workspace...',
-      )
+      setLoginInfoMessage('Signed in. Loading the workspace...')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Authentication failed.'
       const normalizedMessage = message.toLowerCase()
       setLoginErrorMessage(
         normalizedMessage.includes('not approved') || normalizedMessage.includes('not on the approved')
           ? 'This email is not on the approved access list. Contact your workspace owner.'
-          : normalizedMessage.includes('already exists') || normalizedMessage.includes('already registered')
-            ? 'An account with this email already exists. Sign in instead.'
-            : message,
+          : normalizedMessage.includes('incorrect email or password')
+            ? 'Incorrect email or password. If you were just added, use Forgot password to set one first.'
+          : normalizedMessage.includes('email not confirmed')
+            ? 'Check your email for the latest password setup link, then try signing in again.'
+          : message,
       )
     } finally {
       setLoginPending(false)

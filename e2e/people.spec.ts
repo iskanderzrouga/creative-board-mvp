@@ -82,6 +82,9 @@ test('clearing an existing email removes login access but keeps the team profile
   await drawer.getByLabel('Email').fill('naomi@example.com')
   await drawer.getByRole('button', { name: 'Save changes' }).click()
 
+  await expect(
+    page.getByText('Added naomi@example.com to login access and sent a setup email'),
+  ).toBeVisible()
   const accessToggleRow = page.locator('.people-table-row').filter({ hasText: 'Access Toggle Editor' })
   await expect(accessToggleRow).toContainText('naomi@example.com')
 

@@ -378,13 +378,17 @@ export async function signInWithMagicLink(email: string) {
 }
 
 export async function resetPasswordForEmail(email: string) {
+  return sendPasswordSetupEmail(email)
+}
+
+export async function sendPasswordSetupEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase()
   if (!normalizedEmail) {
     throw new Error('Enter your email.')
   }
 
   if (isE2ESupabaseMode()) {
-    return
+    return { emailSent: true, createdUser: true }
   }
 
   const supabase = getSupabaseClient()
@@ -392,12 +396,29 @@ export async function resetPasswordForEmail(email: string) {
     throw new Error('Supabase is not configured.')
   }
 
-  const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-    redirectTo: getMagicLinkRedirectUrl(),
+  const { data, error: fnError } = await supabase.functions.invoke<{
+    emailSent?: boolean
+    createdUser?: boolean
+    error?: string
+  }>(MAGIC_LINK_FUNCTION_NAME, {
+    body: {
+      email: normalizedEmail,
+      redirectTo: getMagicLinkRedirectUrl(),
+      action: 'password-setup',
+    },
   })
 
-  if (error) {
-    throw error
+  if (fnError) {
+    throw fnError
+  }
+
+  if (data?.error) {
+    throw new Error(data.error)
+  }
+
+  return {
+    emailSent: data?.emailSent ?? false,
+    createdUser: data?.createdUser ?? false,
   }
 }
 
@@ -458,67 +479,6 @@ export async function signInWithPassword(email: string, password: string) {
       throw new Error('Incorrect email or password.')
     }
     throw error
-  }
-}
-
-export async function signUpWithPassword(email: string, password: string) {
-  const normalizedEmail = email.trim().toLowerCase()
-  if (!normalizedEmail) {
-    throw new Error('Enter your email.')
-  }
-
-  if (!password || password.length < 6) {
-    throw new Error('Password must be at least 6 characters.')
-  }
-
-  if (isE2ESupabaseMode()) {
-    window.localStorage.setItem(E2E_AUTH_EMAIL_KEY, normalizedEmail)
-    return
-  }
-
-  const supabase = getSupabaseClient()
-  if (!supabase) {
-    throw new Error('Supabase is not configured.')
-  }
-
-  // First check if email is in workspace_access via the edge function
-  const { data, error: fnError } = await supabase.functions.invoke<{
-    session?: { access_token: string; refresh_token: string; expires_in: number }
-    needsEmailConfirmation?: boolean
-    error?: string
-  }>(MAGIC_LINK_FUNCTION_NAME, {
-    body: {
-      email: normalizedEmail,
-      password,
-      action: 'sign-up',
-    },
-  })
-
-  if (fnError) {
-    throw fnError
-  }
-
-  if (data?.error) {
-    throw new Error(data.error)
-  }
-
-  // If edge function returned a session, set it
-  if (data?.session) {
-    await supabase.auth.setSession({
-      access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
-    })
-    return
-  }
-
-  // If account already exists, try signing in instead
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: normalizedEmail,
-    password,
-  })
-
-  if (signInError) {
-    throw new Error('Account created. Check your email to confirm, then sign in.')
   }
 }
 

@@ -10,7 +10,7 @@ interface RequestBody {
   email?: string
   password?: string
   redirectTo?: string
-  action?: 'sign-in' | 'sign-up' | 'ensure-schema'
+  action?: 'sign-in' | 'sign-up' | 'password-setup' | 'ensure-schema' | 'reload-schema'
 }
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -25,6 +25,49 @@ function json(body: Record<string, unknown>, status = 200) {
 
 function normalizeEmail(value: string | undefined) {
   return value?.trim().toLowerCase() ?? ''
+}
+
+function isAlreadyRegisteredError(message: string) {
+  const normalized = message.trim().toLowerCase()
+  return (
+    normalized.includes('already registered') ||
+    normalized.includes('already been registered') ||
+    normalized.includes('user already registered') ||
+    normalized.includes('already exists') ||
+    normalized.includes('has already been registered')
+  )
+}
+
+async function ensurePasswordUser(
+  admin: {
+    auth: {
+      admin: {
+        createUser: (attributes: {
+          email: string
+          password: string
+          email_confirm: boolean
+        }) => Promise<{ error: { message: string } | null }>
+      }
+    }
+  },
+  email: string,
+) {
+  const temporaryPassword = `Setup-${crypto.randomUUID()}-${crypto.randomUUID()}`
+  const { error } = await admin.auth.admin.createUser({
+    email,
+    password: temporaryPassword,
+    email_confirm: true,
+  })
+
+  if (!error) {
+    return { createdUser: true }
+  }
+
+  if (isAlreadyRegisteredError(error.message)) {
+    return { createdUser: false }
+  }
+
+  throw error
 }
 
 Deno.serve(async (request) => {
@@ -191,16 +234,11 @@ Deno.serve(async (request) => {
     }
   }
 
-  // ---------- Auth flows below require email + password ----------
+  // ---------- Auth flows below require an approved email ----------
   const email = normalizeEmail(body.email)
-  const password = body.password?.trim() ?? ''
 
   if (!email) {
     return json({ error: 'Email is required.' }, 400)
-  }
-
-  if (!password || password.length < 6) {
-    return json({ error: 'Password must be at least 6 characters.' }, 400)
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -233,34 +271,39 @@ Deno.serve(async (request) => {
   })
 
   if (action === 'sign-up') {
-    // Create the account with email + password
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-    })
+    return json(
+      {
+        error:
+          'Self-serve sign up is disabled. Ask the workspace owner to add you, then use the password email to finish setup.',
+      },
+      403,
+    )
+  }
 
-    if (error) {
-      // If user already exists, tell them to sign in
-      if (error.message.toLowerCase().includes('already registered') ||
-          error.message.toLowerCase().includes('already been registered') ||
-          error.message.toLowerCase().includes('user already registered')) {
-        return json({ error: 'An account with this email already exists. Sign in instead.' }, 409)
-      }
-      return json({ error: error.message }, 400)
-    }
-
-    // Return session if auto-confirmed (no email verification required)
-    if (data.session) {
-      return json({
-        session: {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          expires_in: data.session.expires_in,
-        },
+  if (action === 'password-setup') {
+    try {
+      const { createdUser } = await ensurePasswordUser(admin, email)
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: body.redirectTo?.trim() || undefined,
       })
-    }
 
-    return json({ needsEmailConfirmation: true })
+      if (error) {
+        return json({ error: error.message }, 400)
+      }
+
+      return json({
+        emailSent: true,
+        createdUser,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not prepare the account.'
+      return json({ error: message }, 400)
+    }
+  }
+
+  const password = body.password?.trim() ?? ''
+  if (!password || password.length < 6) {
+    return json({ error: 'Password must be at least 6 characters.' }, 400)
   }
 
   // Default: sign in
