@@ -164,7 +164,7 @@ function App() {
   const [touchSidebarOpen, setTouchSidebarOpen] = useState(false)
   const [editorMenuOpen, setEditorMenuOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingTab>('general')
-  const [settingsPortfolioId, setSettingsPortfolioId] = useState(() => loadAppState().activePortfolioId)
+  const [, setSettingsPortfolioId] = useState(() => loadAppState().activePortfolioId)
   const [timeframe, setTimeframe] = useState<Timeframe>('this-week')
   const [dragCardId, setDragCardId] = useState<string | null>(null)
   const [dragOverLaneId, setDragOverLaneId] = useState<string | null>(null)
@@ -220,7 +220,6 @@ function App() {
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
     handlePruneWorkspaceAccessEntries,
-    handleSendMagicLink,
     handlePasswordAuth,
     handleSignOut,
     handleTryDifferentEmail,
@@ -1467,7 +1466,6 @@ function App() {
           errorMessage={loginErrorMessage}
           infoMessage={loginInfoMessage}
           onEmailChange={setLoginEmail}
-          onSubmit={handleSendMagicLink}
           onPasswordSubmit={handlePasswordAuth}
         />
         {toastView}
@@ -1706,7 +1704,6 @@ function App() {
             state={state}
             authEnabled={authEnabled}
             settingsTab={settingsTab}
-            settingsPortfolioId={settingsPortfolioId}
             headerUtilityContent={headerUtilityContent}
             workspaceAccessEntries={workspaceAccessEntries}
             workspaceAccessStatus={workspaceAccessStatus}

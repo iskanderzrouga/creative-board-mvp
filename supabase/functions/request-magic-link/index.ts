@@ -123,10 +123,10 @@ Deno.serve(async (request) => {
             CHECK (jsonb_typeof(scope_assignments) = 'array')
       `
 
-      // Ensure RLS policies for owner access exist
+      // Ensure all helper functions and RLS policies exist
       await sql`
         DO $$ BEGIN
-          -- Create helper function if missing
+          -- Owner check function
           CREATE OR REPLACE FUNCTION public.current_user_is_workspace_owner()
           RETURNS boolean
           LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
@@ -138,9 +138,48 @@ Deno.serve(async (request) => {
             );
           $fn$;
 
+          -- Write check function (owner or manager)
+          CREATE OR REPLACE FUNCTION public.current_user_can_write_workspace_state()
+          RETURNS boolean
+          LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $fn$
+            SELECT EXISTS (
+              SELECT 1 FROM public.workspace_access access
+              WHERE access.email = public.current_request_email()
+                AND access.role_mode IN ('owner', 'manager')
+            );
+          $fn$;
+
           GRANT EXECUTE ON FUNCTION public.current_user_is_workspace_owner() TO authenticated;
+          GRANT EXECUTE ON FUNCTION public.current_user_can_write_workspace_state() TO authenticated;
         END; $$
       `
+
+      // Ensure workspace_access RLS policies (drop old, create new — one statement each)
+      await sql`DROP POLICY IF EXISTS "workspace_access_self_select" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_manager_select" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_manager_insert" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_manager_update" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_manager_delete" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_owner_select" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_owner_insert" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_owner_update" ON public.workspace_access`
+      await sql`DROP POLICY IF EXISTS "workspace_access_owner_delete" ON public.workspace_access`
+      await sql`CREATE POLICY "workspace_access_self_select" ON public.workspace_access FOR SELECT TO authenticated USING (email = public.current_request_email())`
+      await sql`CREATE POLICY "workspace_access_owner_select" ON public.workspace_access FOR SELECT TO authenticated USING (public.current_user_is_workspace_owner())`
+      await sql`CREATE POLICY "workspace_access_owner_insert" ON public.workspace_access FOR INSERT TO authenticated WITH CHECK (public.current_user_is_workspace_owner())`
+      await sql`CREATE POLICY "workspace_access_owner_update" ON public.workspace_access FOR UPDATE TO authenticated USING (public.current_user_is_workspace_owner()) WITH CHECK (public.current_user_is_workspace_owner())`
+      await sql`CREATE POLICY "workspace_access_owner_delete" ON public.workspace_access FOR DELETE TO authenticated USING (public.current_user_is_workspace_owner())`
+
+      // Ensure workspace_state write policies
+      await sql`DROP POLICY IF EXISTS "workspace_state_authenticated_insert" ON public.workspace_state`
+      await sql`DROP POLICY IF EXISTS "workspace_state_authenticated_update" ON public.workspace_state`
+      await sql`DROP POLICY IF EXISTS "workspace_state_manager_insert" ON public.workspace_state`
+      await sql`DROP POLICY IF EXISTS "workspace_state_manager_update" ON public.workspace_state`
+      await sql`DROP POLICY IF EXISTS "workspace_state_owner_manager_insert" ON public.workspace_state`
+      await sql`DROP POLICY IF EXISTS "workspace_state_owner_manager_update" ON public.workspace_state`
+      await sql`CREATE POLICY "workspace_state_owner_manager_insert" ON public.workspace_state FOR INSERT TO authenticated WITH CHECK (public.current_user_can_write_workspace_state())`
+      await sql`CREATE POLICY "workspace_state_owner_manager_update" ON public.workspace_state FOR UPDATE TO authenticated USING (public.current_user_can_write_workspace_state()) WITH CHECK (public.current_user_can_write_workspace_state())`
 
       // Reload PostgREST schema cache so new functions/policies take effect
       await sql`NOTIFY pgrst, 'reload schema'`

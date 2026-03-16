@@ -13,7 +13,6 @@ interface AuthGateProps {
   errorMessage: string | null
   infoMessage: string | null
   onEmailChange: (value: string) => void
-  onSubmit: () => void
   onPasswordSubmit: (password: string, mode: AuthMode) => void
 }
 
@@ -28,7 +27,6 @@ export function AuthGate({
   errorMessage,
   infoMessage,
   onEmailChange,
-  onSubmit: _onSubmit,
   onPasswordSubmit,
 }: AuthGateProps) {
   const [password, setPassword] = useState('')

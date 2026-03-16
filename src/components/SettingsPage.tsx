@@ -36,7 +36,6 @@ interface SettingsPageProps {
   state: AppState
   authEnabled: boolean
   settingsTab: SettingTab
-  settingsPortfolioId: string
   headerUtilityContent?: ReactNode
   workspaceAccessEntries: WorkspaceAccessEntry[]
   workspaceAccessStatus: WorkspaceDirectoryStatus
@@ -154,7 +153,6 @@ export function SettingsPage({
   state,
   authEnabled,
   settingsTab,
-  settingsPortfolioId: _settingsPortfolioId,
   headerUtilityContent,
   workspaceAccessEntries,
   workspaceAccessStatus,
