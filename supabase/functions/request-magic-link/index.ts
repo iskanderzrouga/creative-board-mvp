@@ -48,6 +48,22 @@ Deno.serve(async (request) => {
   const body = (await request.json()) as RequestBody
   const action = body.action ?? 'sign-in'
 
+  // ---------- Reload PostgREST schema cache ----------
+  if (action === 'reload-schema') {
+    const dbUrl = Deno.env.get('SUPABASE_DB_URL')
+    if (!dbUrl) {
+      return json({ error: 'SUPABASE_DB_URL not available.' }, 500)
+    }
+    try {
+      const sql = postgres(dbUrl, { prepare: false })
+      await sql`NOTIFY pgrst, 'reload schema'`
+      await sql.end()
+      return json({ reloaded: true })
+    } catch (err) {
+      return json({ error: (err as Error).message, reloaded: false }, 500)
+    }
+  }
+
   // ---------- Auto-migration: ensure scope columns exist ----------
   if (action === 'ensure-schema') {
     const dbUrl = Deno.env.get('SUPABASE_DB_URL')
@@ -125,6 +141,9 @@ Deno.serve(async (request) => {
           GRANT EXECUTE ON FUNCTION public.current_user_is_workspace_owner() TO authenticated;
         END; $$
       `
+
+      // Reload PostgREST schema cache so new functions/policies take effect
+      await sql`NOTIFY pgrst, 'reload schema'`
 
       await sql.end()
       return json({ migrated: true })
