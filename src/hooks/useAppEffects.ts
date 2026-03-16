@@ -143,6 +143,7 @@ export function useAppEffects({
 }: UseAppEffectsOptions) {
   const replaceStateRef = useRef(replaceState)
   const showToastRef = useRef(showToast)
+  const lastSyncedAtRef = useRef(lastSyncedAt)
   const localPersistTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -152,6 +153,10 @@ export function useAppEffects({
   useEffect(() => {
     showToastRef.current = showToast
   }, [showToast])
+
+  useEffect(() => {
+    lastSyncedAtRef.current = lastSyncedAt
+  }, [lastSyncedAt])
 
   useEffect(() => {
     if (localPersistTimerRef.current !== null) {
@@ -267,7 +272,7 @@ export function useAppEffects({
       remoteSaveTimerRef.current = null
 
       const attemptSave = (attemptIndex: number) => {
-        void saveRemoteAppState(state, lastSyncedAt)
+        void saveRemoteAppState(state, lastSyncedAtRef.current)
           .then((updatedAt) => {
             if (cancelled) {
               return
@@ -333,7 +338,6 @@ export function useAppEffects({
     remoteHydratedRef,
     remoteSaveTimerRef,
     remoteSyncErrorShown,
-    lastSyncedAt,
     setLastSyncedAt,
     setRemoteSyncErrorShown,
     setSyncStatus,
@@ -358,7 +362,7 @@ export function useAppEffects({
 
       void loadOrCreateRemoteAppState(localFallbackStateRef.current)
         .then((result) => {
-          if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === lastSyncedAt) {
+          if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === lastSyncedAtRef.current) {
             return
           }
 
@@ -386,7 +390,6 @@ export function useAppEffects({
     accessStatus,
     authEnabled,
     authStatus,
-    lastSyncedAt,
     localFallbackStateRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
