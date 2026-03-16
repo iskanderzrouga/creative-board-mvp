@@ -12,12 +12,14 @@ import {
   getAuthSession,
   getWorkspaceAccessCheckTimeoutMs,
   getWorkspaceAccess,
+  isPasswordRecoveryFlowPending,
   listWorkspaceAccessEntries,
   onAuthStateChange,
   signInWithMagicLink,
   signInWithPassword,
   signUpWithPassword,
   signOutOfSupabase,
+  updatePassword,
   upsertWorkspaceAccessEntry,
   type AuthSessionState,
   type WorkspaceAccessEntry,
@@ -84,6 +86,11 @@ export function useWorkspaceSession({
   const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(null)
   const [accessCheckAttempt, setAccessCheckAttempt] = useState(0)
   const [signOutPending, setSignOutPending] = useState(false)
+  const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(() =>
+    authEnabled && isPasswordRecoveryFlowPending(),
+  )
+  const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false)
+  const [passwordRecoveryErrorMessage, setPasswordRecoveryErrorMessage] = useState<string | null>(null)
 
   const resetRemoteSessionRef = useRef(resetRemoteSession)
   const closeEditorMenuRef = useRef(closeEditorMenu)
@@ -100,6 +107,9 @@ export function useWorkspaceSession({
     if (!authEnabled) {
       setAccessStatus('disabled')
       setAccessCheckTimedOut(false)
+      setPasswordRecoveryActive(false)
+      setPasswordRecoveryPending(false)
+      setPasswordRecoveryErrorMessage(null)
       return
     }
 
@@ -133,13 +143,23 @@ export function useWorkspaceSession({
         setAccessStatus('checking')
       })
 
-    const unsubscribe = onAuthStateChange((session) => {
+    const unsubscribe = onAuthStateChange((event, session) => {
       if (cancelled) {
         return
       }
 
       setAuthSession(session)
       setAuthStatus(session ? 'signed-in' : 'signed-out')
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecoveryActive(true)
+        setPasswordRecoveryPending(false)
+        setPasswordRecoveryErrorMessage(null)
+      } else if (!session) {
+        setPasswordRecoveryActive(false)
+        setPasswordRecoveryPending(false)
+        setPasswordRecoveryErrorMessage(null)
+      }
 
       if (session) {
         setLoginPending(false)
@@ -159,6 +179,21 @@ export function useWorkspaceSession({
       unsubscribe()
     }
   }, [authEnabled])
+
+  useEffect(() => {
+    if (!passwordRecoveryActive) {
+      setPasswordRecoveryPending(false)
+      setPasswordRecoveryErrorMessage(null)
+      return
+    }
+
+    if (authStatus === 'signed-out') {
+      setPasswordRecoveryPending(false)
+      setPasswordRecoveryErrorMessage(
+        'This reset link is invalid, expired, or has already been used. Request a new one from sign in.',
+      )
+    }
+  }, [authStatus, passwordRecoveryActive])
 
   useEffect(() => {
     if (!authEnabled) {
@@ -649,6 +684,9 @@ export function useWorkspaceSession({
     clearStoredAuthSession()
     setAuthSession(null)
     setAuthStatus('signed-out')
+    setPasswordRecoveryActive(false)
+    setPasswordRecoveryPending(false)
+    setPasswordRecoveryErrorMessage(null)
     setWorkspaceAccess(null)
     setAccessStatus('checking')
     setAccessErrorMessage(null)
@@ -687,6 +725,44 @@ export function useWorkspaceSession({
     resetSignedOutUi('Use a different approved work email to continue.')
   }
 
+  async function handleCompletePasswordRecovery(nextPassword: string) {
+    if (authStatus !== 'signed-in') {
+      setPasswordRecoveryErrorMessage(
+        'This reset link is invalid, expired, or has already been used. Request a new one from sign in.',
+      )
+      return
+    }
+
+    if (!nextPassword || nextPassword.length < 6) {
+      setPasswordRecoveryErrorMessage('Password must be at least 6 characters.')
+      return
+    }
+
+    setPasswordRecoveryPending(true)
+    setPasswordRecoveryErrorMessage(null)
+
+    try {
+      await updatePassword(nextPassword)
+      setPasswordRecoveryActive(false)
+      showToast('Password updated. You are signed in with the new password.', 'green')
+    } catch (error) {
+      setPasswordRecoveryErrorMessage(
+        error instanceof Error ? error.message : 'Could not update the password.',
+      )
+    } finally {
+      setPasswordRecoveryPending(false)
+    }
+  }
+
+  async function handleExitPasswordRecovery() {
+    if (authStatus === 'signed-in') {
+      await handleSignOut()
+      return
+    }
+
+    resetSignedOutUi()
+  }
+
   function handleRetryAccessCheck() {
     if (!authEnabled || authStatus !== 'signed-in' || !authSession) {
       return
@@ -716,12 +792,17 @@ export function useWorkspaceSession({
     loginInfoMessage,
     loginErrorMessage,
     signOutPending,
+    passwordRecoveryActive,
+    passwordRecoveryPending,
+    passwordRecoveryErrorMessage,
     handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
     handlePruneWorkspaceAccessEntries,
     handleSendMagicLink,
     handlePasswordAuth,
+    handleCompletePasswordRecovery,
+    handleExitPasswordRecovery,
     handleSignOut,
     handleTryDifferentEmail,
   }

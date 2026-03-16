@@ -39,6 +39,7 @@ import { DeleteCardModal } from './components/DeleteCardModal'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { PageHeader } from './components/PageHeader'
+import { PasswordRecoveryGate } from './components/PasswordRecoveryGate'
 import { QuickCreateModal } from './components/QuickCreateModal'
 import { RemoteLoadingShell } from './components/RemoteLoadingShell'
 import { SettingsPage } from './components/SettingsPage'
@@ -217,11 +218,16 @@ function App() {
     loginInfoMessage,
     loginErrorMessage,
     signOutPending,
+    passwordRecoveryActive,
+    passwordRecoveryPending,
+    passwordRecoveryErrorMessage,
     handleRetryAccessCheck,
     handleSaveWorkspaceAccessEntry,
     handleDeleteWorkspaceAccessEntry,
     handlePruneWorkspaceAccessEntries,
     handlePasswordAuth,
+    handleCompletePasswordRecovery,
+    handleExitPasswordRecovery,
     handleSignOut,
     handleTryDifferentEmail,
   } = useWorkspaceSession({
@@ -1455,6 +1461,24 @@ function App() {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
     }
+  }
+
+  if (authEnabled && passwordRecoveryActive) {
+    return (
+      <>
+        <PasswordRecoveryGate
+          authStatus={authStatus}
+          email={authSession?.email ?? loginEmail ?? null}
+          pending={passwordRecoveryPending}
+          errorMessage={passwordRecoveryErrorMessage}
+          onSubmit={handleCompletePasswordRecovery}
+          onBackToSignIn={() => {
+            void handleExitPasswordRecovery()
+          }}
+        />
+        {toastView}
+      </>
+    )
   }
 
   if (authEnabled && authStatus !== 'signed-in') {

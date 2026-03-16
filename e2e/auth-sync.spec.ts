@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs'
 const STORAGE_KEY = 'creative-board-state'
 const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const TEST_PASSWORD_RECOVERY_KEY = 'editors-board-e2e-password-recovery'
 const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 
 function ensureArtifactsDir() {
@@ -12,9 +13,10 @@ function ensureArtifactsDir() {
 
 async function openFreshAuthGate(page: Page) {
   await page.addInitScript(
-    ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
+    ({ storageKey, authModeKey, authEmailKey, recoveryKey, remoteStateKey }) => {
       window.localStorage.removeItem(storageKey)
       window.localStorage.removeItem(remoteStateKey)
+      window.localStorage.removeItem(recoveryKey)
       window.localStorage.setItem(authModeKey, 'enabled')
       window.localStorage.removeItem(authEmailKey)
     },
@@ -22,6 +24,7 @@ async function openFreshAuthGate(page: Page) {
       storageKey: STORAGE_KEY,
       authModeKey: TEST_AUTH_MODE_KEY,
       authEmailKey: TEST_AUTH_EMAIL_KEY,
+      recoveryKey: TEST_PASSWORD_RECOVERY_KEY,
       remoteStateKey: TEST_REMOTE_STATE_KEY,
     },
   )
@@ -51,6 +54,59 @@ test('sign-in validates email and password format before submit', async ({ page 
   await expect(signInButton).toBeEnabled()
   await expect(page.getByText('Enter a valid email address.')).toHaveCount(0)
   await expect(page.getByText('Password must be at least 6 characters.')).toHaveCount(0)
+})
+
+test('forgot password shows clearer reset guidance', async ({ page }) => {
+  await openFreshAuthGate(page)
+
+  await page.getByLabel('Email').fill('team@example.com')
+  await page.getByRole('button', { name: 'Forgot password?' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Reset password' })).toBeVisible()
+  await expect(
+    page.getByText('Enter your email and we will send you a link to reset your password.'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Send reset link' }).click()
+
+  await expect(
+    page.getByText('If this email already has a password-based account, a reset link is on the way.'),
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      'Sent to team@example.com. Check spam too. If nothing arrives, make sure you are using the same email you sign in with.',
+    ),
+  ).toBeVisible()
+})
+
+test('password recovery flow lets a user choose a new password', async ({ page }) => {
+  await page.addInitScript(
+    ({ storageKey, authModeKey, authEmailKey, recoveryKey, remoteStateKey }) => {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.removeItem(remoteStateKey)
+      window.localStorage.setItem(authModeKey, 'enabled')
+      window.localStorage.setItem(authEmailKey, 'team@example.com')
+      window.localStorage.setItem(recoveryKey, '1')
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+      recoveryKey: TEST_PASSWORD_RECOVERY_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+    },
+  )
+
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: 'Set a new password' })).toBeVisible()
+  await expect(page.getByText('Choose a new password for team@example.com.')).toBeVisible()
+
+  await page.getByLabel(/^New password$/).fill('secret12')
+  await page.getByLabel(/^Confirm new password$/).fill('secret12')
+  await page.getByRole('button', { name: 'Update password' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
 })
 
 test('authenticated team login syncs the shared workspace across pages', async ({

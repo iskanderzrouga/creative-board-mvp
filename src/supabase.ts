@@ -1,4 +1,4 @@
-import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type AuthChangeEvent, type Session, type SupabaseClient } from '@supabase/supabase-js'
 import type { AccessScopeMode, PortfolioAccessScope, RoleMode } from './board'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? ''
@@ -12,6 +12,7 @@ export const AUTH_STORAGE_KEY = 'editors-board-auth'
 const AUTH_CODE_VERIFIER_STORAGE_KEY = `${AUTH_STORAGE_KEY}-code-verifier`
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const E2E_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const E2E_PASSWORD_RECOVERY_KEY = 'editors-board-e2e-password-recovery'
 const E2E_ACCESS_STATE_KEY = 'editors-board-e2e-access-state'
 const E2E_ACCESS_ENTRIES_KEY = 'editors-board-e2e-access-entries'
 const E2E_ACCESS_DELAY_KEY = 'editors-board-e2e-access-delay-ms'
@@ -112,6 +113,18 @@ function getE2EAuthSession() {
   return email ? { email } : null
 }
 
+function getE2EAuthChangeEvent(): AuthChangeEvent {
+  if (!hasBrowser()) {
+    return 'SIGNED_OUT'
+  }
+
+  if (window.localStorage.getItem(E2E_PASSWORD_RECOVERY_KEY) === '1') {
+    return 'PASSWORD_RECOVERY'
+  }
+
+  return getE2EAuthSession() ? 'SIGNED_IN' : 'SIGNED_OUT'
+}
+
 function createDefaultE2EAccessEntry(email: string): WorkspaceAccessEntry {
   return {
     email,
@@ -185,6 +198,24 @@ function getMagicLinkRedirectUrl() {
   }
 
   return hasBrowser() ? window.location.origin : undefined
+}
+
+export function isPasswordRecoveryFlowPending() {
+  if (!hasBrowser()) {
+    return false
+  }
+
+  if (isE2ESupabaseMode()) {
+    return window.localStorage.getItem(E2E_PASSWORD_RECOVERY_KEY) === '1'
+  }
+
+  const searchParams = new URLSearchParams(window.location.search)
+  const hashValue = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash
+  const hashParams = new URLSearchParams(hashValue)
+
+  return searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery'
 }
 
 function isLegacyWorkspaceAccessError(error: { message?: string } | null) {
@@ -279,7 +310,7 @@ export async function getAuthSession() {
 }
 
 export function onAuthStateChange(
-  callback: (session: AuthSessionState | null) => void,
+  callback: (event: AuthChangeEvent, session: AuthSessionState | null) => void,
 ) {
   if (isE2ESupabaseMode()) {
     if (!hasBrowser()) {
@@ -287,8 +318,12 @@ export function onAuthStateChange(
     }
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === E2E_AUTH_MODE_KEY || event.key === E2E_AUTH_EMAIL_KEY) {
-        callback(getE2EAuthSession())
+      if (
+        event.key === E2E_AUTH_MODE_KEY ||
+        event.key === E2E_AUTH_EMAIL_KEY ||
+        event.key === E2E_PASSWORD_RECOVERY_KEY
+      ) {
+        callback(getE2EAuthChangeEvent(), getE2EAuthSession())
       }
     }
 
@@ -303,8 +338,8 @@ export function onAuthStateChange(
 
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    callback(toAuthSession(session))
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    callback(event, toAuthSession(session))
   })
 
   return () => subscription.unsubscribe()
@@ -359,6 +394,32 @@ export async function resetPasswordForEmail(email: string) {
 
   const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
     redirectTo: getMagicLinkRedirectUrl(),
+  })
+
+  if (error) {
+    throw error
+  }
+}
+
+export async function updatePassword(nextPassword: string) {
+  if (!nextPassword || nextPassword.length < 6) {
+    throw new Error('Password must be at least 6 characters.')
+  }
+
+  if (isE2ESupabaseMode()) {
+    if (hasBrowser()) {
+      window.localStorage.removeItem(E2E_PASSWORD_RECOVERY_KEY)
+    }
+    return
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: nextPassword,
   })
 
   if (error) {

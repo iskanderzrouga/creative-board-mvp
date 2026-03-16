@@ -103,14 +103,16 @@ export function AuthGate({
             <h1>Reset password</h1>
             <p>
               {resetSuccess
-                ? 'Check your email for a reset link. It may take a minute to arrive.'
+                ? 'If this email already has a password-based account, a reset link is on the way.'
                 : 'Enter your email and we will send you a link to reset your password.'}
             </p>
           </div>
 
           {resetSuccess ? (
             <div className="auth-form">
-              <p className="auth-helper">Check your email for a reset link</p>
+              <p className="auth-helper">
+                Sent to {resetEmail.trim().toLowerCase()}. Check spam too. If nothing arrives, make sure you are using the same email you sign in with.
+              </p>
               <div className="auth-switch">
                 <p className="auth-switch-text">
                   <button
