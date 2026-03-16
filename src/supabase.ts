@@ -13,6 +13,7 @@ const AUTH_CODE_VERIFIER_STORAGE_KEY = `${AUTH_STORAGE_KEY}-code-verifier`
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const E2E_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
 const E2E_ACCESS_STATE_KEY = 'editors-board-e2e-access-state'
+const E2E_ACCESS_ENTRIES_KEY = 'editors-board-e2e-access-entries'
 const E2E_ACCESS_DELAY_KEY = 'editors-board-e2e-access-delay-ms'
 const E2E_ACCESS_TIMEOUT_KEY = 'editors-board-e2e-access-timeout-ms'
 export const E2E_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
@@ -77,6 +78,14 @@ function isE2ESupabaseMode() {
   return window.localStorage.getItem(E2E_AUTH_MODE_KEY) === 'enabled'
 }
 
+function isE2ELocalMode() {
+  if (!hasBrowser()) {
+    return false
+  }
+
+  return window.localStorage.getItem(E2E_AUTH_MODE_KEY) === 'disabled'
+}
+
 function getE2EAccessState() {
   if (!hasBrowser()) {
     return 'granted'
@@ -101,6 +110,73 @@ function getE2EAuthSession() {
 
   const email = window.localStorage.getItem(E2E_AUTH_EMAIL_KEY)?.trim()
   return email ? { email } : null
+}
+
+function createDefaultE2EAccessEntry(email: string): WorkspaceAccessEntry {
+  return {
+    email,
+    roleMode: 'owner',
+    editorName: null,
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  }
+}
+
+function getStoredE2EAccessEntries() {
+  if (!hasBrowser()) {
+    return []
+  }
+
+  const raw = window.localStorage.getItem(E2E_ACCESS_ENTRIES_KEY)
+  if (!raw) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as WorkspaceAccessEntry[]
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (entry): entry is WorkspaceAccessEntry =>
+            Boolean(entry) &&
+            typeof entry.email === 'string' &&
+            typeof entry.roleMode === 'string',
+        )
+      : []
+  } catch {
+    return []
+  }
+}
+
+function setStoredE2EAccessEntries(entries: WorkspaceAccessEntry[]) {
+  if (!hasBrowser()) {
+    return
+  }
+
+  window.localStorage.setItem(E2E_ACCESS_ENTRIES_KEY, JSON.stringify(entries))
+}
+
+function getE2EWorkspaceAccessEntries() {
+  const session = getE2EAuthSession()
+  const stored = getStoredE2EAccessEntries()
+    .slice()
+    .sort((left, right) => left.email.localeCompare(right.email))
+
+  if (!session) {
+    return stored
+  }
+
+  const normalizedSessionEmail = session.email.trim().toLowerCase()
+  if (stored.some((entry) => entry.email === normalizedSessionEmail)) {
+    return stored
+  }
+
+  const nextEntries = [
+    createDefaultE2EAccessEntry(normalizedSessionEmail),
+    ...stored,
+  ].sort((left, right) => left.email.localeCompare(right.email))
+  setStoredE2EAccessEntries(nextEntries)
+  return nextEntries
 }
 
 function getMagicLinkRedirectUrl() {
@@ -132,6 +208,10 @@ function normalizeLegacyRoleMode(
 }
 
 export function isSupabaseConfigured() {
+  if (isE2ELocalMode()) {
+    return false
+  }
+
   return hasRealSupabaseConfig() || isE2ESupabaseMode()
 }
 
@@ -151,10 +231,11 @@ export function clearStoredAuthSession() {
   window.localStorage.removeItem(AUTH_STORAGE_KEY)
   window.localStorage.removeItem(AUTH_CODE_VERIFIER_STORAGE_KEY)
   window.localStorage.removeItem(E2E_AUTH_EMAIL_KEY)
+  window.localStorage.removeItem(E2E_ACCESS_ENTRIES_KEY)
 }
 
 export function getSupabaseClient() {
-  if (isE2ESupabaseMode()) {
+  if (isE2ESupabaseMode() || isE2ELocalMode()) {
     return null
   }
 
@@ -441,12 +522,18 @@ export async function getWorkspaceAccess() {
       return null
     }
 
+    const normalizedEmail = session.email.trim().toLowerCase()
+    const matchingEntry = getE2EWorkspaceAccessEntries().find(
+      (entry) => entry.email === normalizedEmail,
+    )
+
+    const accessEntry = matchingEntry ?? createDefaultE2EAccessEntry(normalizedEmail)
     return {
-      email: session.email,
-      roleMode: 'owner' as const,
-      editorName: null,
-      scopeMode: 'all-portfolios',
-      scopeAssignments: [],
+      email: accessEntry.email,
+      roleMode: accessEntry.roleMode,
+      editorName: accessEntry.editorName,
+      scopeMode: accessEntry.scopeMode,
+      scopeAssignments: accessEntry.scopeAssignments,
     } satisfies WorkspaceAccessState
   }
 
@@ -559,19 +646,7 @@ export async function ensureWorkspaceAccessSchema() {
 
 export async function listWorkspaceAccessEntries() {
   if (isE2ESupabaseMode()) {
-    const session = getE2EAuthSession()
-    return session
-      ? [
-          {
-            email: session.email,
-            roleMode: 'owner' as const,
-            editorName: null,
-            scopeMode: 'all-portfolios',
-            scopeAssignments: [],
-            updatedAt: null,
-          } satisfies WorkspaceAccessEntry,
-        ]
-      : []
+    return getE2EWorkspaceAccessEntries()
   }
 
   const supabase = getSupabaseClient()
@@ -622,7 +697,7 @@ export async function upsertWorkspaceAccessEntry(entry: {
   }
 
   if (isE2ESupabaseMode()) {
-    return {
+    const savedEntry = {
       email: normalizedEmail,
       roleMode: entry.roleMode,
       editorName: entry.roleMode === 'contributor' ? entry.editorName?.trim() ?? null : null,
@@ -630,6 +705,13 @@ export async function upsertWorkspaceAccessEntry(entry: {
       scopeAssignments: entry.scopeAssignments,
       updatedAt: new Date().toISOString(),
     } satisfies WorkspaceAccessEntry
+
+    const nextEntries = [
+      ...getE2EWorkspaceAccessEntries().filter((item) => item.email !== normalizedEmail),
+      savedEntry,
+    ].sort((left, right) => left.email.localeCompare(right.email))
+    setStoredE2EAccessEntries(nextEntries)
+    return savedEntry
   }
 
   const supabase = getSupabaseClient()
@@ -708,6 +790,9 @@ export async function deleteWorkspaceAccessEntry(email: string) {
   }
 
   if (isE2ESupabaseMode()) {
+    setStoredE2EAccessEntries(
+      getE2EWorkspaceAccessEntries().filter((entry) => entry.email !== normalizedEmail),
+    )
     return
   }
 

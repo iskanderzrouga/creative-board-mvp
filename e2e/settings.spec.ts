@@ -11,7 +11,7 @@ async function openFreshLocalApp(page: Page) {
   await page.evaluate(
     ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
       window.localStorage.removeItem(storageKey)
-      window.localStorage.removeItem(authModeKey)
+      window.localStorage.setItem(authModeKey, 'disabled')
       window.localStorage.removeItem(authEmailKey)
       window.localStorage.removeItem(remoteStateKey)
     },
@@ -83,47 +83,46 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   )
   await expect(page.getByRole('button', { name: 'Test', exact: true })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Team' }).click()
-  await page.locator('.team-table-row').filter({ hasText: 'Naomi' }).click()
-  await expect(page.getByLabel('Naomi role')).toHaveValue('Manager')
-  await expect(page.getByLabel('Naomi works Mon')).toBeChecked()
-  await expect(page.getByLabel('Naomi timezone')).toHaveValue(/.+/)
+  await page.getByRole('button', { name: 'People' }).click()
+  await page.locator('.people-table-row').filter({ hasText: 'Naomi' }).getByRole('button', { name: 'Edit' }).click()
+  const drawer = page.locator('.slide-panel.is-open')
+  await expect(drawer.getByRole('heading', { name: 'Edit person' })).toBeVisible()
+  await expect(drawer.getByLabel('Name')).toHaveValue('Naomi')
+  await expect(drawer.getByLabel('Board role')).toHaveValue('Manager')
+  await expect(drawer.getByLabel('Can sign in')).toHaveCount(0)
 })
 
-test('workspace access new entries default to manager and contributors require Works as', async ({
+test('people entries default to manager access when sign-in is enabled', async ({
   page,
 }) => {
   await openFreshAuthenticatedApp(page)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Access' }).click()
+  await page.getByRole('button', { name: 'People' }).click()
 
   await page.getByRole('button', { name: 'Add person' }).click()
 
-  const accessDrawer = page.locator('.slide-panel.is-open')
-  const emailInput = accessDrawer.getByLabel('Email')
-  const levelSelect = accessDrawer.getByLabel(/Access level/)
-  const addButton = accessDrawer.getByRole('button', { name: 'Add person' })
+  const personDrawer = page.locator('.slide-panel.is-open')
+  const addButton = personDrawer.getByRole('button', { name: 'Add person' })
 
-  await expect(accessDrawer.getByRole('heading', { name: 'New person' })).toBeVisible()
+  await expect(personDrawer.getByRole('heading', { name: 'Add person' })).toBeVisible()
   await expect(addButton).toBeDisabled()
 
-  await emailInput.fill('contributor@example.com')
-  await expect(levelSelect).toHaveValue('manager')
-  await expect(addButton).toBeEnabled()
-
-  await levelSelect.selectOption('contributor')
-  await expect(addButton).toBeDisabled()
-
-  await accessDrawer.getByLabel('Team member for contributor@example.com').selectOption({
-    label: 'Daniel T',
-  })
+  await personDrawer.getByLabel('Name').fill('Contributor Example')
+  await personDrawer.getByLabel('Can sign in').check()
+  await personDrawer.getByLabel('Email').fill('contributor@example.com')
+  await expect(personDrawer.getByLabel('Access level')).toHaveValue('manager')
   await expect(addButton).toBeEnabled()
 
   await addButton.click()
+  const newRow = page.locator('.people-table-row').filter({ hasText: 'Contributor Example' })
+  await expect(newRow).toContainText('contributor@example.com')
+  await expect(newRow).toContainText('Manager')
   await expect(
-    page.locator('.workspace-access-row-button').filter({ hasText: 'contributor@example.com' }),
-  ).toBeVisible()
+    page.locator('.people-table-row').filter({
+      hasText: 'contributor@example.com',
+    }),
+  ).toHaveCount(1)
 })
 
 test('settings can add and remove brands and team members', async ({ page }) => {
@@ -155,20 +154,21 @@ test('settings can add and remove brands and team members', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Plan Coverage Brand', exact: true })).toHaveCount(0)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Team' }).click()
-  await page.getByRole('button', { name: 'Add member' }).click()
-
-  await page.getByLabel('Untitled member team member name').fill('Plan Coverage Editor')
-  await expect(page.getByLabel('Plan Coverage Editor role')).toHaveValue('Editor')
+  await page.getByRole('button', { name: 'People' }).click()
+  await page.getByRole('button', { name: 'Add person' }).click()
+  const personDrawer = page.locator('.slide-panel.is-open')
+  await personDrawer.getByLabel('Name').fill('Plan Coverage Editor')
+  await expect(personDrawer.getByLabel('Board role')).toHaveValue('Editor')
+  await personDrawer.getByRole('button', { name: 'Add person' }).click()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toBeVisible()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
-  await page.getByRole('button', { name: 'Team' }).click()
-  await page.locator('.team-table-row').filter({ hasText: 'Plan Coverage Editor' }).click()
-  await page.getByRole('button', { name: 'Remove member' }).click()
-  await page.getByRole('button', { name: 'Remove member' }).nth(1).click()
+  await page.getByRole('button', { name: 'People' }).click()
+  await page.locator('.people-table-row').filter({ hasText: 'Plan Coverage Editor' }).getByRole('button', { name: 'Edit' }).click()
+  await page.locator('.slide-panel.is-open').getByRole('button', { name: 'Remove person' }).click()
+  await page.locator('.slide-panel.is-open').getByRole('button', { name: 'Remove', exact: true }).click()
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Plan Coverage Editor', exact: true })).toHaveCount(0)

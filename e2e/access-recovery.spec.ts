@@ -45,8 +45,8 @@ test('denied access can return to team access and try a different email', async 
 
   await page.getByRole('button', { name: 'Try a different email' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
-  await expect(page.getByLabel('Work email')).toHaveValue('')
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByLabel('Email')).toHaveValue('')
   await expect(page.getByText('Use a different approved work email to continue.')).toBeVisible()
 
   expect(
@@ -102,6 +102,6 @@ test('timed out access verification shows retry and different-email recovery', a
 
   await page.getByRole('button', { name: 'Try a different email' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
-  await expect(page.getByLabel('Work email')).toHaveValue('')
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByLabel('Email')).toHaveValue('')
 })

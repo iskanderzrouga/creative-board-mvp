@@ -78,6 +78,7 @@ import {
   markAllNotificationsRead,
   dismissNotification,
   loadAppState,
+  loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
   type ActiveRole,
@@ -177,7 +178,7 @@ function App() {
   )
   const [creatingDriveCardId, setCreatingDriveCardId] = useState<string | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(authEnabled ? 'loading' : 'local')
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => loadSyncMetadata().lastSyncedAt)
   const [remoteSyncErrorShown, setRemoteSyncErrorShown] = useState(false)
   const [pendingAppConfirm, setPendingAppConfirm] = useState<PendingAppConfirm | null>(null)
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false)

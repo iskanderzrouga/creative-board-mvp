@@ -194,15 +194,15 @@ describe('board integrity helpers', () => {
     expect(removeTeamMemberFromPortfolio(portfolio, memberIndex)).toBe(portfolio)
   })
 
-  it('blocks removing the last manager from a portfolio', () => {
+  it('allows removing the last manager from a portfolio when they do not own cards', () => {
     const portfolio = createSeedState().portfolios[0]
     const managerIndex = portfolio.team.findIndex((member) => member.role === 'Manager')
 
     expect(managerIndex).toBeGreaterThanOrEqual(0)
-    expect(getTeamMemberRemovalBlocker(portfolio, managerIndex)).toBe(
-      'Each portfolio needs at least one manager.',
+    expect(getTeamMemberRemovalBlocker(portfolio, managerIndex)).toBeNull()
+    expect(removeTeamMemberFromPortfolio(portfolio, managerIndex).team).toHaveLength(
+      portfolio.team.length - 1,
     )
-    expect(removeTeamMemberFromPortfolio(portfolio, managerIndex)).toBe(portfolio)
   })
 
   it('rejects grouped-stage moves without a valid owner lane', () => {
@@ -564,17 +564,17 @@ describe('board integrity helpers', () => {
 
     expect(titleUpdated.cards.find((card) => card.id === sourceCard!.id)?.title).toBe('Edited title')
 
-    expect(
-      applyCardUpdates(
-        portfolio,
-        state.settings,
-        sourceCard!.id,
-        { dueDate: '2026-03-20' },
-        'Naomi',
-        '2026-03-12T14:15:00Z',
-        editorViewer,
-      ),
-    ).toBe(portfolio)
+    const dueDateUpdated = applyCardUpdates(
+      portfolio,
+      state.settings,
+      sourceCard!.id,
+      { dueDate: '2026-03-20' },
+      'Naomi',
+      '2026-03-12T14:15:00Z',
+      editorViewer,
+    )
+
+    expect(dueDateUpdated.cards.find((card) => card.id === sourceCard!.id)?.dueDate).toBe('2026-03-20')
   })
 
   it('requires manager permissions to add or remove cards', () => {
@@ -1016,7 +1016,7 @@ describe('board integrity helpers', () => {
     const preserved = coerceAppState(seed)
 
     expect(coerceAppState(null).version).toBe(seed.version)
-    expect(malformed.portfolios[0]?.team.some((member) => member.role === 'Manager')).toBe(true)
+    expect(malformed.portfolios[0]?.team).toEqual([])
     expect(malformed.activeRole.mode).toBe(seed.activeRole.mode)
     expect(preserved.activePortfolioId).toBe(seed.activePortfolioId)
     expect(preserved.settings.general.appName).toBe(seed.settings.general.appName)

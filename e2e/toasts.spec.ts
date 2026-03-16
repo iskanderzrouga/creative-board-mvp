@@ -10,7 +10,7 @@ async function openFreshLocalApp(page: Page) {
   await page.evaluate(
     ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
       window.localStorage.removeItem(storageKey)
-      window.localStorage.removeItem(authModeKey)
+      window.localStorage.setItem(authModeKey, 'disabled')
       window.localStorage.removeItem(authEmailKey)
       window.localStorage.removeItem(remoteStateKey)
     },

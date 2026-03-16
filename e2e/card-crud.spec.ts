@@ -1,13 +1,26 @@
 import { expect, test, type Page } from '@playwright/test'
 
 const STORAGE_KEY = 'creative-board-state'
+const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
+const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 
 async function openFreshApp(page: Page) {
+  await page.addInitScript(
+    ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.setItem(authModeKey, 'disabled')
+      window.localStorage.removeItem(authEmailKey)
+      window.localStorage.removeItem(remoteStateKey)
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+    },
+  )
   await page.goto('/')
-  await page.evaluate((storageKey) => {
-    window.localStorage.removeItem(storageKey)
-  }, STORAGE_KEY)
-  await page.reload()
 }
 
 async function createCardAndOpenDetail(page: Page, title: string) {
@@ -63,13 +76,14 @@ test('card detail panel paginates older comments and exposes section navigation'
   await page.getByRole('button', { name: 'Links' }).click()
   await expect(page.getByText('Frame.io')).toBeVisible()
 
-  await page.getByPlaceholder('Link label').fill('Invalid coverage link')
-  await page.getByPlaceholder('https://').fill('javascript:alert(1)')
+  const addLinkForm = page.locator('.add-link-form')
+  await addLinkForm.getByPlaceholder('Link label').fill('Invalid coverage link')
+  await addLinkForm.getByPlaceholder('https://').fill('javascript:alert(1)')
   await page.getByRole('button', { name: 'Add link' }).click()
   await expect(page.getByText('Enter a full http:// or https:// link before saving.')).toBeVisible()
   await expect(page.getByText('Invalid coverage link')).toHaveCount(0)
 
-  await page.getByPlaceholder('https://').fill('https://example.com/review')
+  await addLinkForm.getByPlaceholder('https://').fill('https://example.com/review')
   await page.getByRole('button', { name: 'Add link' }).click()
   await expect(page.getByText('Invalid coverage link')).toBeVisible()
 })

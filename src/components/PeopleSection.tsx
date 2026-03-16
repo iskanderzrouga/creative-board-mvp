@@ -73,21 +73,28 @@ function buildPersonRows(
   portfolios: Portfolio[],
   accessEntries: WorkspaceAccessEntry[],
 ): PersonRow[] {
-  const linkedEditorNames = new Set<string>()
+  const linkedAccessEmails = new Set<string>()
   const rows: PersonRow[] = []
 
   // 1. Team members first
   for (const portfolio of portfolios) {
     for (let memberIndex = 0; memberIndex < portfolio.team.length; memberIndex++) {
       const member = portfolio.team[memberIndex]
+      const normalizedAccessEmail = member.accessEmail?.trim().toLowerCase() ?? null
       const accessEntry =
+        (normalizedAccessEmail
+          ? accessEntries.find((entry) => entry.email === normalizedAccessEmail)
+          : null) ??
         accessEntries.find(
           (entry) =>
-            entry.editorName?.toLowerCase() === member.name.toLowerCase(),
-        ) ?? null
+            entry.roleMode === 'contributor' &&
+            entry.editorName?.toLowerCase() === member.name.toLowerCase() &&
+            !linkedAccessEmails.has(entry.email),
+        ) ??
+        null
 
       if (accessEntry) {
-        linkedEditorNames.add(accessEntry.editorName?.toLowerCase() ?? '')
+        linkedAccessEmails.add(accessEntry.email)
       }
 
       rows.push({
@@ -108,11 +115,7 @@ function buildPersonRows(
 
   // 2. Access-only entries (no linked team member)
   for (const entry of accessEntries) {
-    const isLinked =
-      entry.editorName &&
-      linkedEditorNames.has(entry.editorName.toLowerCase())
-
-    if (!isLinked) {
+    if (!linkedAccessEmails.has(entry.email)) {
       rows.push({
         key: `access:${entry.email}`,
         displayName: entry.editorName ?? entry.email.split('@')[0],
@@ -135,6 +138,7 @@ function buildPersonRows(
 /* ── Draft: unified person form state ──────────────── */
 
 interface PersonDraft {
+  hasLoginAccess: boolean
   // Access fields
   email: string
   accessLevel: RoleMode
@@ -156,8 +160,9 @@ interface PersonDraft {
 
 function createEmptyDraft(portfolios: Portfolio[]): PersonDraft {
   return {
+    hasLoginAccess: false,
     email: '',
-    accessLevel: 'contributor',
+    accessLevel: 'manager',
     scopeMode: 'all-portfolios',
     scopeAssignments: [],
     name: '',
@@ -178,8 +183,11 @@ function draftFromPersonRow(row: PersonRow): PersonDraft {
   const access = row.accessEntry
 
   return {
+    hasLoginAccess: access !== null,
     email: access?.email ?? '',
-    accessLevel: access?.roleMode ?? 'contributor',
+    accessLevel:
+      access?.roleMode ??
+      (member?.role.toLowerCase() === 'manager' ? 'manager' : 'contributor'),
     scopeMode: access?.scopeMode ?? 'all-portfolios',
     scopeAssignments: normalizeScopeAssignments(access?.scopeAssignments),
     name: member?.name ?? access?.editorName ?? '',
@@ -425,38 +433,83 @@ function isValidEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim().toLowerCase())
 }
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function requiresTeamProfile(draft: PersonDraft, authEnabled: boolean) {
+  return authEnabled && draft.hasLoginAccess && draft.accessLevel === 'contributor'
+}
+
 function getValidationMessage(
   draft: PersonDraft,
   accessEntries: WorkspaceAccessEntry[],
   portfolios: Portfolio[],
+  authEnabled: boolean,
   currentEmail?: string,
 ): string | null {
-  if (!draft.email.trim()) return 'Enter an email.'
-  if (!isValidEmail(draft.email)) return 'Enter a valid email.'
+  const wantsLoginAccess = authEnabled && draft.hasLoginAccess
+  const needsTeamProfile = requiresTeamProfile(draft, authEnabled)
+  const normalizedEmailValue = normalizeEmail(draft.email)
+  const isClearingExistingAccess = wantsLoginAccess && !normalizedEmailValue && Boolean(currentEmail)
 
-  const normalizedEmail = draft.email.trim().toLowerCase()
-  const normalizedCurrentEmail = currentEmail?.trim().toLowerCase() ?? null
-  if (
-    accessEntries.some(
-      (e) => e.email === normalizedEmail && e.email !== normalizedCurrentEmail,
-    )
-  ) {
-    return 'That email already has access.'
+  if (!draft.hasTeamProfile && !wantsLoginAccess) {
+    return 'Add a team profile or enable sign-in access.'
   }
 
-  if (!draft.name.trim() && draft.hasTeamProfile) return 'Enter a name.'
+  if (wantsLoginAccess) {
+    if (!normalizedEmailValue && !isClearingExistingAccess) return 'Enter an email.'
+    if (normalizedEmailValue && !isValidEmail(draft.email)) return 'Enter a valid email.'
 
-  if (
-    draft.accessLevel === 'manager' ||
-    draft.accessLevel === 'viewer'
-  ) {
-    const scope = getNormalizedScopeState(draft, portfolios)
-    if (scope.scopeMode !== 'all-portfolios' && scope.scopeAssignments.length === 0) {
-      return 'Choose at least one portfolio or brand.'
+    const normalizedCurrentEmail = currentEmail ? normalizeEmail(currentEmail) : null
+    if (
+      normalizedEmailValue &&
+      accessEntries.some(
+        (entry) =>
+          entry.email === normalizedEmailValue && entry.email !== normalizedCurrentEmail,
+      )
+    ) {
+      return 'That email already has access.'
+    }
+
+    if (needsTeamProfile && !draft.hasTeamProfile) {
+      return 'Contributors need a board team member.'
+    }
+
+    if (draft.accessLevel === 'manager' || draft.accessLevel === 'viewer') {
+      const scope = getNormalizedScopeState(draft, portfolios)
+      if (scope.scopeMode !== 'all-portfolios' && scope.scopeAssignments.length === 0) {
+        return 'Choose at least one portfolio or brand.'
+      }
     }
   }
 
+  if (draft.hasTeamProfile) {
+    if (!draft.name.trim()) return 'Enter a name.'
+    if (!draft.portfolioId.trim()) return 'Choose a portfolio.'
+  }
+
   return null
+}
+
+function getPendingAccessKey(
+  draft: PersonDraft | null,
+  activeRow: PersonRow | null,
+  authEnabled: boolean,
+) {
+  if (!authEnabled || !draft) {
+    return null
+  }
+
+  if (draft.hasLoginAccess) {
+    if (activeRow?.accessEntry) {
+      return activeRow.accessEntry.email
+    }
+
+    return draft.email.trim() ? '__new__' : null
+  }
+
+  return activeRow?.accessEntry?.email ?? null
 }
 
 /* ── Working days summary ────────────────────────── */
@@ -477,6 +530,7 @@ function formatWorkingDaysSummary(workingDays: WorkingDay[]) {
 /* ── Person drawer ────────────────────────────────── */
 
 function PersonDrawer({
+  authEnabled,
   isOpen,
   isCreate,
   draft,
@@ -494,6 +548,7 @@ function PersonDrawer({
   onCancelRevoke,
   onConfirmRevoke,
 }: {
+  authEnabled: boolean
   isOpen: boolean
   isCreate: boolean
   draft: PersonDraft | null
@@ -519,23 +574,31 @@ function PersonDrawer({
     draft,
     accessEntries,
     portfolios,
+    authEnabled,
     isCreate ? undefined : currentEmail ?? undefined,
   )
   const visibleError = errorMessage ?? (saveAttempted ? validationMsg : null)
+  const wantsLoginAccess = authEnabled && draft.hasLoginAccess
+  const needsTeamProfile = requiresTeamProfile(draft, authEnabled)
   const selectedLevelDesc =
     ACCESS_LEVEL_OPTIONS.find((o) => o.value === draft.accessLevel)?.description ?? ''
-  const normalizedScope = getNormalizedScopeState(draft, portfolios)
-  const summaryText = getEffectiveAccessSummary(
-    {
-      roleMode: draft.accessLevel,
-      editorName: draft.hasTeamProfile ? draft.name || null : null,
-      scopeMode: normalizedScope.scopeMode,
-      scopeAssignments: normalizedScope.scopeAssignments,
-    },
-    portfolios,
-  )
+  const normalizedScope = wantsLoginAccess
+    ? getNormalizedScopeState(draft, portfolios)
+    : { scopeMode: 'all-portfolios' as AccessScopeMode, scopeAssignments: [] as PortfolioAccessScope[] }
+  const summaryText = wantsLoginAccess
+    ? getEffectiveAccessSummary(
+        {
+          roleMode: draft.accessLevel,
+          editorName: draft.hasTeamProfile ? draft.name || null : null,
+          scopeMode: normalizedScope.scopeMode,
+          scopeAssignments: normalizedScope.scopeAssignments,
+        },
+        portfolios,
+      )
+    : 'No sign-in access yet. This person only exists on the board.'
 
   const showTeamFields = draft.hasTeamProfile
+  const canRemovePerson = !isCreate
 
   return (
     <>
@@ -564,74 +627,93 @@ function PersonDrawer({
             </div>
           ) : null}
 
-          {/* ── Email ── */}
-          <label className="workspace-access-field">
-            <span className="workspace-access-field-label">Email</span>
-            <input
-              type="email"
-              autoFocus={isCreate}
-              value={draft.email}
-              placeholder="team@company.com"
-              onChange={(e) => onDraftChange({ ...draft, email: e.target.value })}
-            />
-          </label>
+          {authEnabled ? (
+            <label className="toggle-row workspace-access-field">
+              <span className="workspace-access-field-label">Can sign in</span>
+              <input
+                type="checkbox"
+                checked={draft.hasLoginAccess}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...draft,
+                    hasLoginAccess: e.target.checked,
+                    hasTeamProfile:
+                      e.target.checked && draft.accessLevel === 'contributor'
+                        ? true
+                        : draft.hasTeamProfile,
+                  })
+                }
+              />
+              <p className="field-hint">
+                {draft.hasLoginAccess
+                  ? 'This person can sign in to the workspace.'
+                  : 'Leave this off for board-only teammates.'}
+              </p>
+            </label>
+          ) : null}
 
-          {/* ── Name ── */}
-          <label className="workspace-access-field">
-            <span className="workspace-access-field-label">Name</span>
-            <input
-              value={draft.name}
-              placeholder="Full name"
-              onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
-            />
-          </label>
+          {wantsLoginAccess ? (
+            <>
+              {/* ── Email ── */}
+              <label className="workspace-access-field">
+                <span className="workspace-access-field-label">Email</span>
+                <input
+                  type="email"
+                  autoFocus={isCreate}
+                  value={draft.email}
+                  placeholder="team@company.com"
+                  onChange={(e) => onDraftChange({ ...draft, email: e.target.value })}
+                />
+              </label>
 
-          {/* ── Access level ── */}
-          <label className="workspace-access-field">
-            <span className="workspace-access-field-label">Access level</span>
-            <select
-              value={draft.accessLevel}
-              onChange={(e) => {
-                const nextLevel = e.target.value as RoleMode
-                onDraftChange({
-                  ...draft,
-                  accessLevel: nextLevel,
-                  hasTeamProfile: nextLevel === 'owner' || nextLevel === 'viewer'
-                    ? draft.hasTeamProfile
-                    : true,
-                  scopeMode:
-                    nextLevel === 'owner' || nextLevel === 'contributor'
-                      ? 'all-portfolios'
-                      : draft.scopeMode,
-                  scopeAssignments:
-                    nextLevel === 'owner' || nextLevel === 'contributor'
-                      ? []
-                      : draft.scopeAssignments,
-                })
-              }}
-            >
-              {ACCESS_LEVEL_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {getAccessLevelLabel(o.value)}
-                </option>
-              ))}
-            </select>
-            <p className="field-hint">{selectedLevelDesc}</p>
-          </label>
+              {/* ── Access level ── */}
+              <label className="workspace-access-field">
+                <span className="workspace-access-field-label">Access level</span>
+                <select
+                  value={draft.accessLevel}
+                  onChange={(e) => {
+                    const nextLevel = e.target.value as RoleMode
+                    onDraftChange({
+                      ...draft,
+                      accessLevel: nextLevel,
+                      hasTeamProfile: nextLevel === 'contributor' ? true : draft.hasTeamProfile,
+                      scopeMode:
+                        nextLevel === 'owner' || nextLevel === 'contributor'
+                          ? 'all-portfolios'
+                          : draft.scopeMode,
+                      scopeAssignments:
+                        nextLevel === 'owner' || nextLevel === 'contributor'
+                          ? []
+                          : draft.scopeAssignments,
+                    })
+                  }}
+                >
+                  {ACCESS_LEVEL_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {getAccessLevelLabel(o.value)}
+                    </option>
+                  ))}
+                </select>
+                <p className="field-hint">{selectedLevelDesc}</p>
+              </label>
+            </>
+          ) : null}
 
-          {/* ── Has team profile toggle (for owners/viewers) ── */}
-          {(draft.accessLevel === 'owner' || draft.accessLevel === 'viewer') ? (
+          {authEnabled ? (
             <label className="toggle-row workspace-access-field">
               <span className="workspace-access-field-label">Board team member</span>
               <input
                 type="checkbox"
                 checked={draft.hasTeamProfile}
+                disabled={needsTeamProfile}
                 onChange={(e) =>
                   onDraftChange({ ...draft, hasTeamProfile: e.target.checked })
                 }
               />
               <p className="field-hint">
-                {draft.hasTeamProfile
+                {needsTeamProfile
+                  ? 'Contributors need a linked team member.'
+                  : draft.hasTeamProfile
                   ? 'This person has a board identity with role and schedule.'
                   : 'This person only has sign-in access.'}
               </p>
@@ -641,6 +723,16 @@ function PersonDrawer({
           {/* ── Team fields ── */}
           {showTeamFields ? (
             <>
+              {/* ── Name ── */}
+              <label className="workspace-access-field">
+                <span className="workspace-access-field-label">Name</span>
+                <input
+                  value={draft.name}
+                  placeholder="Full name"
+                  onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
+                />
+              </label>
+
               {/* Portfolio */}
               {portfolios.length > 1 ? (
                 <label className="workspace-access-field">
@@ -787,18 +879,20 @@ function PersonDrawer({
           ) : null}
 
           {/* ── Scope tree (for managers/viewers) ── */}
-          <ScopeTreeField
-            draft={draft}
-            portfolios={portfolios}
-            onChange={onDraftChange}
-          />
+          {wantsLoginAccess ? (
+            <ScopeTreeField
+              draft={draft}
+              portfolios={portfolios}
+              onChange={onDraftChange}
+            />
+          ) : null}
 
           {/* ── Summary ── */}
           <p className="muted-copy workspace-access-effective-copy">{summaryText}</p>
 
           {/* ── Actions ── */}
           <div className="workspace-access-drawer-actions">
-            {!isCreate && draft.email ? (
+            {canRemovePerson ? (
               <button
                 type="button"
                 className="clear-link danger-link"
@@ -819,6 +913,7 @@ function PersonDrawer({
                   draft,
                   accessEntries,
                   portfolios,
+                  authEnabled,
                   isCreate ? undefined : currentEmail ?? undefined,
                 ) !== null
               }
@@ -832,8 +927,8 @@ function PersonDrawer({
           {/* ── Revoke confirm ── */}
           {revokeConfirming ? (
             <div className="workspace-access-confirm">
-              <strong>Remove {draft.name || draft.email}?</strong>
-              <p>This removes their access and team profile.</p>
+              <strong>Remove {draft.name || draft.email || 'this person'}?</strong>
+              <p>This removes their saved team profile and any sign-in access tied to it.</p>
               <div className="workspace-access-confirm-actions">
                 <button type="button" className="ghost-button" onClick={onCancelRevoke}>
                   Cancel
@@ -923,6 +1018,7 @@ export function PeopleSection({
       activeDraft,
       accessEntries,
       portfolios,
+      authEnabled,
       isCreate ? undefined : activeRow?.email ?? undefined,
     )
     if (msg) {
@@ -931,11 +1027,14 @@ export function PeopleSection({
     }
 
     const normalizedScope = getNormalizedScopeState(activeDraft, portfolios)
-    const normalizedEmail = activeDraft.email.trim().toLowerCase()
+    const normalizedEmail = normalizeEmail(activeDraft.email)
+    const wantsLoginAccess = authEnabled && activeDraft.hasLoginAccess && Boolean(normalizedEmail)
+    const linkedAccessEmail = wantsLoginAccess ? normalizedEmail : null
+    const activeAccessEmail = activeRow?.accessEntry?.email ?? null
 
     try {
-      // 1. Save access entry
-      if (authEnabled) {
+      // 1. Save or remove access entry
+      if (authEnabled && wantsLoginAccess) {
         await onAccessSave({
           email: normalizedEmail,
           roleMode: activeDraft.accessLevel,
@@ -944,11 +1043,13 @@ export function PeopleSection({
             : null,
           scopeMode: normalizedScope.scopeMode,
           scopeAssignments: normalizedScope.scopeAssignments,
-          previousEmail: activeRow?.email ?? undefined,
+          previousEmail: activeAccessEmail ?? undefined,
         })
+      } else if (authEnabled && activeAccessEmail) {
+        await onAccessDelete(activeAccessEmail)
       }
 
-      // 2. Save team member
+      // 2. Save or remove team member
       if (activeDraft.hasTeamProfile) {
         const targetPortfolioId =
           activeDraft.portfolioId || portfolios[0]?.id
@@ -976,9 +1077,11 @@ export function PeopleSection({
                       ...m,
                       name: activeDraft.name.trim() || m.name,
                       role: activeDraft.boardRole,
+                      accessEmail: linkedAccessEmail,
                       weeklyHours: activeDraft.weeklyHours,
                       hoursPerDay: activeDraft.hoursPerDay,
                       workingDays: activeDraft.workingDays,
+                      timezone: activeDraft.timezone,
                       wipCap: activeDraft.wipCap,
                       active: activeDraft.active,
                     }
@@ -993,14 +1096,15 @@ export function PeopleSection({
               ...portfolio,
               team: [
                 ...portfolio.team,
-                {
-                  id: activeRow.teamMember!.id,
-                  name: activeDraft.name.trim(),
-                  role: activeDraft.boardRole,
-                  weeklyHours: activeDraft.weeklyHours,
-                  hoursPerDay: activeDraft.hoursPerDay,
-                  workingDays: activeDraft.workingDays,
-                  timezone: activeDraft.timezone,
+                  {
+                    id: activeRow.teamMember!.id,
+                    name: activeDraft.name.trim(),
+                    role: activeDraft.boardRole,
+                    accessEmail: linkedAccessEmail,
+                    weeklyHours: activeDraft.weeklyHours,
+                    hoursPerDay: activeDraft.hoursPerDay,
+                    workingDays: activeDraft.workingDays,
+                    timezone: activeDraft.timezone,
                   wipCap: activeDraft.wipCap,
                   active: activeDraft.active,
                 },
@@ -1013,6 +1117,7 @@ export function PeopleSection({
             id: `member-${Date.now()}`,
             name: activeDraft.name.trim(),
             role: activeDraft.boardRole,
+            accessEmail: linkedAccessEmail,
             weeklyHours: activeDraft.weeklyHours,
             hoursPerDay: activeDraft.hoursPerDay,
             workingDays: activeDraft.workingDays,
@@ -1025,6 +1130,15 @@ export function PeopleSection({
             team: [...portfolio.team, newMember],
           }))
         }
+      } else if (
+        activeRow?.teamMember &&
+        activeRow.portfolioId &&
+        activeRow.memberIndex !== null
+      ) {
+        onPortfolioUpdate(activeRow.portfolioId, (portfolio) => ({
+          ...portfolio,
+          team: portfolio.team.filter((_, i) => i !== activeRow.memberIndex),
+        }))
       }
 
       // 3. Cleanup
@@ -1086,10 +1200,8 @@ export function PeopleSection({
     }
   }
 
-  const pendingKey = isCreate
-    ? '__new__'
-    : activeRow?.email ?? null
-  const isPending = accessPendingEmail === pendingKey
+  const pendingKey = getPendingAccessKey(activeDraft, activeRow, authEnabled)
+  const isPending = pendingKey !== null && accessPendingEmail === pendingKey
 
   return (
     <div className="settings-block">
@@ -1166,6 +1278,7 @@ export function PeopleSection({
       </div>
 
       <PersonDrawer
+        authEnabled={authEnabled}
         isOpen={Boolean(activeKey)}
         isCreate={isCreate}
         draft={activeDraft}

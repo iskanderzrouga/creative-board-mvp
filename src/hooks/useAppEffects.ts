@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -10,7 +11,9 @@ import {
   archiveEligibleCards,
   coerceAppState,
   getQuickCreateDefaults,
+  loadSyncMetadata,
   persistAppState,
+  persistSyncMetadata,
   type AppPage,
   type AppState,
   type GlobalSettings,
@@ -21,6 +24,7 @@ import {
   type StageId,
 } from '../board'
 import {
+  getRemoteStateSignature,
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
   saveRemoteAppState,
@@ -144,6 +148,7 @@ export function useAppEffects({
   const replaceStateRef = useRef(replaceState)
   const showToastRef = useRef(showToast)
   const lastSyncedAtRef = useRef(lastSyncedAt)
+  const lastRemoteStateSignatureRef = useRef<string | null>(null)
   const localPersistTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -154,7 +159,7 @@ export function useAppEffects({
     showToastRef.current = showToast
   }, [showToast])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     lastSyncedAtRef.current = lastSyncedAt
   }, [lastSyncedAt])
 
@@ -177,11 +182,25 @@ export function useAppEffects({
 
   useEffect(() => {
     function flushPendingLocalState() {
+      const currentRemoteStateSignature = getRemoteStateSignature(localFallbackStateRef.current)
+      const hasPendingRemoteChanges =
+        authEnabled &&
+        authStatus === 'signed-in' &&
+        accessStatus === 'granted' &&
+        remoteHydratedRef.current &&
+        currentRemoteStateSignature !== lastRemoteStateSignatureRef.current
+
       if (localPersistTimerRef.current !== null) {
         window.clearTimeout(localPersistTimerRef.current)
         localPersistTimerRef.current = null
         persistAppState(localFallbackStateRef.current)
       }
+
+      persistSyncMetadata({
+        lastSyncedAt: lastSyncedAtRef.current,
+        pendingRemoteBaseUpdatedAt: hasPendingRemoteChanges ? lastSyncedAtRef.current : null,
+        pendingRemoteSignature: hasPendingRemoteChanges ? currentRemoteStateSignature : null,
+      })
     }
 
     window.addEventListener('pagehide', flushPendingLocalState)
@@ -191,9 +210,9 @@ export function useAppEffects({
       window.removeEventListener('pagehide', flushPendingLocalState)
       window.removeEventListener('beforeunload', flushPendingLocalState)
     }
-  }, [localFallbackStateRef])
+  }, [accessStatus, authEnabled, authStatus, localFallbackStateRef, remoteHydratedRef])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     localFallbackStateRef.current = state
   }, [localFallbackStateRef, state])
 
@@ -207,8 +226,12 @@ export function useAppEffects({
 
     let cancelled = false
     setSyncStatus('loading')
+    const syncMetadata = loadSyncMetadata()
 
-    void loadOrCreateRemoteAppState(localFallbackStateRef.current)
+    void loadOrCreateRemoteAppState(localFallbackStateRef.current, {
+      pendingRemoteBaseUpdatedAt: syncMetadata.pendingRemoteBaseUpdatedAt,
+      pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
+    })
       .then((result) => {
         if (cancelled) {
           return
@@ -218,6 +241,14 @@ export function useAppEffects({
         remoteHydratedRef.current = true
         setLastSyncedAt(result.lastSyncedAt)
         setSyncStatus(result.lastSyncedAt ? 'synced' : 'local')
+        lastRemoteStateSignatureRef.current = result.remoteSignature
+        persistSyncMetadata({
+          lastSyncedAt: result.lastSyncedAt,
+          pendingRemoteBaseUpdatedAt: result.keptLocalChanges ? result.lastSyncedAt : null,
+          pendingRemoteSignature: result.keptLocalChanges
+            ? getRemoteStateSignature(result.state)
+            : null,
+        })
         setRemoteSyncErrorShown(false)
 
         if (result.seeded) {
@@ -262,12 +293,22 @@ export function useAppEffects({
 
     let cancelled = false
     let retryTimerId: number | null = null
+    const currentRemoteStateSignature = getRemoteStateSignature(state)
+
+    if (lastRemoteStateSignatureRef.current === currentRemoteStateSignature) {
+      return
+    }
 
     if (remoteSaveTimerRef.current !== null) {
       window.clearTimeout(remoteSaveTimerRef.current)
     }
 
     setSyncStatus('syncing')
+    persistSyncMetadata({
+      lastSyncedAt: lastSyncedAtRef.current,
+      pendingRemoteBaseUpdatedAt: lastSyncedAtRef.current,
+      pendingRemoteSignature: currentRemoteStateSignature,
+    })
     remoteSaveTimerRef.current = window.setTimeout(() => {
       remoteSaveTimerRef.current = null
 
@@ -278,7 +319,13 @@ export function useAppEffects({
               return
             }
 
+            lastRemoteStateSignatureRef.current = currentRemoteStateSignature
             setLastSyncedAt(updatedAt)
+            persistSyncMetadata({
+              lastSyncedAt: updatedAt,
+              pendingRemoteBaseUpdatedAt: null,
+              pendingRemoteSignature: null,
+            })
             setSyncStatus(updatedAt ? 'synced' : 'local')
             setRemoteSyncErrorShown(false)
           })
@@ -289,7 +336,13 @@ export function useAppEffects({
 
             if (error instanceof RemoteStateConflictError) {
               replaceStateRef.current(error.latestState)
+              lastRemoteStateSignatureRef.current = getRemoteStateSignature(error.latestState)
               setLastSyncedAt(error.latestUpdatedAt)
+              persistSyncMetadata({
+                lastSyncedAt: error.latestUpdatedAt,
+                pendingRemoteBaseUpdatedAt: null,
+                pendingRemoteSignature: null,
+              })
               setSyncStatus('synced')
               setRemoteSyncErrorShown(false)
               showToastRef.current(
@@ -360,14 +413,27 @@ export function useAppEffects({
         return
       }
 
-      void loadOrCreateRemoteAppState(localFallbackStateRef.current)
+      const syncMetadata = loadSyncMetadata()
+
+      void loadOrCreateRemoteAppState(localFallbackStateRef.current, {
+        pendingRemoteBaseUpdatedAt: syncMetadata.pendingRemoteBaseUpdatedAt,
+        pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
+      })
         .then((result) => {
           if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === lastSyncedAtRef.current) {
             return
           }
 
           replaceStateRef.current(result.state)
+          lastRemoteStateSignatureRef.current = result.remoteSignature
           setLastSyncedAt(result.lastSyncedAt)
+          persistSyncMetadata({
+            lastSyncedAt: result.lastSyncedAt,
+            pendingRemoteBaseUpdatedAt: result.keptLocalChanges ? result.lastSyncedAt : null,
+            pendingRemoteSignature: result.keptLocalChanges
+              ? getRemoteStateSignature(result.state)
+              : null,
+          })
           setSyncStatus('synced')
           setRemoteSyncErrorShown(false)
           showToastRef.current('Shared workspace refreshed.', 'blue')

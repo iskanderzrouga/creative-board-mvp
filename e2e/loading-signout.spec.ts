@@ -6,7 +6,7 @@ const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
 const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 const TEST_REMOTE_DELAY_KEY = 'editors-board-e2e-remote-delay-ms'
 
-test('authenticated loading shell appears before the shared board and sign out returns to team access', async ({
+test('authenticated loading shell appears before the shared board and sign out returns to sign-in', async ({
   page,
 }) => {
   await page.addInitScript(
@@ -36,8 +36,8 @@ test('authenticated loading shell appears before the shared board and sign out r
   await page.getByRole('button', { name: 'Expand sidebar' }).click()
   await page.getByRole('button', { name: 'Sign out' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
-  await expect(page.getByLabel('Work email')).toHaveValue('')
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByLabel('Email')).toHaveValue('')
   expect(
     await page.evaluate(
       (authEmailKey) => window.localStorage.getItem(authEmailKey),

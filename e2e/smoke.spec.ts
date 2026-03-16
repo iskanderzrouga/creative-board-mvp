@@ -2,6 +2,9 @@ import { expect, test, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 
 const STORAGE_KEY = 'creative-board-state'
+const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
+const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 
 function ensureArtifactsDir() {
   mkdirSync('artifacts/phase-1', { recursive: true })
@@ -9,9 +12,20 @@ function ensureArtifactsDir() {
 
 async function openFreshApp(page: Page) {
   await page.goto('/')
-  await page.evaluate((storageKey) => {
-    window.localStorage.removeItem(storageKey)
-  }, STORAGE_KEY)
+  await page.evaluate(
+    ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.setItem(authModeKey, 'disabled')
+      window.localStorage.removeItem(authEmailKey)
+      window.localStorage.removeItem(remoteStateKey)
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+    },
+  )
   await page.reload()
 }
 
@@ -44,11 +58,11 @@ test('owner can create a card and the state survives reload', async ({ page }) =
   await page.getByLabel('Title').fill('Phase 1 smoke test card')
   await page.getByRole('button', { name: 'Create', exact: true }).click()
 
-  await expect(page.getByText('Phase 1 smoke test card')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Phase 1 smoke test card/ })).toBeVisible()
 
   await page.reload()
 
-  await expect(page.getByText('Phase 1 smoke test card')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Phase 1 smoke test card/ })).toBeVisible()
 })
 
 test('viewer can access analytics while owner-only settings stay locked down', async ({

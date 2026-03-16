@@ -27,22 +27,30 @@ async function openFreshAuthGate(page: Page) {
   )
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
 }
 
-test('team access validates work email format before send', async ({ page }) => {
+test('sign-in validates email and password format before submit', async ({ page }) => {
   await openFreshAuthGate(page)
 
-  const emailInput = page.getByLabel('Work email')
-  const sendButton = page.getByRole('button', { name: 'Send Magic Link' })
+  const emailInput = page.getByLabel('Email')
+  const passwordInput = page.getByLabel('Password')
+  const signInButton = page.getByRole('button', { name: 'Sign in' })
 
   await emailInput.fill('team')
-  await expect(sendButton).toBeDisabled()
-  await expect(page.getByText('Enter a valid work email to continue.')).toBeVisible()
+  await passwordInput.fill('secret1')
+  await expect(signInButton).toBeDisabled()
+  await expect(page.getByText('Enter a valid email address.')).toBeVisible()
 
   await emailInput.fill('team@example.com')
-  await expect(sendButton).toBeEnabled()
-  await expect(page.getByText('Enter a valid work email to continue.')).toHaveCount(0)
+  await passwordInput.fill('123')
+  await expect(signInButton).toBeDisabled()
+  await expect(page.getByText('Password must be at least 6 characters.')).toBeVisible()
+
+  await passwordInput.fill('secret1')
+  await expect(signInButton).toBeEnabled()
+  await expect(page.getByText('Enter a valid email address.')).toHaveCount(0)
+  await expect(page.getByText('Password must be at least 6 characters.')).toHaveCount(0)
 })
 
 test('authenticated team login syncs the shared workspace across pages', async ({
@@ -68,10 +76,11 @@ test('authenticated team login syncs the shared workspace across pages', async (
   )
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Team access' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
 
-  await page.getByLabel('Work email').fill('team@example.com')
-  await page.getByRole('button', { name: 'Send Magic Link' }).dispatchEvent('click')
+  await page.getByLabel('Email').fill('team@example.com')
+  await page.getByLabel('Password').fill('secret1')
+  await page.getByRole('button', { name: 'Sign in' }).click()
 
   await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
   await expect(page.getByText('team@example.com')).toBeVisible()
@@ -112,4 +121,57 @@ test('authenticated team login syncs the shared workspace across pages', async (
   await expect(secondPage.getByText('team@example.com')).toBeVisible()
 
   await context.close()
+})
+
+test('opening People does not trigger a remote conflict when only local view state changed', async ({
+  page,
+}) => {
+  await page.addInitScript(
+    ({ storageKey, authModeKey, remoteStateKey, authEmailKey }) => {
+      window.localStorage.setItem(authModeKey, 'enabled')
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.removeItem(remoteStateKey)
+      window.localStorage.removeItem(authEmailKey)
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+    },
+  )
+
+  await page.goto('/')
+  await page.getByLabel('Email').fill('team@example.com')
+  await page.getByLabel('Password').fill('secret1')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
+
+  await page.evaluate((remoteStateKey) => {
+    const raw = window.localStorage.getItem(remoteStateKey)
+    if (!raw) {
+      return
+    }
+
+    const parsed = JSON.parse(raw) as { state: unknown; updatedAt: string }
+    window.localStorage.setItem(
+      remoteStateKey,
+      JSON.stringify({
+        ...parsed,
+        updatedAt: '2099-01-01T00:00:00.000Z',
+      }),
+    )
+  }, TEST_REMOTE_STATE_KEY)
+
+  await page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('button', { name: 'People', exact: true }).click()
+
+  await expect(page.getByRole('heading', { name: 'People' })).toBeVisible()
+  await page.waitForTimeout(1200)
+  await expect(
+    page.getByText(
+      'Another session saved newer workspace changes. The latest shared version has been loaded.',
+    ),
+  ).toHaveCount(0)
 })

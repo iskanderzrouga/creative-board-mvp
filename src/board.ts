@@ -6,7 +6,14 @@ const REFERENCE_NOW_ISO = '2026-03-11T10:00:00Z'
 const DEFAULT_WORKDAY_END_MINUTES = 18 * 60
 
 export const STORAGE_KEY = 'creative-board-state'
+export const SYNC_METADATA_KEY = 'creative-board-sync-metadata'
 export const STATE_VERSION = 3
+
+export interface SyncMetadata {
+  lastSyncedAt: string | null
+  pendingRemoteBaseUpdatedAt: string | null
+  pendingRemoteSignature: string | null
+}
 
 export const STAGES = [
   'Backlog',
@@ -181,6 +188,7 @@ export interface TeamMember {
   id: string
   name: string
   role: string
+  accessEmail?: string | null
   weeklyHours: number | null
   hoursPerDay: number | null
   workingDays: WorkingDay[]
@@ -747,6 +755,7 @@ function createDefaultTeamMember(
     id,
     name,
     role,
+    accessEmail: null,
     weeklyHours,
     hoursPerDay,
     workingDays: getDefaultWorkingDays(),
@@ -1815,17 +1824,6 @@ export function createSeedState(): AppState {
   }
 }
 
-function ensureManagerMember(portfolio: Portfolio) {
-  if (portfolio.team.some((member) => isManagerRole(member.role))) {
-    return portfolio
-  }
-
-  return {
-    ...portfolio,
-    team: [createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null), ...portfolio.team],
-  }
-}
-
 function normalizeTaskLibrary(raw: TaskType[] | undefined) {
   const seed = createSeedTaskLibrary()
   const source = Array.isArray(raw) && raw.length > 0 ? raw : seed
@@ -1845,6 +1843,15 @@ function normalizeTaskLibrary(raw: TaskType[] | undefined) {
   }
 
   return taskLibrary
+}
+
+function normalizeTeamMemberAccessEmail(value: unknown) {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase()
+  return normalized || null
 }
 
 function normalizeRevisionReasons(raw: RevisionReason[] | undefined) {
@@ -1890,34 +1897,34 @@ function normalizePortfolio(
     }
   })
 
-  const normalizedTeam = ensureManagerMember({
-    ...portfolio,
-    team: portfolio.team.map((member) => ({
-      ...member,
-      weeklyHours:
-        typeof member.weeklyHours === 'number'
-          ? member.weeklyHours
-          : isManagerRole(member.role)
-            ? null
-            : settings.capacity.defaultWeeklyHours,
-      hoursPerDay:
-        typeof member.hoursPerDay === 'number'
-          ? member.hoursPerDay
-          : isManagerRole(member.role)
-            ? null
-            : 8,
-      workingDays:
-        Array.isArray(member.workingDays) && member.workingDays.length > 0
-          ? member.workingDays
-          : getDefaultWorkingDays(),
-      timezone: getResolvedTimezone((member as TeamMember & { timezone?: string | null }).timezone),
-      wipCap:
-        member.wipCap === undefined
-          ? (member as unknown as { wipLimit?: number | null }).wipLimit ?? null
-          : member.wipCap,
-      active: member.active ?? true,
-    })),
-  }).team
+  const normalizedTeam = portfolio.team.map((member) => ({
+    ...member,
+    weeklyHours:
+      typeof member.weeklyHours === 'number'
+        ? member.weeklyHours
+        : isManagerRole(member.role)
+          ? null
+          : settings.capacity.defaultWeeklyHours,
+    accessEmail: normalizeTeamMemberAccessEmail(
+      (member as TeamMember & { accessEmail?: string | null }).accessEmail,
+    ),
+    hoursPerDay:
+      typeof member.hoursPerDay === 'number'
+        ? member.hoursPerDay
+        : isManagerRole(member.role)
+          ? null
+          : 8,
+    workingDays:
+      Array.isArray(member.workingDays) && member.workingDays.length > 0
+        ? member.workingDays
+        : getDefaultWorkingDays(),
+    timezone: getResolvedTimezone((member as TeamMember & { timezone?: string | null }).timezone),
+    wipCap:
+      member.wipCap === undefined
+        ? (member as unknown as { wipLimit?: number | null }).wipLimit ?? null
+        : member.wipCap,
+    active: member.active ?? true,
+  }))
 
   const normalizedCards = reindexCards(
     portfolio.cards.map((rawCard) => {
@@ -2097,6 +2104,38 @@ export function persistAppState(state: AppState) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 
+export function loadSyncMetadata(): SyncMetadata {
+  if (typeof window === 'undefined') {
+    return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SYNC_METADATA_KEY)
+    if (!raw) {
+      return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+    }
+
+    const parsed = JSON.parse(raw) as Partial<SyncMetadata>
+    return {
+      lastSyncedAt: typeof parsed.lastSyncedAt === 'string' ? parsed.lastSyncedAt : null,
+      pendingRemoteBaseUpdatedAt:
+        typeof parsed.pendingRemoteBaseUpdatedAt === 'string' ? parsed.pendingRemoteBaseUpdatedAt : null,
+      pendingRemoteSignature:
+        typeof parsed.pendingRemoteSignature === 'string' ? parsed.pendingRemoteSignature : null,
+    }
+  } catch {
+    return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+  }
+}
+
+export function persistSyncMetadata(metadata: SyncMetadata) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(SYNC_METADATA_KEY, JSON.stringify(metadata))
+}
+
 export function createNotification(
   type: NotificationType,
   message: string,
@@ -2262,13 +2301,6 @@ export function getTeamMemberRemovalBlocker(portfolio: Portfolio, memberIndex: n
   const member = portfolio.team[memberIndex]
   if (!member) {
     return 'That teammate profile no longer exists.'
-  }
-
-  if (
-    isManagerRole(member.role) &&
-    portfolio.team.filter((item, index) => index !== memberIndex && isManagerRole(item.role)).length === 0
-  ) {
-    return 'Each portfolio needs at least one manager.'
   }
 
   const assignedCards = portfolio.cards.filter((card) => card.owner === member.name).length

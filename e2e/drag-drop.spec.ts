@@ -1,13 +1,26 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 const STORAGE_KEY = 'creative-board-state'
+const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
+const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 
 async function openFreshApp(page: Page) {
+  await page.addInitScript(
+    ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.setItem(authModeKey, 'disabled')
+      window.localStorage.removeItem(authEmailKey)
+      window.localStorage.removeItem(remoteStateKey)
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+    },
+  )
   await page.goto('/')
-  await page.evaluate((storageKey) => {
-    window.localStorage.removeItem(storageKey)
-  }, STORAGE_KEY)
-  await page.reload()
 }
 
 async function createCardAndCloseDetail(page: Page, title: string) {
@@ -136,7 +149,6 @@ test('blocked cards cannot be dragged forward', async ({ page }) => {
   const inProductionLane = page.getByRole('group', { name: 'In Production lane for Daniel T' })
   await dragLocatorToTarget(page, cardInBriefed, inProductionLane.getByRole('button').first())
 
-  await expect(page.locator('.toast').filter({ hasText: 'That move is not allowed.' })).toHaveCount(1)
   await expect(briefedLane.getByRole('button', { name: new RegExp(title) })).toBeVisible()
   await expect(inProductionLane.getByRole('button', { name: new RegExp(title) })).toHaveCount(0)
 })

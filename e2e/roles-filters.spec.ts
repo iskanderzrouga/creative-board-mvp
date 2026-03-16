@@ -1,13 +1,26 @@
 import { expect, test, type Page } from '@playwright/test'
 
 const STORAGE_KEY = 'creative-board-state'
+const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
+const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
+const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 
 async function openFreshApp(page: Page) {
+  await page.addInitScript(
+    ({ storageKey, authModeKey, authEmailKey, remoteStateKey }) => {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.setItem(authModeKey, 'disabled')
+      window.localStorage.removeItem(authEmailKey)
+      window.localStorage.removeItem(remoteStateKey)
+    },
+    {
+      storageKey: STORAGE_KEY,
+      authModeKey: TEST_AUTH_MODE_KEY,
+      authEmailKey: TEST_AUTH_EMAIL_KEY,
+      remoteStateKey: TEST_REMOTE_STATE_KEY,
+    },
+  )
   await page.goto('/')
-  await page.evaluate((storageKey) => {
-    window.localStorage.removeItem(storageKey)
-  }, STORAGE_KEY)
-  await page.reload()
 }
 
 async function setLocalRole(
@@ -61,7 +74,7 @@ async function dragLocatorToTarget(page: Page, source: ReturnType<Page['locator'
   await page.waitForTimeout(250)
 }
 
-test('role switching keeps owner-only settings locked down while contributor focus stays narrow', async ({
+test('role switching keeps viewer locked down while contributor keeps profile and board access', async ({
   page,
 }) => {
   await openFreshApp(page)
@@ -88,9 +101,19 @@ test('role switching keeps owner-only settings locked down while contributor foc
 
   await setLocalRole(page, 'contributor', 'Daniel T')
 
-  await expect(settingsNav).toBeDisabled()
-  await expect(analyticsNav).toBeDisabled()
-  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+  await expect(settingsNav).toBeEnabled()
+  await expect(analyticsNav).toBeEnabled()
+
+  await settingsNav.click()
+  await expect(page.getByRole('heading', { name: 'My Profile' })).toBeVisible()
+  await expect(
+    page.locator('label').filter({ hasText: 'Name' }).locator('input[value="Daniel T"]'),
+  ).toBeVisible()
+
+  await sidebarNav.getByRole('button', { name: 'Board', exact: true }).click()
+  await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
+  await analyticsNav.click()
+  await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible()
 })
 
 test('manager search and brand filters support multi-select and reset', async ({ page }) => {
@@ -154,7 +177,7 @@ test('contributor can update owned card content and move it forward one stage', 
   await openFreshApp(page)
 
   await setLocalRole(page, 'contributor', 'Daniel T')
-  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
 
   await page.getByRole('button', { name: /PX0020 PRICE \/ Color/ }).click()
   const titleInput = page.getByLabel('Card title')
@@ -162,8 +185,9 @@ test('contributor can update owned card content and move it forward one stage', 
   await titleInput.fill('PX0020 Editor Updated')
   await page.getByRole('button', { name: 'Details' }).click()
 
-  await page.getByPlaceholder('Link label').fill('Editor note')
-  await page.getByPlaceholder('https://').fill('https://example.com/editor-note')
+  const addLinkForm = page.locator('.add-link-form')
+  await addLinkForm.getByPlaceholder('Link label').fill('Editor note')
+  await addLinkForm.getByPlaceholder('https://').fill('https://example.com/editor-note')
   await page.getByRole('button', { name: 'Add link' }).click()
   await expect(page.getByText('Editor note')).toBeVisible()
 
@@ -180,7 +204,7 @@ test('contributor can update owned card content and move it forward one stage', 
 
   await expect(page.locator('.toast').filter({ hasText: /→ In Production/ })).toHaveCount(1)
   await expect(inProductionLane.getByRole('button', { name: /PX0020 Editor Updated/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
 })
 
 test('contributor in launch ops can move ready cards to live', async ({ page }) => {
@@ -188,8 +212,8 @@ test('contributor in launch ops can move ready cards to live', async ({ page }) 
 
   await setLocalRole(page, 'contributor', 'Ivan')
 
-  await expect(page.getByRole('button', { name: '+ Add card' })).toHaveCount(0)
-  await expect(page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '+ Add card' })).toBeVisible()
+  await expect(page.locator('.sidebar-nav').getByRole('button', { name: 'Settings', exact: true })).toBeEnabled()
 
   const readyCard = page.getByRole('button', { name: /TC0020 LongLasting/ })
   const liveLane = page.getByRole('group', { name: 'Live lane' })

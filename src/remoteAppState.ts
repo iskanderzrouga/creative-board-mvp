@@ -18,23 +18,71 @@ interface StoredRemoteState {
   updatedAt: string
 }
 
+function getRemoteDefaultPortfolioId(state: AppState) {
+  if (state.portfolios.some((portfolio) => portfolio.id === state.settings.general.defaultPortfolioId)) {
+    return state.settings.general.defaultPortfolioId
+  }
+
+  return state.portfolios[0]?.id ?? ''
+}
+
+function createRemoteStateSnapshot(state: AppState): AppState {
+  return {
+    ...state,
+    activePortfolioId: getRemoteDefaultPortfolioId(state),
+    activeRole: {
+      mode: 'owner',
+      editorId: null,
+    },
+    activePage: 'board',
+    notifications: [],
+  }
+}
+
+export function getRemoteStateSignature(state: AppState) {
+  return JSON.stringify(createRemoteStateSnapshot(state))
+}
+
+export function mergeRemoteAppStateWithLocalState(remoteState: AppState, localState: AppState): AppState {
+  const activePortfolioId = remoteState.portfolios.some(
+    (portfolio) => portfolio.id === localState.activePortfolioId,
+  )
+    ? localState.activePortfolioId
+    : getRemoteDefaultPortfolioId(remoteState)
+
+  return {
+    ...remoteState,
+    activePortfolioId,
+    activeRole: localState.activeRole,
+    activePage: localState.activePage,
+    notifications: localState.notifications,
+  }
+}
+
 export function createWorkspaceStateSeedRow(workspaceId: string, state: AppState) {
   return {
     workspace_id: workspaceId,
-    state,
+    state: createRemoteStateSnapshot(state),
   }
 }
 
 export function createWorkspaceStateUpdateRow(state: AppState) {
   return {
-    state,
+    state: createRemoteStateSnapshot(state),
   }
 }
 
 export interface RemoteAppStateResult {
   state: AppState
   lastSyncedAt: string | null
+  remoteSignature: string
+  keptLocalChanges: boolean
   seeded: boolean
+}
+
+interface LoadRemoteAppStateOptions {
+  pendingRemoteBaseUpdatedAt?: string | null
+  pendingRemoteSignature?: string | null
 }
 
 export class RemoteStateConflictError extends Error {
@@ -80,7 +128,7 @@ function setStoredE2ERemoteState(state: AppState, updatedAt: string) {
   }
 
   const payload: StoredRemoteState = {
-    state,
+    state: createRemoteStateSnapshot(state),
     updatedAt,
   }
 
@@ -126,7 +174,10 @@ export function isRemotePersistenceConfigured() {
 
 export async function loadOrCreateRemoteAppState(
   fallbackState: AppState,
+  options: LoadRemoteAppStateOptions = {},
 ): Promise<RemoteAppStateResult> {
+  const fallbackSignature = getRemoteStateSignature(fallbackState)
+
   if (isE2ERemoteMode()) {
     const delayMs = getE2ERemoteDelayMs()
     if (delayMs > 0) {
@@ -135,9 +186,18 @@ export async function loadOrCreateRemoteAppState(
 
     const stored = getStoredE2ERemoteState()
     if (stored) {
+      const remoteSignature = getRemoteStateSignature(stored.state)
+      const shouldKeepLocalChanges =
+        options.pendingRemoteBaseUpdatedAt === stored.updatedAt &&
+        options.pendingRemoteSignature === fallbackSignature
+
       return {
-        state: stored.state,
+        state: shouldKeepLocalChanges
+          ? fallbackState
+          : mergeRemoteAppStateWithLocalState(stored.state, fallbackState),
         lastSyncedAt: stored.updatedAt,
+        remoteSignature,
+        keptLocalChanges: shouldKeepLocalChanges,
         seeded: false,
       }
     }
@@ -147,6 +207,8 @@ export async function loadOrCreateRemoteAppState(
     return {
       state: fallbackState,
       lastSyncedAt: updatedAt,
+      remoteSignature: fallbackSignature,
+      keptLocalChanges: false,
       seeded: true,
     }
   }
@@ -156,6 +218,8 @@ export async function loadOrCreateRemoteAppState(
     return {
       state: fallbackState,
       lastSyncedAt: null,
+      remoteSignature: fallbackSignature,
+      keptLocalChanges: false,
       seeded: false,
     }
   }
@@ -163,9 +227,19 @@ export async function loadOrCreateRemoteAppState(
   const data = await getRemoteWorkspaceStateRow()
 
   if (data) {
+    const remoteState = coerceAppState(data.state)
+    const remoteSignature = getRemoteStateSignature(remoteState)
+    const shouldKeepLocalChanges =
+      options.pendingRemoteBaseUpdatedAt === data.updated_at &&
+      options.pendingRemoteSignature === fallbackSignature
+
     return {
-      state: coerceAppState(data.state),
+      state: shouldKeepLocalChanges
+        ? fallbackState
+        : mergeRemoteAppStateWithLocalState(remoteState, fallbackState),
       lastSyncedAt: data.updated_at,
+      remoteSignature,
+      keptLocalChanges: shouldKeepLocalChanges,
       seeded: false,
     }
   }
@@ -180,9 +254,12 @@ export async function loadOrCreateRemoteAppState(
   if (upsertError) {
     const latest = await getRemoteWorkspaceStateRow()
     if (latest) {
+      const latestState = coerceAppState(latest.state)
       return {
-        state: coerceAppState(latest.state),
+        state: mergeRemoteAppStateWithLocalState(latestState, fallbackState),
         lastSyncedAt: latest.updated_at,
+        remoteSignature: getRemoteStateSignature(latestState),
+        keptLocalChanges: false,
         seeded: false,
       }
     }
@@ -192,6 +269,8 @@ export async function loadOrCreateRemoteAppState(
   return {
     state: fallbackState,
     lastSyncedAt: seededRow?.updated_at ?? null,
+    remoteSignature: fallbackSignature,
+    keptLocalChanges: false,
     seeded: true,
   }
 }
@@ -202,7 +281,10 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
   if (isE2ERemoteMode()) {
     const stored = getStoredE2ERemoteState()
     if (stored && expectedUpdatedAt && stored.updatedAt !== expectedUpdatedAt) {
-      throw new RemoteStateConflictError(stored.state, stored.updatedAt)
+      throw new RemoteStateConflictError(
+        mergeRemoteAppStateWithLocalState(stored.state, state),
+        stored.updatedAt,
+      )
     }
     setStoredE2ERemoteState(state, updatedAt)
     return updatedAt
@@ -236,7 +318,10 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
 
   const latest = await getRemoteWorkspaceStateRow()
   if (latest) {
-    throw new RemoteStateConflictError(coerceAppState(latest.state), latest.updated_at)
+    throw new RemoteStateConflictError(
+      mergeRemoteAppStateWithLocalState(coerceAppState(latest.state), state),
+      latest.updated_at,
+    )
   }
 
   const loaded = await loadOrCreateRemoteAppState(state)

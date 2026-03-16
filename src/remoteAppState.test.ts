@@ -6,6 +6,7 @@ import {
 import {
   createWorkspaceStateSeedRow,
   createWorkspaceStateUpdateRow,
+  getRemoteStateSignature,
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
   saveRemoteAppState,
@@ -54,7 +55,7 @@ describe('remote app state sync', () => {
     Reflect.deleteProperty(globalThis, 'window')
   })
 
-  it('loads, saves, and reloads remote state in e2e mode', async () => {
+  it('loads, saves, and reloads shared remote state while keeping local view state local', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
 
@@ -64,6 +65,13 @@ describe('remote app state sync', () => {
     const updatedState = {
       ...seed,
       activePage: 'settings' as const,
+      settings: {
+        ...seed.settings,
+        general: {
+          ...seed.settings.general,
+          appName: 'Shared remote workspace',
+        },
+      },
     }
 
     const updatedAt = await saveRemoteAppState(updatedState, firstLoad.lastSyncedAt)
@@ -71,18 +79,26 @@ describe('remote app state sync', () => {
 
     expect(updatedAt).toBeTruthy()
     expect(secondLoad.seeded).toBe(false)
-    expect(secondLoad.state.activePage).toBe('settings')
-    expect(window.localStorage.getItem(E2E_REMOTE_STATE_KEY)).toContain('"activePage":"settings"')
+    expect(secondLoad.state.settings.general.appName).toBe('Shared remote workspace')
+    expect(secondLoad.state.activePage).toBe(seed.activePage)
+    expect(window.localStorage.getItem(E2E_REMOTE_STATE_KEY)).toContain('"appName":"Shared remote workspace"')
+    expect(window.localStorage.getItem(E2E_REMOTE_STATE_KEY)).toContain('"activePage":"board"')
   })
 
-  it('throws a conflict error when the stored remote timestamp has moved on', async () => {
+  it('throws a conflict error when the stored remote timestamp has moved on while preserving local view state', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
     const originalUpdatedAt = firstLoad.lastSyncedAt
 
     const otherSessionState = {
       ...seed,
-      activePage: 'workload' as const,
+      settings: {
+        ...seed.settings,
+        general: {
+          ...seed.settings.general,
+          appName: 'Other session change',
+        },
+      },
     }
 
     window.localStorage.setItem(
@@ -103,25 +119,92 @@ describe('remote app state sync', () => {
       )
     } catch (error) {
       expect(error).toBeInstanceOf(RemoteStateConflictError)
-      expect((error as RemoteStateConflictError).latestState.activePage).toBe('workload')
+      expect((error as RemoteStateConflictError).latestState.settings.general.appName).toBe(
+        'Other session change',
+      )
+      expect((error as RemoteStateConflictError).latestState.activePage).toBe('analytics')
       return
     }
 
     throw new Error('Expected a remote state conflict error.')
   })
 
-  it('omits client-owned timestamps from real workspace_state write payloads', () => {
+  it('keeps newer local shared changes on reload when the remote version has not changed yet', async () => {
     const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const localDeletion = {
+      ...seed,
+      portfolios: seed.portfolios.map((portfolio, index) =>
+        index !== 0
+          ? portfolio
+          : {
+              ...portfolio,
+              team: portfolio.team.filter((member) => member.name !== 'Naomi'),
+            },
+      ),
+    }
+
+    const reloaded = await loadOrCreateRemoteAppState(localDeletion, {
+      pendingRemoteBaseUpdatedAt: firstLoad.lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(localDeletion),
+    })
+
+    expect(reloaded.state.portfolios[0]?.team.some((member) => member.name === 'Naomi')).toBe(false)
+    expect(reloaded.remoteSignature).toBe(getRemoteStateSignature(seed))
+    expect(reloaded.keptLocalChanges).toBe(true)
+
+    const updatedAt = await saveRemoteAppState(reloaded.state, reloaded.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+
+    expect(updatedAt).toBeTruthy()
+    expect(synced.state.portfolios[0]?.team.some((member) => member.name === 'Naomi')).toBe(false)
+  })
+
+  it('omits client-owned timestamps and local view state from real workspace_state write payloads', () => {
+    const seed = {
+      ...createSeedState(),
+      activePage: 'settings' as const,
+      notifications: [
+        {
+          id: 'notif-1',
+          type: 'card_moved' as const,
+          message: 'Moved a card',
+          cardId: 'card-1',
+          portfolioId: 'portfolio-brandlab',
+          createdAt: '2026-03-16T00:00:00.000Z',
+          read: false,
+        },
+      ],
+    }
 
     expect(createWorkspaceStateSeedRow('primary', seed)).toEqual({
       workspace_id: 'primary',
-      state: seed,
+      state: {
+        ...seed,
+        activePortfolioId: seed.settings.general.defaultPortfolioId,
+        activeRole: {
+          mode: 'owner',
+          editorId: null,
+        },
+        activePage: 'board',
+        notifications: [],
+      },
     })
     expect(createWorkspaceStateSeedRow('primary', seed)).not.toHaveProperty('updated_at')
 
     expect(createWorkspaceStateUpdateRow(seed)).toEqual({
-      state: seed,
+      state: {
+        ...seed,
+        activePortfolioId: seed.settings.general.defaultPortfolioId,
+        activeRole: {
+          mode: 'owner',
+          editorId: null,
+        },
+        activePage: 'board',
+        notifications: [],
+      },
     })
     expect(createWorkspaceStateUpdateRow(seed)).not.toHaveProperty('updated_at')
+    expect(getRemoteStateSignature(seed)).toBe(getRemoteStateSignature({ ...seed, activePage: 'board' }))
   })
 })
