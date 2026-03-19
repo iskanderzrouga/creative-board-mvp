@@ -1595,6 +1595,7 @@ button {
 
 .dashboard-section-title {
   margin: 0 0 12px;
+  color: var(--text-strong);
   font-size: 16px;
   font-weight: 600;
 }
@@ -1618,13 +1619,14 @@ button {
 }
 
 .overview-card strong {
+  color: var(--text-strong);
   font-size: 14px;
   text-transform: uppercase;
 }
 
 .overview-card span {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 .overview-progress {
@@ -1664,7 +1666,7 @@ button {
   border: 1px solid var(--line-shell);
   border-radius: 999px;
   background: var(--surface-overlay);
-  color: var(--muted-strong);
+  color: var(--text);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1712,7 +1714,7 @@ button {
   border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow-card);
-  color: var(--text);
+  color: var(--text-strong);
   text-align: left;
 }
 
@@ -1756,12 +1758,13 @@ button {
   align-items: center;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
+  color: var(--text);
   font-size: 13px;
 }
 
 .dashboard-table-head {
   background: var(--surface);
-  color: var(--muted);
+  color: var(--muted-strong);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -2039,7 +2042,7 @@ button {
   border: none;
   border-radius: 12px;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-strong);
   font-size: 13px;
   font-weight: 600;
   justify-content: flex-start;
@@ -2054,6 +2057,7 @@ button {
   background: var(--surface-shell);
   color: var(--text-strong);
   box-shadow: var(--shadow-lg);
+  outline: 1px solid var(--line-shell);
 }
 
 .sidebar-nav-item:disabled {
@@ -3182,8 +3186,17 @@ button {
   gap: 4px;
 }
 
+.settings-section-header h2,
 .settings-section-header h3 {
   margin: 0;
+  color: var(--text-strong);
+}
+
+.settings-section-header h2 {
+  font-size: 18px;
+}
+
+.settings-section-header h3 {
   font-size: 16px;
 }
 
@@ -3221,12 +3234,13 @@ button {
   border-left: 3px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--muted-strong);
+  color: var(--text);
   text-align: left;
 }
 
 .settings-tab:hover {
   background: rgba(15, 23, 42, 0.04);
+  color: var(--text-strong);
 }
 
 .settings-tab.is-active {
@@ -4316,6 +4330,7 @@ button {
 
 .workload-section-head h2 {
   margin: 0;
+  color: var(--text-strong);
   font-size: 16px;
 }
 
@@ -4352,7 +4367,7 @@ button {
 .workload-row-name {
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--text-strong);
   font-size: 15px;
   font-weight: 700;
   text-align: left;
@@ -4373,7 +4388,7 @@ button {
 }
 
 .workload-breakdown-line {
-  color: var(--muted);
+  color: var(--muted-strong);
   font-size: 13px;
 }
 
