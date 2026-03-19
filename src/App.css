@@ -369,8 +369,8 @@ button {
 
 .filter-pill.is-active.is-all,
 .editor-pill.is-active {
-  border-color: var(--text);
-  background: var(--text);
+  border-color: var(--text-strong);
+  background: var(--text-strong);
   color: var(--surface);
 }
 
@@ -421,7 +421,7 @@ button {
   border: 1px solid var(--line-shell);
   border-radius: 999px;
   background: var(--surface-overlay);
-  color: var(--muted-strong);
+  color: var(--text-strong);
   font-size: 12px;
   font-weight: 600;
 }
@@ -2041,8 +2041,8 @@ button {
 }
 
 .sidebar-nav-item.is-active {
-  background: var(--text);
-  color: var(--surface);
+  background: var(--surface-shell);
+  color: var(--text-strong);
   box-shadow: var(--shadow-lg);
 }
 
@@ -2274,13 +2274,14 @@ button {
 .local-mode-field {
   display: grid;
   gap: 4px;
-  color: var(--muted-strong);
+  color: var(--text-strong);
   font-size: 11px;
   font-weight: 700;
 }
 
 .local-mode-field span {
   letter-spacing: 0.08em;
+  color: var(--text-strong);
   text-transform: uppercase;
 }
 
@@ -2321,6 +2322,7 @@ button {
 
 .onboarding-copy strong {
   font-size: 15px;
+  color: var(--text-strong);
 }
 
 .onboarding-copy p {
@@ -2335,6 +2337,18 @@ button {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.page-header .primary-button,
+.onboarding-actions .primary-button {
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+.page-header .primary-button:hover:not(:disabled),
+.onboarding-actions .primary-button:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--text-strong);
 }
 
 .page-header {
