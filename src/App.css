@@ -2995,7 +2995,7 @@ button {
   transform: translate(-50%, -50%);
   display: grid;
   gap: 16px;
-  color: var(--text);
+  color: var(--muted);
 }
 
 .shortcut-modal {
@@ -3070,7 +3070,7 @@ button {
   display: grid;
   gap: 6px;
   font-size: 12px;
-  color: var(--text);
+  color: var(--muted);
 }
 
 .quick-create-brand-toggle {
@@ -3103,7 +3103,7 @@ button {
   padding: 0;
   font-size: 12px;
   font-weight: 700;
-  color: var(--text);
+  color: var(--muted);
 }
 
 .radio-option {
@@ -3114,7 +3114,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-elevated);
-  color: var(--text);
+  color: var(--muted);
 }
 
 .quick-create-modal input,
