@@ -463,6 +463,18 @@ function App() {
     })
     return Array.from(uniqueBrands)
   }, [scopedPortfolios])
+  const backlogBrandStyles = useMemo(() => {
+    const styles: Record<string, { background: string; color: string }> = {}
+    scopedPortfolios.forEach((portfolio) => {
+      portfolio.brands.forEach((brand) => {
+        styles[brand.name] = {
+          background: brand.surfaceColor,
+          color: brand.textColor,
+        }
+      })
+    })
+    return styles
+  }, [scopedPortfolios])
   const localModeBanner = !authEnabled ? (
     <section className="local-mode-banner" role="status" aria-live="polite">
       <div className="local-mode-copy">
@@ -1833,6 +1845,7 @@ function App() {
           <BacklogPage
             backlog={backlogState}
             brandOptions={backlogBrandOptions}
+            brandStyles={backlogBrandStyles}
             actorName={userDisplayName}
             canCreate={canAccessBacklog}
             headerUtilityContent={headerUtilityContent}

@@ -5372,22 +5372,32 @@ button {
   gap: 16px;
 }
 
+.backlog-page-subtitle {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .backlog-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(220px, 1fr));
-  gap: 12px;
-  align-items: start;
+  grid-template-columns: repeat(5, 272px);
+  gap: 8px;
+  align-items: stretch;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
 .backlog-column {
   display: grid;
-  gap: 12px;
-  min-height: 420px;
-  padding: 14px;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  min-height: min(76vh, calc(100vh - 190px));
+  padding: 10px;
   border: 1px solid var(--line-shell);
-  border-radius: 16px;
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
+  border-radius: 8px;
+  background: var(--column);
+  box-shadow: var(--shadow-lg);
 }
 
 .backlog-column-header {
@@ -5421,10 +5431,16 @@ button {
 .backlog-ops-groups {
   display: grid;
   gap: 10px;
-  min-height: 100%;
+  min-height: 0;
+}
+
+.backlog-ops-groups {
+  grid-template-rows: repeat(3, minmax(0, 1fr));
 }
 
 .backlog-drop-zone {
+  align-content: start;
+  min-height: 0;
   padding: 10px;
   border: 1px dashed var(--line-shell);
   border-radius: 14px;
@@ -5485,13 +5501,20 @@ button {
 
 .backlog-card-topline {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .backlog-card-topline strong {
   color: var(--text-strong);
   font-size: 14px;
   line-height: 1.4;
+}
+
+.backlog-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .backlog-task-badge {
@@ -5529,16 +5552,8 @@ button {
 }
 
 .backlog-brand-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--surface-shell);
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 500;
 }
 
 .backlog-create-modal {

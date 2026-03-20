@@ -31,6 +31,7 @@ import { XIcon } from './icons/AppIcons'
 interface BacklogPageProps {
   backlog: BacklogState
   brandOptions: string[]
+  brandStyles: Record<string, { background: string; color: string }>
   actorName: string
   canCreate: boolean
   headerUtilityContent?: ReactNode
@@ -97,10 +98,17 @@ function getDropTargetFromId(value: string): BacklogDropTarget | null {
   return null
 }
 
-function BacklogCardItem({ card }: { card: BacklogCard }) {
+function BacklogCardItem({
+  card,
+  brandStyles,
+}: {
+  card: BacklogCard
+  brandStyles: Record<string, { background: string; color: string }>
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card.id,
   })
+  const brandStyle = brandStyles[card.brand]
 
   return (
     <button
@@ -115,10 +123,14 @@ function BacklogCardItem({ card }: { card: BacklogCard }) {
     >
       <div className="backlog-card-topline">
         <strong>{card.name}</strong>
-        <span className={`backlog-task-badge is-${card.taskType}`}>{getTaskTypeLabel(card.taskType)}</span>
+        <div className="backlog-card-badges">
+          <span className={`backlog-task-badge is-${card.taskType}`}>{getTaskTypeLabel(card.taskType)}</span>
+          <span className="brand-pill backlog-brand-pill" style={brandStyle}>
+            {card.brand}
+          </span>
+        </div>
       </div>
       <div className="backlog-card-meta">
-        <span className="backlog-brand-pill">{card.brand}</span>
         <span>{card.addedBy}</span>
         <span>{getFormattedDate(card.dateAdded)}</span>
       </div>
@@ -130,10 +142,12 @@ function BacklogDropZone({
   dropId,
   label,
   cards,
+  brandStyles,
 }: {
   dropId: string
   label?: string
   cards: BacklogCard[]
+  brandStyles: Record<string, { background: string; color: string }>
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: dropId,
@@ -144,7 +158,7 @@ function BacklogDropZone({
       {label ? <div className="backlog-substage-label">{label}</div> : null}
       <div className="backlog-drop-zone-list">
         {cards.length > 0 ? (
-          cards.map((card) => <BacklogCardItem key={card.id} card={card} />)
+          cards.map((card) => <BacklogCardItem key={card.id} card={card} brandStyles={brandStyles} />)
         ) : (
           <div className="backlog-empty-slot">Drop ideas here</div>
         )}
@@ -252,6 +266,7 @@ function BacklogQuickCreateModal({
 export function BacklogPage({
   backlog,
   brandOptions,
+  brandStyles,
   actorName,
   canCreate,
   headerUtilityContent,
@@ -353,6 +368,9 @@ export function BacklogPage({
           </>
         }
       />
+      <p className="backlog-page-subtitle">
+        Capture ideas, evaluate strategies, and prioritize work before it moves to Production.
+      </p>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="backlog-board" role="list" aria-label="Backlog board columns">
@@ -375,11 +393,12 @@ export function BacklogPage({
                         dropId={`ops:${stage.id}`}
                         label={stage.label}
                         cards={opsCards.filter((card) => (card.opsSubStage ?? 'todo') === stage.id)}
+                        brandStyles={brandStyles}
                       />
                     ))}
                   </div>
                 ) : (
-                  <BacklogDropZone dropId={`column:${column.id}`} cards={columnCards} />
+                  <BacklogDropZone dropId={`column:${column.id}`} cards={columnCards} brandStyles={brandStyles} />
                 )}
               </section>
             )
@@ -387,7 +406,7 @@ export function BacklogPage({
         </div>
 
         <DragOverlay>
-          {activeDragCard ? <BacklogCardItem card={activeDragCard} /> : null}
+          {activeDragCard ? <BacklogCardItem card={activeDragCard} brandStyles={brandStyles} /> : null}
         </DragOverlay>
       </DndContext>
 
