@@ -31,6 +31,7 @@ import { AccessGate } from './components/AccessGate'
 import { AccessVerificationGate } from './components/AccessVerificationGate'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { AuthGate } from './components/AuthGate'
+import { BacklogPage } from './components/BacklogPage'
 import { BackwardMoveModal } from './components/BackwardMoveModal'
 import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
@@ -49,6 +50,11 @@ import { ToastStack } from './components/ToastStack'
 import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
+import {
+  loadBacklogState,
+  persistBacklogState,
+  type BacklogState,
+} from './backlog'
 import {
   isSupabaseConfigured,
 } from './supabase'
@@ -106,6 +112,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
+type ExtendedPage = AppPage | 'backlog'
 
 interface CopyState {
   key: string
@@ -134,10 +141,55 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
+const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+
+function getPathForPage(page: ExtendedPage) {
+  switch (page) {
+    case 'backlog':
+      return '/backlog'
+    case 'analytics':
+      return '/analytics'
+    case 'workload':
+      return '/workload'
+    case 'settings':
+      return '/settings'
+    case 'board':
+    default:
+      return '/board'
+  }
+}
+
+function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage {
+  switch (pathname) {
+    case '/backlog':
+      return 'backlog'
+    case '/analytics':
+      return 'analytics'
+    case '/workload':
+      return 'workload'
+    case '/settings':
+      return 'settings'
+    case '/board':
+    case '/':
+      return 'board'
+    default:
+      return fallback
+  }
+}
+
+function canAccessBacklogByEmail(email: string | null) {
+  if (!email) {
+    return false
+  }
+
+  const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
+  return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
+}
 
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
+  const [backlogState, setBacklogState] = useState<BacklogState>(() => loadBacklogState())
   const [boardFilters, setBoardFilters] = useState<BoardFilters>(() =>
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
@@ -200,6 +252,13 @@ function App() {
   const cardPanelCloseTimerRef = useRef<number | null>(null)
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
+  const backlogPersistTimerRef = useRef<number | null>(null)
+  const [routePage, setRoutePage] = useState<ExtendedPage>(() =>
+    getPageFromPathname(
+      typeof window !== 'undefined' ? window.location.pathname : '/board',
+      getCurrentPage(loadAppState()),
+    ),
+  )
 
   const {
     authStatus,
@@ -257,7 +316,8 @@ function App() {
     null
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
-  const currentPage = getCurrentPage(state)
+  const productionPage = getCurrentPage(state)
+  const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -391,6 +451,18 @@ function App() {
   const userSecondaryLabel = authEnabled
     ? authSession?.email ?? workspaceAccess?.email ?? null
     : 'Local mode'
+  const backlogAccessEmail =
+    authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
+  const canAccessBacklog = !authEnabled || canAccessBacklogByEmail(backlogAccessEmail)
+  const backlogBrandOptions = useMemo(() => {
+    const uniqueBrands = new Set<string>()
+    scopedPortfolios.forEach((portfolio) => {
+      portfolio.brands.forEach((brand) => {
+        uniqueBrands.add(brand.name)
+      })
+    })
+    return Array.from(uniqueBrands)
+  }, [scopedPortfolios])
   const localModeBanner = !authEnabled ? (
     <section className="local-mode-banner" role="status" aria-live="polite">
       <div className="local-mode-copy">
@@ -464,7 +536,7 @@ function App() {
           }
           setSelectedCard({ portfolioId: notification.portfolioId, cardId: notification.cardId })
           if (currentPage !== 'board') {
-            setState((prev) => ({ ...prev, activePage: 'board' }))
+            setPage('board')
           }
         }}
       />
@@ -541,7 +613,7 @@ function App() {
     setKeyboardShortcutsOpen,
     editorMenuOpen,
     setEditorMenuOpen,
-    currentPage,
+    currentPage: productionPage,
     searchRef,
     activePortfolio: activePortfolioView,
     roleMode: state.activeRole.mode,
@@ -595,9 +667,83 @@ function App() {
         : {
             ...current,
             brandNames: normalizedBrandNames,
-          }
+      }
     })
   }, [activePortfolioView])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (routePage !== 'backlog' && routePage !== productionPage) {
+      return
+    }
+
+    const nextPath = getPathForPage(currentPage)
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState({}, '', nextPath)
+    }
+  }, [currentPage, productionPage, routePage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handlePopState = () => {
+      const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
+
+      if (nextPage === 'backlog') {
+        setRoutePage('backlog')
+        return
+      }
+
+      setRoutePage(nextPage)
+      setState((current) =>
+        current.activePage === nextPage
+          ? current
+          : {
+              ...current,
+              activePage: nextPage,
+            },
+      )
+    }
+
+    handlePopState()
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [state])
+
+  useEffect(() => {
+    if (!canAccessBacklog && routePage === 'backlog') {
+      setRoutePage(productionPage)
+    }
+  }, [canAccessBacklog, productionPage, routePage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (backlogPersistTimerRef.current !== null) {
+      window.clearTimeout(backlogPersistTimerRef.current)
+    }
+
+    backlogPersistTimerRef.current = window.setTimeout(() => {
+      persistBacklogState(backlogState)
+      backlogPersistTimerRef.current = null
+    }, 180)
+
+    return () => {
+      if (backlogPersistTimerRef.current !== null) {
+        window.clearTimeout(backlogPersistTimerRef.current)
+      }
+    }
+  }, [backlogState])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -641,6 +787,9 @@ function App() {
       toastTimerIdsRef.current = {}
       if (cardPanelCloseTimerRef.current !== null) {
         window.clearTimeout(cardPanelCloseTimerRef.current)
+      }
+      if (backlogPersistTimerRef.current !== null) {
+        window.clearTimeout(backlogPersistTimerRef.current)
       }
     }
   }, [])
@@ -763,11 +912,23 @@ function App() {
     }
   }
 
-  function setPage(page: AppPage) {
+  function setPage(page: ExtendedPage) {
+    if (page === 'backlog') {
+      if (!canAccessBacklog) {
+        setRoutePage(productionPage)
+        return
+      }
+
+      setRoutePage('backlog')
+      setSelectedCard(null)
+      return
+    }
+
     if (getAllowedPageForRole(page, state.activeRole.mode) !== page) {
       return
     }
 
+    setRoutePage(page)
     setState((current) => ({
       ...current,
       activePage: page,
@@ -790,7 +951,7 @@ function App() {
     }
   }
 
-  function handleSidebarPageChange(page: AppPage) {
+  function handleSidebarPageChange(page: ExtendedPage) {
     setPage(page)
     if (touchSidebarEnabled) {
       setTouchSidebarOpen(false)
@@ -1411,6 +1572,7 @@ function App() {
       activeRole: { mode: 'owner', editorId: null },
       activePage: 'settings',
     })
+    setRoutePage('settings')
     setSelectedCard(null)
     setPendingAppConfirm(null)
     showToast('Fresh start applied. Brands and products were kept.', 'amber')
@@ -1573,6 +1735,7 @@ function App() {
           portfolio={activePortfolioView}
           portfolios={scopedPortfolios}
           role={state.activeRole}
+          canAccessBacklog={canAccessBacklog}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
           signOutPending={signOutPending}
@@ -1663,6 +1826,17 @@ function App() {
             onDragOver={handleBoardDragOver}
             onDragCancel={clearBoardDragState}
             onDragEnd={handleBoardDragEnd}
+          />
+        ) : null}
+
+        {currentPage === 'backlog' ? (
+          <BacklogPage
+            backlog={backlogState}
+            brandOptions={backlogBrandOptions}
+            actorName={userDisplayName}
+            canCreate={canAccessBacklog}
+            headerUtilityContent={headerUtilityContent}
+            onChange={setBacklogState}
           />
         ) : null}
 
