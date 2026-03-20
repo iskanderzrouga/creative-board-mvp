@@ -17,7 +17,9 @@ import {
   BACKLOG_TASK_TYPES,
   OPS_PRIORITY_SUB_STAGES,
   addBacklogCard,
+  deleteBacklogCard,
   moveBacklogCard,
+  updateBacklogCard,
   type BacklogCard,
   type BacklogColumnId,
   type BacklogState,
@@ -25,6 +27,7 @@ import {
   type OpsSubStage,
 } from '../backlog'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { BacklogCardDetailPanel } from './BacklogCardDetailPanel'
 import { PageHeader } from './PageHeader'
 import { XIcon } from './icons/AppIcons'
 
@@ -142,9 +145,11 @@ function getActiveTaskTypeFilterStyle(taskType: BacklogTaskType) {
 function BacklogCardItem({
   card,
   brandStyles,
+  onOpen,
 }: {
   card: BacklogCard
   brandStyles: Record<string, { background: string; color: string }>
+  onOpen: (cardId: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card.id,
@@ -159,6 +164,7 @@ function BacklogCardItem({
       style={{
         transform: CSS.Translate.toString(transform),
       }}
+      onClick={() => onOpen(card.id)}
       {...listeners}
       {...attributes}
     >
@@ -184,11 +190,13 @@ function BacklogDropZone({
   label,
   cards,
   brandStyles,
+  onOpenCard,
 }: {
   dropId: string
   label?: string
   cards: BacklogCard[]
   brandStyles: Record<string, { background: string; color: string }>
+  onOpenCard: (cardId: string) => void
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: dropId,
@@ -199,7 +207,9 @@ function BacklogDropZone({
       {label ? <div className="backlog-substage-label">{label}</div> : null}
       <div className="backlog-drop-zone-list">
         {cards.length > 0 ? (
-          cards.map((card) => <BacklogCardItem key={card.id} card={card} brandStyles={brandStyles} />)
+          cards.map((card) => (
+            <BacklogCardItem key={card.id} card={card} brandStyles={brandStyles} onOpen={onOpenCard} />
+          ))
         ) : (
           <div className="backlog-empty-slot">Drop ideas here</div>
         )}
@@ -327,6 +337,7 @@ export function BacklogPage({
   const [selectedTaskType, setSelectedTaskType] = useState<BacklogTaskType | null>(null)
   const [selectedAddedBy, setSelectedAddedBy] = useState<string | null>(null)
   const [showDone, setShowDone] = useState(false)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
 
   const cardsByColumn = useMemo(() => {
     return BACKLOG_COLUMN_DEFINITIONS.reduce<Record<BacklogColumnId, BacklogCard[]>>((accumulator, column) => {
@@ -390,6 +401,7 @@ export function BacklogPage({
 
   const opsCards = visibleCardsByColumn['ops-priority']
   const activeDragCard = dragCardId ? backlog.cards.find((card) => card.id === dragCardId) ?? null : null
+  const selectedCard = selectedCardId ? backlog.cards.find((card) => card.id === selectedCardId) ?? null : null
 
   function handleAddIdea() {
     const nextName = form.name.trim()
@@ -436,6 +448,15 @@ export function BacklogPage({
     }
 
     onChange(moveBacklogCard(backlog, cardId, target.column, target.opsSubStage))
+  }
+
+  function handleSaveCard(cardId: string, updates: Partial<BacklogCard>) {
+    onChange(updateBacklogCard(backlog, cardId, updates))
+  }
+
+  function handleDeleteCard(cardId: string) {
+    onChange(deleteBacklogCard(backlog, cardId))
+    setSelectedCardId(null)
   }
 
   return (
@@ -574,11 +595,17 @@ export function BacklogPage({
                         label={stage.label}
                         cards={opsCards.filter((card) => (card.opsSubStage ?? 'todo') === stage.id)}
                         brandStyles={brandStyles}
+                        onOpenCard={setSelectedCardId}
                       />
                     ))}
                   </div>
                 ) : (
-                  <BacklogDropZone dropId={`column:${column.id}`} cards={columnCards} brandStyles={brandStyles} />
+                  <BacklogDropZone
+                    dropId={`column:${column.id}`}
+                    cards={columnCards}
+                    brandStyles={brandStyles}
+                    onOpenCard={setSelectedCardId}
+                  />
                 )}
               </section>
             )
@@ -586,9 +613,32 @@ export function BacklogPage({
         </div>
 
         <DragOverlay>
-          {activeDragCard ? <BacklogCardItem card={activeDragCard} brandStyles={brandStyles} /> : null}
+          {activeDragCard ? (
+            <BacklogCardItem card={activeDragCard} brandStyles={brandStyles} onOpen={() => undefined} />
+          ) : null}
         </DragOverlay>
       </DndContext>
+
+      <BacklogCardDetailPanel
+        key={selectedCard?.id ?? 'closed'}
+        card={selectedCard}
+        isOpen={selectedCard !== null}
+        brandOptions={brandOptions}
+        brandStyles={brandStyles}
+        onClose={() => setSelectedCardId(null)}
+        onSave={(updates) => {
+          if (!selectedCard) {
+            return
+          }
+          handleSaveCard(selectedCard.id, updates)
+        }}
+        onDelete={() => {
+          if (!selectedCard) {
+            return
+          }
+          handleDeleteCard(selectedCard.id)
+        }}
+      />
 
       {quickCreateOpen ? (
         <BacklogQuickCreateModal

@@ -5581,3 +5581,53 @@ button {
     margin-left: 0;
   }
 }
+
+.backlog-detail-panel .panel-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backlog-detail-panel .panel-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.backlog-detail-panel .metadata-grid label.backlog-panel-field-full {
+  grid-column: 1 / -1;
+}
+
+.backlog-detail-panel .metadata-grid textarea,
+.backlog-detail-panel .metadata-grid .rich-text-editor {
+  width: 100%;
+}
+
+.backlog-detail-panel .metadata-grid textarea {
+  min-height: 96px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.backlog-detail-panel .metadata-grid .rich-text-editor {
+  min-height: 180px;
+}
+
+.backlog-panel-section-head {
+  display: grid;
+  gap: 6px;
+}
+
+.backlog-panel-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.backlog-panel-required {
+  margin-left: 4px;
+  color: #dc2626;
+  font-style: normal;
+}
