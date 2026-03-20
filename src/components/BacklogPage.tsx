@@ -49,6 +49,12 @@ interface BacklogDropTarget {
   opsSubStage?: OpsSubStage
 }
 
+const ACTIVE_BRAND_FILTER_COLORS: Record<string, string> = {
+  Pluxy: '#dc2626',
+  ViVi: '#059669',
+  TrueClean: '#0284c7',
+}
+
 function getDefaultQuickCreateForm(brandOptions: string[]): BacklogQuickCreateForm {
   return {
     name: '',
@@ -96,6 +102,41 @@ function getDropTargetFromId(value: string): BacklogDropTarget | null {
   }
 
   return null
+}
+
+function getActiveBrandFilterStyle(
+  brandName: string,
+  brandStyles: Record<string, { background: string; color: string }>,
+) {
+  const activeColor = ACTIVE_BRAND_FILTER_COLORS[brandName] ?? brandStyles[brandName]?.color ?? 'var(--text-strong)'
+  return {
+    background: activeColor,
+    borderColor: activeColor,
+    color: '#fff',
+  }
+}
+
+function getActiveTaskTypeFilterStyle(taskType: BacklogTaskType) {
+  switch (taskType) {
+    case 'creative':
+      return {
+        background: '#2563eb',
+        borderColor: '#2563eb',
+        color: '#fff',
+      }
+    case 'dev-cro':
+      return {
+        background: '#7c3aed',
+        borderColor: '#7c3aed',
+        color: '#fff',
+      }
+    case 'operations':
+      return {
+        background: '#f97316',
+        borderColor: '#f97316',
+        color: '#fff',
+      }
+  }
 }
 
 function BacklogCardItem({
@@ -282,6 +323,10 @@ export function BacklogPage({
   const [dragCardId, setDragCardId] = useState<string | null>(null)
   const [quickCreateOpen, setQuickCreateOpen] = useState(false)
   const [form, setForm] = useState<BacklogQuickCreateForm>(() => getDefaultQuickCreateForm(brandOptions))
+  const [selectedBrand, setSelectedBrand] = useState<string | null>(null)
+  const [selectedTaskType, setSelectedTaskType] = useState<BacklogTaskType | null>(null)
+  const [selectedAddedBy, setSelectedAddedBy] = useState<string | null>(null)
+  const [showDone, setShowDone] = useState(false)
 
   const cardsByColumn = useMemo(() => {
     return BACKLOG_COLUMN_DEFINITIONS.reduce<Record<BacklogColumnId, BacklogCard[]>>((accumulator, column) => {
@@ -296,7 +341,54 @@ export function BacklogPage({
     })
   }, [backlog.cards])
 
-  const opsCards = cardsByColumn['ops-priority']
+  const addedByOptions = useMemo(() => {
+    const uniqueNames = new Set<string>()
+    backlog.cards.forEach((card) => {
+      if (card.addedBy.trim()) {
+        uniqueNames.add(card.addedBy)
+      }
+    })
+    return Array.from(uniqueNames)
+  }, [backlog.cards])
+
+  const visibleCardsByColumn = useMemo(() => {
+    const matchesFilters = (card: BacklogCard) => {
+      if (selectedBrand && card.brand !== selectedBrand) {
+        return false
+      }
+
+      if (selectedTaskType && card.taskType !== selectedTaskType) {
+        return false
+      }
+
+      if (selectedAddedBy && card.addedBy !== selectedAddedBy) {
+        return false
+      }
+
+      if (
+        !showDone &&
+        card.column === 'ops-priority' &&
+        (card.opsSubStage ?? OPS_PRIORITY_SUB_STAGES[0].id) === 'done'
+      ) {
+        return false
+      }
+
+      return true
+    }
+
+    return BACKLOG_COLUMN_DEFINITIONS.reduce<Record<BacklogColumnId, BacklogCard[]>>((accumulator, column) => {
+      accumulator[column.id] = cardsByColumn[column.id].filter(matchesFilters)
+      return accumulator
+    }, {
+      'new-idea': [],
+      'under-review': [],
+      prioritized: [],
+      'moved-to-production': [],
+      'ops-priority': [],
+    })
+  }, [cardsByColumn, selectedAddedBy, selectedBrand, selectedTaskType, showDone])
+
+  const opsCards = visibleCardsByColumn['ops-priority']
   const activeDragCard = dragCardId ? backlog.cards.find((card) => card.id === dragCardId) ?? null : null
 
   function handleAddIdea() {
@@ -371,11 +463,99 @@ export function BacklogPage({
       <p className="backlog-page-subtitle">
         Capture ideas, evaluate strategies, and prioritize work before it moves to Production.
       </p>
+      <section className="stats-bar" aria-label="Backlog statistics">
+        <div className="stat-inline-item">
+          <span className="stat-inline-label">Total</span>
+          <strong>{backlog.cards.length}</strong>
+          <span className="stat-divider">·</span>
+        </div>
+        {BACKLOG_COLUMN_DEFINITIONS.map((column, index) => (
+          <div key={column.id} className="stat-inline-item">
+            <span className="stat-inline-label">{column.label}</span>
+            <strong>{cardsByColumn[column.id].length}</strong>
+            {index < BACKLOG_COLUMN_DEFINITIONS.length - 1 ? <span className="stat-divider">·</span> : null}
+          </div>
+        ))}
+      </section>
+      <section className="manager-filter-bar backlog-filter-bar" aria-label="Backlog filters">
+        <div className="manager-filter-cluster">
+          <span className="filter-group-label">Brand</span>
+          <div className="manager-filter-group">
+            <button
+              type="button"
+              className={`filter-pill ${selectedBrand === null ? 'is-active is-all' : ''}`}
+              onClick={() => setSelectedBrand(null)}
+            >
+              All
+            </button>
+            {brandOptions.map((brandName) => (
+              <button
+                key={brandName}
+                type="button"
+                className={`filter-pill ${selectedBrand === brandName ? 'is-active' : ''}`}
+                style={selectedBrand === brandName ? getActiveBrandFilterStyle(brandName, brandStyles) : undefined}
+                onClick={() => setSelectedBrand((current) => (current === brandName ? null : brandName))}
+              >
+                {brandName}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <span className="filter-group-divider" aria-hidden="true" />
+
+        <div className="manager-filter-cluster">
+          <span className="filter-group-label">Task Type</span>
+          <div className="manager-filter-group">
+            <button
+              type="button"
+              className={`filter-pill ${selectedTaskType === null ? 'is-active is-all' : ''}`}
+              onClick={() => setSelectedTaskType(null)}
+            >
+              All
+            </button>
+            {BACKLOG_TASK_TYPES.map((taskType) => (
+              <button
+                key={taskType}
+                type="button"
+                className={`filter-pill ${selectedTaskType === taskType ? 'is-active' : ''}`}
+                style={selectedTaskType === taskType ? getActiveTaskTypeFilterStyle(taskType) : undefined}
+                onClick={() => setSelectedTaskType((current) => (current === taskType ? null : taskType))}
+              >
+                {getTaskTypeLabel(taskType)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <span className="filter-group-divider" aria-hidden="true" />
+
+        <div className="manager-filter-cluster">
+          <span className="filter-group-label">Added By</span>
+          <div className="manager-editor-pills">
+            {addedByOptions.map((personName) => (
+              <button
+                key={personName}
+                type="button"
+                className={`editor-pill ${selectedAddedBy === personName ? 'is-active' : ''}`}
+                onClick={() => setSelectedAddedBy((current) => (current === personName ? null : personName))}
+              >
+                {personName}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="archive-toggle backlog-show-done-toggle">
+          <input type="checkbox" checked={showDone} onChange={(event) => setShowDone(event.target.checked)} />
+          <span>Show done</span>
+        </label>
+      </section>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="backlog-board" role="list" aria-label="Backlog board columns">
           {BACKLOG_COLUMN_DEFINITIONS.map((column) => {
-            const columnCards = cardsByColumn[column.id]
+            const columnCards = visibleCardsByColumn[column.id]
             const isOpsColumn = column.id === 'ops-priority'
 
             return (

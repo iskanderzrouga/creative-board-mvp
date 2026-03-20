@@ -5571,3 +5571,13 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.backlog-filter-bar .backlog-show-done-toggle {
+  margin-left: auto;
+}
+
+@media (max-width: 960px) {
+  .backlog-filter-bar .backlog-show-done-toggle {
+    margin-left: 0;
+  }
+}
