@@ -1848,6 +1848,7 @@ function App() {
             brandStyles={backlogBrandStyles}
             actorName={userDisplayName}
             canCreate={canAccessBacklog}
+            showToast={showToast}
             headerUtilityContent={headerUtilityContent}
             onChange={setBacklogState}
           />

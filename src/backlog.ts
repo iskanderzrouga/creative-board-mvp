@@ -51,6 +51,23 @@ export interface BacklogState {
   lastCardNumber: number
 }
 
+const CREATIVE_PRODUCTION_REQUIRED_FIELDS: Array<{ key: keyof BacklogCard; label: string }> = [
+  { key: 'brief', label: 'Brief' },
+  { key: 'targetAudience', label: 'Target Audience' },
+  { key: 'visualDirection', label: 'Visual Direction' },
+  { key: 'platform', label: 'Platform' },
+  { key: 'funnelStage', label: 'Funnel Stage' },
+  { key: 'angleTheme', label: 'Angle / Theme' },
+  { key: 'cta', label: 'CTA' },
+  { key: 'referenceLinks', label: 'Reference Links' },
+]
+
+const DEV_CRO_PRODUCTION_REQUIRED_FIELDS: Array<{ key: keyof BacklogCard; label: string }> = [
+  { key: 'taskDescription', label: 'Task Description' },
+  { key: 'linkForTest', label: 'Link for Test' },
+  { key: 'linkForChanges', label: 'Link for Changes' },
+]
+
 interface AddBacklogCardInput {
   name: string
   taskType: BacklogTaskType
@@ -80,6 +97,10 @@ function isOpsSubStage(value: unknown): value is OpsSubStage {
 
 function normalizeOptionalString(value: unknown) {
   return typeof value === 'string' ? value : undefined
+}
+
+function hasNonEmptyValue(value: string | undefined) {
+  return Boolean(value?.trim())
 }
 
 function coerceBacklogCard(candidate: unknown): BacklogCard | null {
@@ -273,4 +294,20 @@ export function deleteBacklogCard(state: BacklogState, cardId: string) {
         ...state,
         cards,
       }
+}
+
+export function getBacklogMissingProductionFields(card: BacklogCard) {
+  if (card.taskType === 'creative') {
+    return CREATIVE_PRODUCTION_REQUIRED_FIELDS.filter(({ key }) => !hasNonEmptyValue(card[key] as string | undefined)).map(
+      ({ label }) => label,
+    )
+  }
+
+  if (card.taskType === 'dev-cro') {
+    return DEV_CRO_PRODUCTION_REQUIRED_FIELDS.filter(({ key }) => !hasNonEmptyValue(card[key] as string | undefined)).map(
+      ({ label }) => label,
+    )
+  }
+
+  return []
 }

@@ -18,6 +18,7 @@ import {
   OPS_PRIORITY_SUB_STAGES,
   addBacklogCard,
   deleteBacklogCard,
+  getBacklogMissingProductionFields,
   moveBacklogCard,
   updateBacklogCard,
   type BacklogCard,
@@ -37,6 +38,7 @@ interface BacklogPageProps {
   brandStyles: Record<string, { background: string; color: string }>
   actorName: string
   canCreate: boolean
+  showToast: (message: string, tone: 'green' | 'amber' | 'red' | 'blue') => void
   headerUtilityContent?: ReactNode
   onChange: (nextState: BacklogState) => void
 }
@@ -320,6 +322,7 @@ export function BacklogPage({
   brandStyles,
   actorName,
   canCreate,
+  showToast,
   headerUtilityContent,
   onChange,
 }: BacklogPageProps) {
@@ -445,6 +448,33 @@ export function BacklogPage({
 
     if (currentCard.column === target.column && currentCard.opsSubStage === target.opsSubStage) {
       return
+    }
+
+    if (
+      currentCard.taskType === 'operations' &&
+      (target.column === 'prioritized' || target.column === 'moved-to-production')
+    ) {
+      showToast('Operations cards go to Ops Priority, not the production pipeline.', 'red')
+      return
+    }
+
+    if (
+      (currentCard.taskType === 'creative' || currentCard.taskType === 'dev-cro') &&
+      target.column === 'ops-priority'
+    ) {
+      showToast('Only Operations cards can be moved to Ops Priority.', 'red')
+      return
+    }
+
+    if (
+      (currentCard.taskType === 'creative' || currentCard.taskType === 'dev-cro') &&
+      target.column === 'moved-to-production'
+    ) {
+      const missingFields = getBacklogMissingProductionFields(currentCard)
+      if (missingFields.length > 0) {
+        showToast(`Cannot move to Production. Missing required fields: ${missingFields.join(', ')}`, 'red')
+        return
+      }
     }
 
     onChange(moveBacklogCard(backlog, cardId, target.column, target.opsSubStage))
