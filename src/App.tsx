@@ -70,7 +70,6 @@ import {
   getActivePortfolio,
   getAttentionSummary,
   getBoardStats,
-  getCardFolderName,
   getCardMoveValidationMessage,
   getDefaultBoardFilters,
   getEditorOptions,
@@ -1447,51 +1446,39 @@ function App() {
       return
     }
 
-    const brand = activeSelectedPortfolio.brands.find(
-      (b) => b.name === selectedCardData.brand,
-    )
-    if (!brand?.driveParentFolderId) {
-      showToast(
-        `No Drive folder ID configured for brand "${selectedCardData.brand}" — add one in Settings → Portfolios.`,
-        'red',
-      )
-      return
+    const payload = {
+      cardId: selectedCardData.id,
+      cardTitle: selectedCardData.title,
+      brand: selectedCardData.brand,
+      brief: selectedCardData.brief,
+      targetAudience: selectedCardData.audience,
+      keyMessage: selectedCardData.keyMessage,
+      visualDirection: selectedCardData.visualDirection,
+      platform: selectedCardData.platform,
+      funnelStage: selectedCardData.funnelStage,
+      angleTheme: selectedCardData.angle,
+      cta: selectedCardData.cta,
+      referenceLinks: selectedCardData.referenceLinks,
+      adCopy: selectedCardData.adCopy,
+      notes: selectedCardData.notes,
     }
 
     setCreatingDriveCardId(selectedCardData.id)
     try {
-      const response = await fetch(webhookUrl, {
+      await fetch(webhookUrl, {
         method: 'POST',
+        mode: 'no-cors',
         redirect: 'follow',
-        body: JSON.stringify({
-          cardId: selectedCardData.id,
-          cardTitle: selectedCardData.title,
-          productName: selectedCardData.product,
-          brandName: selectedCardData.brand,
-          parentFolderId: brand.driveParentFolderId,
-          folderName: getCardFolderName(selectedCardData),
-        }),
+        body: JSON.stringify(payload),
       })
 
-      let folderUrl: string | null = null
-      try {
-        const result = await response.json()
-        folderUrl = result?.folderUrl ?? result?.folder_url ?? null
-      } catch {
-        // response may not be JSON (e.g. plain text from Apps Script)
-      }
-
-      if (folderUrl) {
-        saveOpenCard({ driveFolderUrl: folderUrl, driveFolderCreated: true })
-        showToast('Drive folder created!', 'green')
-      } else {
-        // Mark as created even without URL — user can find it in Drive
-        saveOpenCard({ driveFolderCreated: true })
-        showToast('Drive folder request sent — check your Google Drive.', 'blue')
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error'
-      showToast(`Drive folder creation failed: ${message}`, 'red')
+      saveOpenCard({
+        driveFolderCreated: true,
+        driveFolderUrl: `https://drive.google.com/drive/search?q=${encodeURIComponent(selectedCardData.title)}`,
+      })
+      showToast('Drive folder creation triggered. Check your Drive in a few seconds.', 'green')
+    } catch {
+      showToast('Drive folder creation failed. Check your network connection.', 'red')
     } finally {
       setCreatingDriveCardId(null)
     }
