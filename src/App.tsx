@@ -1130,13 +1130,87 @@ function App() {
       const nextPortfolio = addCardToPortfolio(portfolio, productionCard, viewerContext)
       if (nextPortfolio !== portfolio) {
         createdCardId = productionCard.id
-        // TODO: Phase 2 GAS webhook: notify Google Apps Script after successful Backlog → Production transfer.
       }
       return nextPortfolio
     })
 
     if (!createdCardId) {
       return { ok: false }
+    }
+
+    const resolvedWebhookUrl =
+      portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim()
+
+    if (card.taskType === 'creative' && resolvedWebhookUrl) {
+      const nextProductionCardId = createdCardId
+      const webhookPayload = {
+        cardId: nextProductionCardId,
+        cardTitle: card.name,
+        brand: card.brand,
+        brief: card.brief ?? '',
+        targetAudience: card.targetAudience ?? '',
+        keyMessage: card.keyMessage ?? '',
+        visualDirection: card.visualDirection ?? '',
+        platform: card.platform ?? '',
+        funnelStage: card.funnelStage ?? '',
+        angleTheme: card.angleTheme ?? '',
+        cta: card.cta ?? '',
+        referenceLinks: card.referenceLinks ?? '',
+        adCopy: card.adCopy ?? '',
+        notes: card.notes ?? '',
+      }
+
+      void (async () => {
+        try {
+          const response = await fetch(resolvedWebhookUrl, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          })
+
+          let result: {
+            success?: boolean
+            folderUrl?: string
+            subfolderUrl?: string
+            briefDocUrl?: string
+            message?: string
+          } | null = null
+
+          try {
+            result = await response.json()
+          } catch {
+            throw new Error('Drive webhook returned an invalid JSON response.')
+          }
+
+          if (!response.ok || !result?.success) {
+            throw new Error(result?.message || `Drive webhook failed with status ${response.status}.`)
+          }
+
+          updatePortfolio(portfolioSource.id, (portfolio) => ({
+            ...portfolio,
+            cards: portfolio.cards.map((existingCard) =>
+              existingCard.id === nextProductionCardId
+                ? {
+                    ...existingCard,
+                    driveFolderUrl: result?.folderUrl ?? existingCard.driveFolderUrl,
+                    driveFolderCreated: true,
+                  }
+                : existingCard,
+            ),
+          }))
+          showToast('Card moved to Production board. Drive folder created.', 'green')
+        } catch (error) {
+          console.error('Backlog to Production Drive folder creation failed.', {
+            cardId: nextProductionCardId,
+            error,
+          })
+          showToast(
+            'Card moved to Production but Drive folder creation failed. Use the manual Create Drive Folder button.',
+            'amber',
+          )
+        }
+      })()
     }
 
     return { ok: true, cardId: createdCardId }
