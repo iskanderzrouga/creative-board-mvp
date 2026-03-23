@@ -5572,6 +5572,16 @@ button {
   }
 }
 
+.creative-direction-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.creative-direction-grid textarea {
+  min-height: 96px;
+  padding: 10px;
+  resize: vertical;
+}
+
 .backlog-filter-bar .backlog-show-done-toggle {
   margin-left: auto;
 }
