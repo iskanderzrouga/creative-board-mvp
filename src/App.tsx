@@ -1231,7 +1231,7 @@ function App() {
     })
 
     const resolvedWebhookUrl =
-      portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim()
+      portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim() || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
 
     if (card.taskType === 'creative' && resolvedWebhookUrl) {
       const nextProductionCardId = createdCardId
@@ -1441,7 +1441,7 @@ function App() {
     }
 
     const webhookUrl =
-      activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl
+      activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
     if (!webhookUrl) {
       showToast('No Drive webhook configured — add one in Settings → General or the portfolio.', 'red')
       return
