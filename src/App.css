@@ -27,9 +27,10 @@
   --line-muted: #dbe2ea;
   --text: #172b4d;
   --text-strong: #111827;
-  --muted: #5e6c84;
+  --muted: #475569;
   --muted-soft: #8c8c8c;
-  --muted-strong: #475569;
+  --placeholder: #94a3b8;
+  --muted-strong: #334155;
   --green: #10b981;
   --amber: #f59e0b;
   --red: #ef4444;
@@ -1246,6 +1247,10 @@ button {
 .comment-list {
   display: grid;
   gap: 8px;
+}
+
+.drive-section a {
+  color: var(--text-strong);
 }
 
 .drive-subitems a {
@@ -2486,7 +2491,7 @@ button {
 }
 
 .search-input::placeholder {
-  color: var(--line-weak);
+  color: var(--placeholder);
 }
 
 .search-clear {
@@ -3269,8 +3274,8 @@ button {
 .settings-tab-copy {
   font-size: 12px;
   line-height: 1.4;
-  color: inherit;
-  opacity: 0.75;
+  color: var(--muted);
+  opacity: 1;
 }
 
 .settings-block,
@@ -4655,7 +4660,7 @@ button {
 
 .slide-panel input::placeholder,
 .slide-panel textarea::placeholder {
-  color: var(--muted-strong);
+  color: var(--placeholder);
 }
 
 .slide-panel .metadata-grid label,
