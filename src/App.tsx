@@ -1067,18 +1067,53 @@ function App() {
     })
   }
 
-  function handleBacklogToProduction(card: BacklogCard): { ok: true; cardId: string } | { ok: false } {
-    const portfolioView = getActivePortfolio(state)
-    const portfolioSource =
-      state.portfolios.find((portfolio) => portfolio.id === portfolioView?.id) ?? portfolioView ?? null
+  function handleBacklogToProduction(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    console.log('[Backlog→Production] handleBacklogToProduction called', {
+      backlogCardId: card.id,
+      backlogCardName: card.name,
+      brand: card.brand,
+      taskType: card.taskType,
+      productionTaskType: card.productionTaskType,
+    })
 
-    if (!portfolioView || !portfolioSource) {
+    const matchingPortfolioViews = scopedPortfolios.filter((portfolio) =>
+      portfolio.brands.some((brand) => brand.name === card.brand),
+    )
+    console.log('[Backlog→Production] matching portfolios for brand', {
+      brand: card.brand,
+      portfolioIds: matchingPortfolioViews.map((portfolio) => portfolio.id),
+    })
+
+    if (matchingPortfolioViews.length !== 1) {
+      console.log('[Backlog→Production] unable to resolve a unique target portfolio', {
+        brand: card.brand,
+        matchCount: matchingPortfolioViews.length,
+      })
+      console.log('[Backlog→Production] returning', { ok: false })
+      return { ok: false }
+    }
+
+    const portfolioView = matchingPortfolioViews[0]
+    const portfolioSource =
+      state.portfolios.find((portfolio) => portfolio.id === portfolioView.id) ?? portfolioView ?? null
+
+    if (!portfolioSource) {
+      console.log('[Backlog→Production] target portfolio source missing', {
+        portfolioId: portfolioView.id,
+      })
+      console.log('[Backlog→Production] returning', { ok: false })
       return { ok: false }
     }
 
     const brand = portfolioSource.brands.find((item) => item.name === card.brand)
     const product = brand?.products[0] ?? ''
     const actor = getActorName(portfolioSource)
+
+    console.log('[Backlog→Production] resolved target portfolio', {
+      portfolioId: portfolioSource.id,
+      portfolioName: portfolioSource.name,
+      product,
+    })
 
     let productionCard: Card
 
@@ -1096,7 +1131,17 @@ function App() {
         },
         actor,
       )
-    } catch {
+      console.log('[Backlog→Production] createCardFromQuickInput result', {
+        cardId: productionCard.id,
+        stage: productionCard.stage,
+        brand: productionCard.brand,
+        product: productionCard.product,
+      })
+    } catch (error) {
+      console.log('[Backlog→Production] createCardFromQuickInput failed', {
+        error,
+      })
+      console.log('[Backlog→Production] returning', { ok: false })
       return { ok: false }
     }
 
@@ -1126,17 +1171,64 @@ function App() {
     }
 
     let createdCardId: string | null = null
+    let createdPortfolioId: string | null = null
     updatePortfolio(portfolioSource.id, (portfolio) => {
       const nextPortfolio = addCardToPortfolio(portfolio, productionCard, viewerContext)
-      if (nextPortfolio !== portfolio) {
-        createdCardId = productionCard.id
+      const insertedCard = nextPortfolio.cards.find((existingCard) => existingCard.id === productionCard.id) ?? null
+
+      console.log('[Backlog→Production] addCardToPortfolio result', {
+        portfolioId: portfolio.id,
+        samePortfolioReference: nextPortfolio === portfolio,
+        previousCardCount: portfolio.cards.length,
+        nextCardCount: nextPortfolio.cards.length,
+        insertedCardId: insertedCard?.id ?? null,
+        insertedCardStage: insertedCard?.stage ?? null,
+      })
+
+      if (insertedCard) {
+        createdCardId = insertedCard.id
+        createdPortfolioId = portfolio.id
       }
+
       return nextPortfolio
     })
 
-    if (!createdCardId) {
+    console.log('[Backlog→Production] post-updatePortfolio state', {
+      createdCardId,
+      createdPortfolioId,
+      statePortfolioCardCount:
+        createdPortfolioId
+          ? localFallbackStateRef.current.portfolios.find((portfolio) => portfolio.id === createdPortfolioId)?.cards.length ?? null
+          : null,
+    })
+
+    if (!createdCardId || !createdPortfolioId) {
+      console.log('[Backlog→Production] returning', { ok: false })
       return { ok: false }
     }
+
+    if (state.activePortfolioId !== createdPortfolioId) {
+      updateState((current) => ({
+        ...current,
+        activePortfolioId: createdPortfolioId!,
+      }))
+      console.log('[Backlog→Production] switched active portfolio', {
+        activePortfolioId: createdPortfolioId,
+      })
+    }
+
+    setBoardFilters((current) => {
+      if (current.brandNames.length === 0 || current.brandNames.includes(card.brand)) {
+        return current
+      }
+
+      const nextFilters = {
+        ...current,
+        brandNames: [...current.brandNames, card.brand],
+      }
+      console.log('[Backlog→Production] updated board filters for visibility', nextFilters)
+      return nextFilters
+    })
 
     const resolvedWebhookUrl =
       portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim()
@@ -1213,7 +1305,9 @@ function App() {
       })()
     }
 
-    return { ok: true, cardId: createdCardId }
+    const result = { ok: true as const, cardId: createdCardId, portfolioId: createdPortfolioId }
+    console.log('[Backlog→Production] returning', result)
+    return result
   }
 
   function openCard(portfolioId: string, cardId: string) {
