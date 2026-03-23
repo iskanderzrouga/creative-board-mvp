@@ -1257,7 +1257,6 @@ function App() {
           const response = await fetch(resolvedWebhookUrl, {
             method: 'POST',
             redirect: 'follow',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(webhookPayload),
           })
 
@@ -1463,7 +1462,7 @@ function App() {
     try {
       const response = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow',
         body: JSON.stringify({
           cardId: selectedCardData.id,
           cardTitle: selectedCardData.title,
