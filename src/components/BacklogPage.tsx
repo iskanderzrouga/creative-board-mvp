@@ -36,11 +36,14 @@ interface BacklogPageProps {
   backlog: BacklogState
   brandOptions: string[]
   brandStyles: Record<string, { background: string; color: string }>
+  creativeProductionTaskTypeOptions: Array<{ id: string; name: string }>
+  devProductionTaskTypeOptions: Array<{ id: string; name: string }>
   actorName: string
   canCreate: boolean
   showToast: (message: string, tone: 'green' | 'amber' | 'red' | 'blue') => void
   headerUtilityContent?: ReactNode
   onChange: (nextState: BacklogState) => void
+  onMoveToProduction: (card: BacklogCard) => { ok: true; cardId: string } | { ok: false }
 }
 
 interface BacklogQuickCreateForm {
@@ -320,11 +323,14 @@ export function BacklogPage({
   backlog,
   brandOptions,
   brandStyles,
+  creativeProductionTaskTypeOptions,
+  devProductionTaskTypeOptions,
   actorName,
   canCreate,
   showToast,
   headerUtilityContent,
   onChange,
+  onMoveToProduction,
 }: BacklogPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -475,6 +481,17 @@ export function BacklogPage({
         showToast(`Cannot move to Production. Missing required fields: ${missingFields.join(', ')}`, 'red')
         return
       }
+
+      const productionResult = onMoveToProduction(currentCard)
+      if (!productionResult.ok) {
+        showToast('Could not create the Production card. The backlog card was kept in Prioritized.', 'red')
+        return
+      }
+
+      onChange(deleteBacklogCard(backlog, cardId))
+      setSelectedCardId(null)
+      showToast(`Moved to Production as ${productionResult.cardId}.`, 'green')
+      return
     }
 
     onChange(moveBacklogCard(backlog, cardId, target.column, target.opsSubStage))
@@ -655,6 +672,8 @@ export function BacklogPage({
         isOpen={selectedCard !== null}
         brandOptions={brandOptions}
         brandStyles={brandStyles}
+        creativeProductionTaskTypeOptions={creativeProductionTaskTypeOptions}
+        devProductionTaskTypeOptions={devProductionTaskTypeOptions}
         onClose={() => setSelectedCardId(null)}
         onSave={(updates) => {
           if (!selectedCard) {

@@ -53,6 +53,7 @@ import { useWorkspaceSession } from './hooks/useWorkspaceSession'
 import {
   loadBacklogState,
   persistBacklogState,
+  type BacklogCard,
   type BacklogState,
 } from './backlog'
 import {
@@ -475,6 +476,20 @@ function App() {
     })
     return styles
   }, [scopedPortfolios])
+  const creativeProductionTaskTypeOptions = useMemo(
+    () =>
+      state.settings.taskLibrary
+        .filter((taskType) => taskType.category === 'Creative')
+        .map((taskType) => ({ id: taskType.id, name: taskType.name })),
+    [state.settings.taskLibrary],
+  )
+  const devProductionTaskTypeOptions = useMemo(
+    () =>
+      state.settings.taskLibrary
+        .filter((taskType) => taskType.category === 'Dev')
+        .map((taskType) => ({ id: taskType.id, name: taskType.name })),
+    [state.settings.taskLibrary],
+  )
   const localModeBanner = !authEnabled ? (
     <section className="local-mode-banner" role="status" aria-live="polite">
       <div className="local-mode-copy">
@@ -1050,6 +1065,81 @@ function App() {
       portfolioId: activePortfolioView.id,
       cardId: card.id,
     })
+  }
+
+  function handleBacklogToProduction(card: BacklogCard): { ok: true; cardId: string } | { ok: false } {
+    const portfolioView = getActivePortfolio(state)
+    const portfolioSource =
+      state.portfolios.find((portfolio) => portfolio.id === portfolioView?.id) ?? portfolioView ?? null
+
+    if (!portfolioView || !portfolioSource) {
+      return { ok: false }
+    }
+
+    const brand = portfolioSource.brands.find((item) => item.name === card.brand)
+    const product = brand?.products[0] ?? ''
+    const actor = getActorName(portfolioSource)
+
+    let productionCard: Card
+
+    try {
+      productionCard = createCardFromQuickInput(
+        portfolioSource,
+        state.settings,
+        {
+          title: card.name,
+          brand: card.brand,
+          taskTypeId: card.productionTaskType ?? '',
+          product,
+          angle: card.angleTheme ?? '',
+          sourceCardId: null,
+        },
+        actor,
+      )
+    } catch {
+      return { ok: false }
+    }
+
+    const referenceLinks =
+      card.taskType === 'dev-cro'
+        ? [
+            card.linkForTest?.trim() ? `Test Link: ${card.linkForTest.trim()}` : '',
+            card.linkForChanges?.trim() ? `Changes Link: ${card.linkForChanges.trim()}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : card.referenceLinks ?? ''
+
+    productionCard = {
+      ...productionCard,
+      brief: card.taskType === 'creative' ? card.brief ?? '' : card.taskDescription ?? '',
+      audience: card.targetAudience ?? '',
+      platform: (card.platform as Card['platform'] | undefined) ?? productionCard.platform,
+      funnelStage: (card.funnelStage as Card['funnelStage'] | undefined) ?? productionCard.funnelStage,
+      angle: card.angleTheme ?? '',
+      keyMessage: card.keyMessage ?? '',
+      visualDirection: card.visualDirection ?? '',
+      cta: card.cta ?? '',
+      referenceLinks,
+      adCopy: card.adCopy ?? '',
+      notes: card.notes ?? '',
+    }
+
+    let createdCardId: string | null = null
+    updatePortfolio(portfolioSource.id, (portfolio) => {
+      const nextPortfolio = addCardToPortfolio(portfolio, productionCard, viewerContext)
+      if (nextPortfolio !== portfolio) {
+        createdCardId = productionCard.id
+        // TODO: Phase 2 GAS webhook: notify Google Apps Script after successful Backlog → Production transfer.
+      }
+      return nextPortfolio
+    })
+
+    if (!createdCardId) {
+      return { ok: false }
+    }
+
+    return { ok: true, cardId: createdCardId }
   }
 
   function openCard(portfolioId: string, cardId: string) {
@@ -1846,11 +1936,14 @@ function App() {
             backlog={backlogState}
             brandOptions={backlogBrandOptions}
             brandStyles={backlogBrandStyles}
+            creativeProductionTaskTypeOptions={creativeProductionTaskTypeOptions}
+            devProductionTaskTypeOptions={devProductionTaskTypeOptions}
             actorName={userDisplayName}
             canCreate={canAccessBacklog}
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
             onChange={setBacklogState}
+            onMoveToProduction={handleBacklogToProduction}
           />
         ) : null}
 

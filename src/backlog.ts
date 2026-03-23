@@ -30,6 +30,7 @@ export interface BacklogCard {
   dateAdded: string
   column: BacklogColumnId
   opsSubStage?: OpsSubStage
+  productionTaskType?: string
   brief?: string
   targetAudience?: string
   keyMessage?: string
@@ -52,6 +53,7 @@ export interface BacklogState {
 }
 
 const CREATIVE_PRODUCTION_REQUIRED_FIELDS: Array<{ key: keyof BacklogCard; label: string }> = [
+  { key: 'productionTaskType', label: 'Production Task Type' },
   { key: 'brief', label: 'Brief' },
   { key: 'targetAudience', label: 'Target Audience' },
   { key: 'visualDirection', label: 'Visual Direction' },
@@ -63,6 +65,7 @@ const CREATIVE_PRODUCTION_REQUIRED_FIELDS: Array<{ key: keyof BacklogCard; label
 ]
 
 const DEV_CRO_PRODUCTION_REQUIRED_FIELDS: Array<{ key: keyof BacklogCard; label: string }> = [
+  { key: 'productionTaskType', label: 'Production Task Type' },
   { key: 'taskDescription', label: 'Task Description' },
   { key: 'linkForTest', label: 'Link for Test' },
   { key: 'linkForChanges', label: 'Link for Changes' },
@@ -140,6 +143,7 @@ function coerceBacklogCard(candidate: unknown): BacklogCard | null {
     dateAdded: record.dateAdded,
     column: record.column,
     opsSubStage,
+    productionTaskType: normalizeOptionalString(record.productionTaskType),
     brief: normalizeOptionalString(record.brief),
     targetAudience: normalizeOptionalString(record.targetAudience),
     keyMessage: normalizeOptionalString(record.keyMessage),
@@ -225,6 +229,7 @@ export function addBacklogCard(state: BacklogState, input: AddBacklogCardInput):
     addedBy: input.addedBy,
     dateAdded: createdAt,
     column: 'new-idea',
+    productionTaskType: undefined,
   }
 
   return {

@@ -11,12 +11,15 @@ interface BacklogCardDetailPanelProps {
   isOpen: boolean
   brandOptions: string[]
   brandStyles: Record<string, { background: string; color: string }>
+  creativeProductionTaskTypeOptions: Array<{ id: string; name: string }>
+  devProductionTaskTypeOptions: Array<{ id: string; name: string }>
   onClose: () => void
   onSave: (updates: Partial<BacklogCard>) => void
   onDelete: () => void
 }
 
 const CREATIVE_REQUIRED_FIELDS = [
+  'productionTaskType',
   'brief',
   'targetAudience',
   'visualDirection',
@@ -27,7 +30,7 @@ const CREATIVE_REQUIRED_FIELDS = [
   'referenceLinks',
 ] as const
 
-const DEV_REQUIRED_FIELDS = ['taskDescription', 'linkForTest', 'linkForChanges'] as const
+const DEV_REQUIRED_FIELDS = ['productionTaskType', 'taskDescription', 'linkForTest', 'linkForChanges'] as const
 
 const PLATFORM_OPTIONS = ['Meta', 'TikTok', 'AppLovin', 'YouTube', 'Google', 'Other'] as const
 const FUNNEL_STAGE_OPTIONS = ['Cold', 'Warm', 'Hot'] as const
@@ -156,6 +159,8 @@ export function BacklogCardDetailPanel({
   isOpen,
   brandOptions,
   brandStyles,
+  creativeProductionTaskTypeOptions,
+  devProductionTaskTypeOptions,
   onClose,
   onSave,
   onDelete,
@@ -211,15 +216,21 @@ export function BacklogCardDetailPanel({
 
   const brandStyle = brandStyles[card.brand]
   const showExpandedFields = hasExpandedSection(card)
+  const productionTaskTypeOptions =
+    card.taskType === 'creative' ? creativeProductionTaskTypeOptions : devProductionTaskTypeOptions
   const creativeCompletionCount = CREATIVE_REQUIRED_FIELDS.filter((field) =>
     isValueComplete(
-      field === 'platform' || field === 'funnelStage'
+      field === 'platform' || field === 'funnelStage' || field === 'productionTaskType'
         ? (card[field] as string | undefined)
         : (drafts[field] as string | undefined),
     ),
   ).length
   const devCompletionCount = DEV_REQUIRED_FIELDS.filter((field) =>
-    isValueComplete(drafts[field] as string | undefined),
+    isValueComplete(
+      field === 'productionTaskType'
+        ? (card[field] as string | undefined)
+        : (drafts[field] as string | undefined),
+    ),
   ).length
 
   function handleClose() {
@@ -343,6 +354,23 @@ export function BacklogCardDetailPanel({
                   <p className="backlog-panel-progress">{`${creativeCompletionCount}/${CREATIVE_REQUIRED_FIELDS.length} required fields completed`}</p>
                 </div>
                 <div className="metadata-grid">
+                  <label className="backlog-panel-field">
+                    <span>
+                      Production Task Type
+                      <em className="backlog-panel-required">*</em>
+                    </span>
+                    <select
+                      value={card.productionTaskType ?? ''}
+                      onChange={(event) => handleImmediateSave({ productionTaskType: event.target.value || undefined })}
+                    >
+                      <option value="">Select task type</option>
+                      {productionTaskTypeOptions.map((taskType) => (
+                        <option key={taskType.id} value={taskType.id}>
+                          {taskType.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="backlog-panel-field backlog-panel-field-full">
                     <span>
                       Brief
@@ -474,6 +502,23 @@ export function BacklogCardDetailPanel({
                   <p className="backlog-panel-progress">{`${devCompletionCount}/${DEV_REQUIRED_FIELDS.length} required fields completed`}</p>
                 </div>
                 <div className="metadata-grid">
+                  <label className="backlog-panel-field">
+                    <span>
+                      Production Task Type
+                      <em className="backlog-panel-required">*</em>
+                    </span>
+                    <select
+                      value={card.productionTaskType ?? ''}
+                      onChange={(event) => handleImmediateSave({ productionTaskType: event.target.value || undefined })}
+                    >
+                      <option value="">Select task type</option>
+                      {productionTaskTypeOptions.map((taskType) => (
+                        <option key={taskType.id} value={taskType.id}>
+                          {taskType.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="backlog-panel-field backlog-panel-field-full">
                     <span>
                       Task Description
