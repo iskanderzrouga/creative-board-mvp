@@ -4852,10 +4852,11 @@ button {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+  color: #334155;
 }
 .notification-mark-all {
   font-size: 12px;
-  color: var(--blue);
+  color: #334155;
 }
 .notification-list {
   overflow-y: auto;
@@ -4896,11 +4897,11 @@ button {
   margin: 0;
   font-size: 13px;
   line-height: 1.4;
-  color: var(--text);
+  color: #334155;
 }
 .notification-time {
   font-size: 11px;
-  color: var(--muted);
+  color: #64748b;
   margin-top: 2px;
   display: block;
 }
