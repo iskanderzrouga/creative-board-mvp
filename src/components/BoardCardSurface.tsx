@@ -11,6 +11,7 @@ import {
   isCreativeTaskTypeId,
   getRevisionCount,
   type Card,
+  type CardPriority,
   type GlobalSettings,
   type Portfolio,
 } from '../board'
@@ -28,6 +29,17 @@ interface BoardCardSurfaceProps {
   isInvalid?: boolean
   attributes?: DraggableAttributes
   listeners?: DraggableSyntheticListeners
+  onCyclePriority?: () => void
+}
+
+function getPriorityBadgeTone(priority: CardPriority) {
+  if (priority === 1) return 'priority-1'
+  if (priority === 2) return 'priority-2'
+  return 'priority-3'
+}
+
+function getPriorityLabel(priority: CardPriority) {
+  return priority === 1 || priority === 2 || priority === 3 ? String(priority) : '1'
 }
 
 function BoardCardSurfaceComponent({
@@ -42,12 +54,17 @@ function BoardCardSurfaceComponent({
   isInvalid = false,
   attributes,
   listeners,
+  onCyclePriority,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
   const tone = getAgeToneFromMs(ageMs, settings)
   const revisionCount = getRevisionCount(card)
   const showFunnelStage = isCreativeTaskTypeId(taskType.id)
+  const showPriorityControl =
+    card.stage === 'In Production' && Boolean(card.owner) && !isOverlay && Boolean(onCyclePriority)
+  const priorityTone = getPriorityBadgeTone(card.priority)
+  const priorityLabel = getPriorityLabel(card.priority)
 
   return (
     <button
@@ -71,6 +88,29 @@ function BoardCardSurfaceComponent({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+        {showPriorityControl ? (
+          <span
+            className={`production-priority-badge ${priorityTone}`}
+            role="button"
+            tabIndex={0}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              onCyclePriority?.()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onCyclePriority?.()
+              }
+            }}
+            aria-label={`Set ${card.id} priority (current ${priorityLabel})`}
+          >
+            P{priorityLabel}
+          </span>
+        ) : null}
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 

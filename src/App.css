@@ -823,6 +823,34 @@ button {
   color: var(--muted);
 }
 
+.production-priority-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  margin-left: auto;
+}
+
+.production-priority-badge.priority-1 {
+  background: #dc2626;
+}
+
+.production-priority-badge.priority-2 {
+  background: #d97706;
+}
+
+.production-priority-badge.priority-3 {
+  background: #2563eb;
+}
+
 .board-card-title {
   display: -webkit-box;
   margin: 4px 0 8px;

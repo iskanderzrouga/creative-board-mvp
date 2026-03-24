@@ -76,6 +76,7 @@ import {
   getDefaultBoardFilters,
   getEditorOptions,
   getEditorSummary,
+  getNextProductionCardPriority,
   getQuickCreateDefaults,
   getTeamMemberById,
   getVisibleCards,
@@ -89,6 +90,7 @@ import {
   loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
+  setInProductionCardPriority,
   type ActiveRole,
   type AppNotification,
   type AppPage,
@@ -1552,7 +1554,10 @@ function App() {
       return {
         valid: false,
         message: validationMessage,
-        tone: validationMessage.includes('at capacity') ? ('red' as ToastTone) : ('blue' as ToastTone),
+        tone:
+          validationMessage.includes('already has 3 cards in production')
+            ? ('red' as ToastTone)
+            : ('blue' as ToastTone),
       }
     }
 
@@ -1666,6 +1671,24 @@ function App() {
         notifications: [...prev.notifications, notification],
       }))
     }
+  }
+
+  function handleCycleProductionPriority(portfolioId: string, cardId: string) {
+    const portfolio = state.portfolios.find((item) => item.id === portfolioId)
+    const card = portfolio?.cards.find((item) => item.id === cardId)
+    if (!portfolio || !card || card.stage !== 'In Production') {
+      return
+    }
+
+    const nextPriority = getNextProductionCardPriority(card.priority)
+    setState((prev) => ({
+      ...prev,
+      portfolios: prev.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolioId
+          ? setInProductionCardPriority(currentPortfolio, cardId, nextPriority)
+          : currentPortfolio,
+      ),
+    }))
   }
 
   function handleBoardDragEnd(event: DragEndEvent) {
@@ -2076,6 +2099,7 @@ function App() {
                   : viewerContext.editorName === card.owner && canEditorDragStage(card.stage)))
             }
             onOpenCard={openCard}
+            onCycleProductionPriority={handleCycleProductionPriority}
             onQuickCreateOpen={() => {
               setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
               setQuickCreateOpen(true)

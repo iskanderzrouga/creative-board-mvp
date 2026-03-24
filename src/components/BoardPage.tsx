@@ -63,6 +63,7 @@ interface BoardPageProps {
   sensors: BoardSensors
   canDragCard: (card: Card) => boolean
   onOpenCard: (portfolioId: string, cardId: string) => void
+  onCycleProductionPriority: (portfolioId: string, cardId: string) => void
   onQuickCreateOpen: () => void
   onOpenSettings: () => void
   onResetFilters: () => void
@@ -98,6 +99,7 @@ export function BoardPage({
   sensors,
   canDragCard,
   onOpenCard,
+  onCycleProductionPriority,
   onQuickCreateOpen,
   onOpenSettings,
   onResetFilters,
@@ -456,6 +458,7 @@ export function BoardPage({
                                   cursorMode={canDragCard(card) ? 'drag' : 'pointer'}
                                   isInvalid={isBlocked}
                                   onOpen={() => onOpenCard(portfolio.id, card.id)}
+                                  onCyclePriority={() => onCycleProductionPriority(portfolio.id, card.id)}
                                 />
                               ))}
                             </SortableContext>
@@ -496,6 +499,7 @@ export function BoardPage({
               settings={settings}
               nowMs={nowMs}
               onOpen={() => undefined}
+              onCyclePriority={undefined}
               cursorMode="drag"
               isOverlay
             />

@@ -43,8 +43,8 @@ export const FUNNEL_STAGES = [
 ] as const
 export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Google', 'Other'] as const
 export const DESIGN_TYPES = ['Packaging', 'Logo', 'Brand Asset', 'Other'] as const
-export const CARD_PRIORITIES = ['none', 'low', 'medium', 'high'] as const
-export type CardPriority = (typeof CARD_PRIORITIES)[number]
+export const PRODUCTION_CARD_PRIORITIES = [1, 2, 3] as const
+export type CardPriority = (typeof PRODUCTION_CARD_PRIORITIES)[number] | null
 export const CARD_FIELDS = [
   'angle',
   'funnelStage',
@@ -1711,7 +1711,7 @@ function inflateSeedCard(
     dueDate: seed.dueDate ?? null,
     blocked: null,
     archivedAt: null,
-    priority: 'none',
+    priority: null,
     actualHoursLogged: 0,
     activityLog,
     legacyNaming: true,
@@ -2110,7 +2110,7 @@ function normalizePortfolio(
           typeof (rawCard as Card).revisionEstimatedHours === 'number'
             ? (rawCard as Card).revisionEstimatedHours
             : null,
-        priority: raw.priority ?? 'none',
+        priority: isProductionPriority(raw.priority) ? raw.priority : null,
         actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
         dueDate: rawCard.dueDate ?? null,
         designType:
@@ -2791,7 +2791,7 @@ export function createCardFromQuickInput(
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
     revisionEstimatedHours: null,
-    priority: 'none',
+    priority: null,
     actualHoursLogged: 0,
     dueDate: null,
     blocked: null,
@@ -2841,6 +2841,7 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('actualHoursLogged')
     allowedKeys.add('comments')
     allowedKeys.add('estimatedHours')
+    allowedKeys.add('priority')
     allowedKeys.add('blocked')
     allowedKeys.add('figmaUrl')
     allowedKeys.add('designType')
@@ -2851,6 +2852,44 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
   }
 
   return updateKeys.every((key) => allowedKeys.has(key))
+}
+
+function isProductionPriority(value: unknown): value is Exclude<CardPriority, null> {
+  return value === 1 || value === 2 || value === 3
+}
+
+function getPrioritySortValue(priority: CardPriority) {
+  return isProductionPriority(priority) ? priority : Number.MAX_SAFE_INTEGER
+}
+
+function getNextAvailableProductionPriority(cards: Card[]) {
+  for (const priority of PRODUCTION_CARD_PRIORITIES) {
+    if (!cards.some((card) => card.priority === priority)) {
+      return priority
+    }
+  }
+
+  return null
+}
+
+function getInProductionCardsForOwner(
+  cards: Card[],
+  owner: string,
+  excludedCardId?: string,
+) {
+  return cards.filter(
+    (card) =>
+      !isArchivedCard(card) &&
+      card.stage === 'In Production' &&
+      card.owner === owner &&
+      card.id !== excludedCardId,
+  )
+}
+
+export function getNextProductionCardPriority(currentPriority: CardPriority): Exclude<CardPriority, null> {
+  if (currentPriority === 1) return 2
+  if (currentPriority === 2) return 3
+  return 1
 }
 
 function getOrderedLaneCards(
@@ -2868,6 +2907,13 @@ function getOrderedLaneCards(
     })
     .slice()
     .sort((left, right) => {
+      if (stage === 'In Production' && owner !== null) {
+        const leftPriority = getPrioritySortValue(left.priority)
+        const rightPriority = getPrioritySortValue(right.priority)
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority
+        }
+      }
       if (left.positionInSection !== right.positionInSection) {
         return left.positionInSection - right.positionInSection
       }
@@ -3551,7 +3597,6 @@ export function getCardMoveValidationMessage(
   }
 
   if (destinationStage === 'In Production' && nextOwner) {
-    const member = getTeamMemberByName(portfolio, nextOwner)
     const projectedWip = portfolio.cards.filter(
       (currentCard) =>
         currentCard.id !== card.id &&
@@ -3559,13 +3604,8 @@ export function getCardMoveValidationMessage(
         currentCard.stage === 'In Production' &&
         !currentCard.archivedAt,
     ).length
-    if (
-      !isBackwardMove &&
-      member?.wipCap !== null &&
-      member?.wipCap !== undefined &&
-      projectedWip >= member.wipCap
-    ) {
-      return `${nextOwner} is at capacity (${member.wipCap}/${member.wipCap})`
+    if (projectedWip >= 3) {
+      return `${nextOwner} already has 3 cards in production. Move one to Review first.`
     }
   }
 
@@ -3694,6 +3734,29 @@ export function moveCardInPortfolio(
   nextTargetLane.forEach((id, index) => positionMap.set(id, index))
 
   const ownerChanged = existingCard.owner !== nextOwner
+  const enteringInProduction =
+    destinationStage === 'In Production' && (existingCard.stage !== 'In Production' || ownerChanged)
+  const leavingInProduction = existingCard.stage === 'In Production' && destinationStage !== 'In Production'
+  const inProductionOwnerCards =
+    destinationStage === 'In Production' && nextOwner
+      ? getInProductionCardsForOwner(otherCards, nextOwner)
+      : []
+
+  if (destinationStage === 'In Production' && nextOwner && inProductionOwnerCards.length >= 3) {
+    return portfolio
+  }
+
+  const nextPriority =
+    enteringInProduction && nextOwner
+      ? getNextAvailableProductionPriority(inProductionOwnerCards)
+      : leavingInProduction
+        ? null
+        : existingCard.priority
+
+  if (enteringInProduction && nextPriority === null) {
+    return portfolio
+  }
+
   const nextHistory = stageChanged
     ? [
         ...closeCurrentStageEntry(existingCard.stageHistory, movedAt),
@@ -3726,6 +3789,7 @@ export function moveCardInPortfolio(
       : isForwardMove
         ? null
         : existingCard.revisionEstimatedHours,
+    priority: nextPriority,
   }
 
   if (ownerChanged && nextOwner) {
@@ -3760,6 +3824,65 @@ export function moveCardInPortfolio(
   return {
     ...portfolio,
     cards: reindexCards([...updatedCards, syncGeneratedNames(updatedCard, settings)]),
+  }
+}
+
+export function setInProductionCardPriority(
+  portfolio: Portfolio,
+  cardId: string,
+  nextPriority: Exclude<CardPriority, null>,
+): Portfolio {
+  if (!isProductionPriority(nextPriority)) {
+    return portfolio
+  }
+
+  const targetCard = portfolio.cards.find((card) => card.id === cardId)
+  if (
+    !targetCard ||
+    targetCard.archivedAt ||
+    targetCard.stage !== 'In Production' ||
+    !targetCard.owner
+  ) {
+    return portfolio
+  }
+
+  const ownerInProductionCards = getInProductionCardsForOwner(portfolio.cards, targetCard.owner)
+  if (ownerInProductionCards.length > 3) {
+    return portfolio
+  }
+
+  const conflictingCard = ownerInProductionCards.find(
+    (card) => card.id !== targetCard.id && card.priority === nextPriority,
+  )
+
+  const targetPreviousPriority = targetCard.priority
+  let replacementPriority: CardPriority = null
+  if (conflictingCard) {
+    if (isProductionPriority(targetPreviousPriority) && targetPreviousPriority !== nextPriority) {
+      replacementPriority = targetPreviousPriority
+    } else {
+      const remainingCards = ownerInProductionCards.filter(
+        (card) => card.id !== targetCard.id && card.id !== conflictingCard.id,
+      )
+      const availablePriority = getNextAvailableProductionPriority([
+        ...remainingCards,
+        { ...targetCard, priority: nextPriority },
+      ])
+      replacementPriority = availablePriority
+    }
+  }
+
+  return {
+    ...portfolio,
+    cards: portfolio.cards.map((card) => {
+      if (card.id === targetCard.id) {
+        return { ...card, priority: nextPriority }
+      }
+      if (conflictingCard && card.id === conflictingCard.id) {
+        return { ...card, priority: replacementPriority }
+      }
+      return card
+    }),
   }
 }
 
