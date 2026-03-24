@@ -54,6 +54,81 @@ interface LegacyWorkspaceAccessRow {
   updated_at: string | null
 }
 
+const DEFAULT_LOCAL_WORKSPACE_ACCESS_ENTRIES: WorkspaceAccessEntry[] = [
+  {
+    email: 'nicolas@bluebrands.co',
+    roleMode: 'owner',
+    editorName: null,
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'naomi@bluebrands.co',
+    roleMode: 'manager',
+    editorName: 'Naomi',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'iskander@bluebrands.co',
+    roleMode: 'owner',
+    editorName: null,
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'pjatoss@gmail.com',
+    roleMode: 'contributor',
+    editorName: 'Daniel T',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'smnijomarie@gmail.com',
+    roleMode: 'contributor',
+    editorName: 'Jo',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'ezequielpizarroac@gmail.com',
+    roleMode: 'contributor',
+    editorName: 'Ezequiel',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'ayoubvisuals189@gmail.com',
+    roleMode: 'contributor',
+    editorName: 'Ayoub',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'charit@csuccesstech.com',
+    roleMode: 'contributor',
+    editorName: 'Charit',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'ivan@bluebrands.co',
+    roleMode: 'contributor',
+    editorName: 'Ivan',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+]
+
 function hasBrowser() {
   return typeof window !== 'undefined'
 }
@@ -171,8 +246,22 @@ function setStoredE2EAccessEntries(entries: WorkspaceAccessEntry[]) {
 
 function getE2EWorkspaceAccessEntries() {
   const session = getE2EAuthSession()
-  const stored = getStoredE2EAccessEntries()
+  const stored = [
+    ...DEFAULT_LOCAL_WORKSPACE_ACCESS_ENTRIES,
+    ...getStoredE2EAccessEntries(),
+  ]
     .slice()
+    .reduce<WorkspaceAccessEntry[]>((entries, nextEntry) => {
+      const normalizedEmail = nextEntry.email.trim().toLowerCase()
+      if (!normalizedEmail) {
+        return entries
+      }
+      const filtered = entries.filter((entry) => entry.email !== normalizedEmail)
+      return [
+        ...filtered,
+        { ...nextEntry, email: normalizedEmail },
+      ]
+    }, [])
     .sort((left, right) => left.email.localeCompare(right.email))
 
   if (!session) {
