@@ -30,8 +30,9 @@ import {
   isLpDesignTaskTypeId,
   isLpDevTaskTypeId,
   isPackagingBrandingTaskTypeId,
-  type Card,
-  type GlobalSettings,
+    type Card,
+    type CardPriority,
+    type GlobalSettings,
   type Portfolio,
   type RoleMode,
 } from '../board'
@@ -56,6 +57,7 @@ interface CardDetailPanelProps {
   onClose: () => void
   onCopy: (key: string, value: string) => void
   onSave: (updates: Partial<Card>) => void
+  onSetProductionPriority: (priority: Exclude<CardPriority, null>) => void
   onAddComment: (text: string, imageDataUrl?: string) => void
   onCreateDriveFolder: () => void
   onRequestDelete: () => void
@@ -97,6 +99,7 @@ export function CardDetailPanel({
   onClose,
   onCopy,
   onSave,
+  onSetProductionPriority,
   onAddComment,
   onCreateDriveFolder,
   onRequestDelete,
@@ -136,6 +139,7 @@ export function CardDetailPanel({
   const canSetBlocked = canManage || isLaunchOpsViewer || isOwnedEditor
   const canClearBlocked = canManage || isOwnedEditor
   const canClearOwner = card.stage === 'Backlog'
+  const canSetPriority = card.stage === 'In Production' && Boolean(card.owner) && (canManage || isOwnedEditor)
 
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const creativeTask = isCreativeTaskTypeId(taskType.id)
@@ -335,6 +339,25 @@ export function CardDetailPanel({
               ) : null}
               {card.archivedAt ? <span className="archived-badge">Archived</span> : null}
             </div>
+            {canSetPriority ? (
+              <div className="panel-priority-selector">
+                <span>Priority</span>
+                <div className="panel-priority-buttons">
+                  {[1, 2, 3].map((priority) => (
+                    <button
+                      key={priority}
+                      type="button"
+                      className={`panel-priority-button priority-${priority} ${
+                        card.priority === priority ? 'is-active' : ''
+                      }`}
+                      onClick={() => onSetProductionPriority(priority as 1 | 2 | 3)}
+                    >
+                      {`P${priority}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="panel-header-actions">

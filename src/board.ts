@@ -43,8 +43,8 @@ export const FUNNEL_STAGES = [
 ] as const
 export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Google', 'Other'] as const
 export const DESIGN_TYPES = ['Packaging', 'Logo', 'Brand Asset', 'Other'] as const
-export const CARD_PRIORITIES = ['none', 'low', 'medium', 'high'] as const
-export type CardPriority = (typeof CARD_PRIORITIES)[number]
+export const PRODUCTION_CARD_PRIORITIES = [1, 2, 3] as const
+export type CardPriority = (typeof PRODUCTION_CARD_PRIORITIES)[number] | null
 export const CARD_FIELDS = [
   'angle',
   'funnelStage',
@@ -179,6 +179,8 @@ export interface Card {
   blocked: BlockedState | null
   archivedAt: string | null
   priority: CardPriority
+  p1AssignedAt?: string | null
+  p1Deadline?: string | null
   actualHoursLogged: number
   activityLog: ActivityEntry[]
   legacyNaming?: boolean
@@ -203,6 +205,9 @@ export interface TeamMember {
   accessEmail?: string | null
   weeklyHours: number | null
   hoursPerDay: number | null
+  workingHoursPerDay?: number
+  workStartHour?: number
+  workEndHour?: number
   workingDays: WorkingDay[]
   timezone: string
   wipCap: number | null
@@ -771,16 +776,29 @@ function createDefaultTeamMember(
   weeklyHours: number | null,
   hoursPerDay: number | null,
   wipCap: number | null,
+  timezone = getDefaultTimezone(),
+  workStartHour = 9,
+  workEndHour = 17,
 ): TeamMember {
+  const normalizedStartHour = Math.max(0, Math.min(23, Math.round(workStartHour)))
+  const normalizedEndHour = Math.max(normalizedStartHour + 1, Math.min(24, Math.round(workEndHour)))
+  const normalizedWorkingHoursPerDay = Math.max(
+    1,
+    Math.min(normalizedEndHour - normalizedStartHour, hoursPerDay ?? normalizedEndHour - normalizedStartHour),
+  )
+
   return {
     id,
     name,
     role,
     accessEmail: null,
     weeklyHours,
-    hoursPerDay,
+    hoursPerDay: hoursPerDay ?? normalizedWorkingHoursPerDay,
+    workingHoursPerDay: normalizedWorkingHoursPerDay,
+    workStartHour: normalizedStartHour,
+    workEndHour: normalizedEndHour,
     workingDays: getDefaultWorkingDays(),
-    timezone: getDefaultTimezone(),
+    timezone: getResolvedTimezone(timezone),
     wipCap,
     active: true,
   }
@@ -1711,7 +1729,9 @@ function inflateSeedCard(
     dueDate: seed.dueDate ?? null,
     blocked: null,
     archivedAt: null,
-    priority: 'none',
+    priority: null,
+    p1AssignedAt: null,
+    p1Deadline: null,
     actualHoursLogged: 0,
     activityLog,
     legacyNaming: true,
@@ -1904,14 +1924,13 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
     name: 'BrandLab',
     brands: brandLabBrands,
     team: [
-      createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null),
-      createDefaultTeamMember('daniel-t', 'Daniel T', 'Editor', 40, 8, 3),
-      createDefaultTeamMember('jo', 'Jo', 'Editor', 40, 8, 3),
-      createDefaultTeamMember('ezequiel', 'Ezequiel', 'Editor', 40, 8, 3),
-      createDefaultTeamMember('bryan', 'Bryan', 'Editor', 40, 8, 3),
-      createDefaultTeamMember('charit', 'Charit', 'Designer', 40, 8, 3),
-      createDefaultTeamMember('shita', 'Shita', 'Designer', 40, 8, 3),
-      createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 10, 3, 2),
+      createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null, 'UTC', 9, 17),
+      createDefaultTeamMember('daniel-t', 'Daniel T', 'Editor', 40, 8, 3, 'Europe/Budapest', 9, 17),
+      createDefaultTeamMember('jo', 'Jo', 'Editor', 40, 8, 3, 'Asia/Manila', 9, 17),
+      createDefaultTeamMember('ezequiel', 'Ezequiel', 'Editor', 40, 8, 3, 'America/Argentina/Buenos_Aires', 9, 17),
+      createDefaultTeamMember('ayoub', 'Ayoub', 'Editor', 40, 8, 3, 'Asia/Makassar', 9, 17),
+      createDefaultTeamMember('charit', 'Charit', 'Designer', 40, 8, 3, 'Asia/Bangkok', 9, 17),
+      createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 25, 5, 2, 'Asia/Shanghai', 9, 14),
     ],
     cards: brandLabCards,
     webhookUrl: '',
@@ -2064,6 +2083,36 @@ function normalizePortfolio(
         : isManagerRole(member.role)
           ? null
           : 8,
+    workingHoursPerDay: Math.max(
+      1,
+      typeof (member as TeamMember & { workingHoursPerDay?: number }).workingHoursPerDay === 'number'
+        ? (member as TeamMember & { workingHoursPerDay?: number }).workingHoursPerDay ?? 8
+        : typeof member.hoursPerDay === 'number'
+          ? member.hoursPerDay
+          : 8,
+    ),
+    workStartHour: Math.max(
+      0,
+      Math.min(
+        23,
+        Math.round(
+          typeof (member as TeamMember & { workStartHour?: number }).workStartHour === 'number'
+            ? (member as TeamMember & { workStartHour?: number }).workStartHour ?? 9
+            : 9,
+        ),
+      ),
+    ),
+    workEndHour: Math.max(
+      1,
+      Math.min(
+        24,
+        Math.round(
+          typeof (member as TeamMember & { workEndHour?: number }).workEndHour === 'number'
+            ? (member as TeamMember & { workEndHour?: number }).workEndHour ?? 17
+            : 17,
+        ),
+      ),
+    ),
     workingDays:
       Array.isArray(member.workingDays) && member.workingDays.length > 0
         ? member.workingDays
@@ -2074,7 +2123,21 @@ function normalizePortfolio(
         ? (member as unknown as { wipLimit?: number | null }).wipLimit ?? null
         : member.wipCap,
     active: member.active ?? true,
-  }))
+  })).map((member) => {
+    const workStartHour = Math.max(0, Math.min(23, Math.round(member.workStartHour ?? 9)))
+    const workEndHour = Math.max(workStartHour + 1, Math.min(24, Math.round(member.workEndHour ?? 17)))
+    const workingHoursPerDay = Math.max(
+      1,
+      Math.min(workEndHour - workStartHour, member.workingHoursPerDay ?? member.hoursPerDay ?? 8),
+    )
+    return {
+      ...member,
+      workStartHour,
+      workEndHour,
+      workingHoursPerDay,
+      hoursPerDay: member.hoursPerDay ?? workingHoursPerDay,
+    }
+  })
 
   const normalizedCards = reindexCards(
     portfolio.cards.map((rawCard) => {
@@ -2110,7 +2173,9 @@ function normalizePortfolio(
           typeof (rawCard as Card).revisionEstimatedHours === 'number'
             ? (rawCard as Card).revisionEstimatedHours
             : null,
-        priority: raw.priority ?? 'none',
+        priority: isProductionPriority(raw.priority) ? raw.priority : null,
+        p1AssignedAt: typeof raw.p1AssignedAt === 'string' ? raw.p1AssignedAt : null,
+        p1Deadline: typeof raw.p1Deadline === 'string' ? raw.p1Deadline : null,
         actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
         dueDate: rawCard.dueDate ?? null,
         designType:
@@ -2791,7 +2856,9 @@ export function createCardFromQuickInput(
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
     revisionEstimatedHours: null,
-    priority: 'none',
+    priority: null,
+    p1AssignedAt: null,
+    p1Deadline: null,
     actualHoursLogged: 0,
     dueDate: null,
     blocked: null,
@@ -2841,6 +2908,7 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('actualHoursLogged')
     allowedKeys.add('comments')
     allowedKeys.add('estimatedHours')
+    allowedKeys.add('priority')
     allowedKeys.add('blocked')
     allowedKeys.add('figmaUrl')
     allowedKeys.add('designType')
@@ -2851,6 +2919,215 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
   }
 
   return updateKeys.every((key) => allowedKeys.has(key))
+}
+
+function isProductionPriority(value: unknown): value is Exclude<CardPriority, null> {
+  return value === 1 || value === 2 || value === 3
+}
+
+function getP1DeadlineHoursForTaskTypeId(taskTypeId: string) {
+  if (taskTypeId === 'video-ugc-short' || taskTypeId === 'static-single') {
+    return 8
+  }
+  if (taskTypeId === 'video-ugc-medium') {
+    return 16
+  }
+  if (taskTypeId.includes('vsl-short')) {
+    return 16
+  }
+  if (taskTypeId.includes('vsl-mid')) {
+    return 16
+  }
+  if (taskTypeId.includes('vsl-long')) {
+    return 24
+  }
+  return 8
+}
+
+function getTimeZoneOffsetMinutes(timezone: string, valueMs: number) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    timeZoneName: 'shortOffset',
+    hour: '2-digit',
+  })
+  const offsetLabel = formatter.formatToParts(new Date(valueMs)).find((part) => part.type === 'timeZoneName')?.value ?? 'GMT+0'
+  const match = offsetLabel.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/)
+  if (!match) {
+    return 0
+  }
+  const sign = match[1] === '-' ? -1 : 1
+  const hours = Number(match[2] ?? '0')
+  const minutes = Number(match[3] ?? '0')
+  return sign * (hours * 60 + minutes)
+}
+
+function zonedDateTimeToUtcMs(
+  timezone: string,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+) {
+  let utcMs = Date.UTC(year, month - 1, day, hour, minute)
+  for (let index = 0; index < 3; index += 1) {
+    const offsetMinutes = getTimeZoneOffsetMinutes(timezone, utcMs)
+    const adjustedUtcMs = Date.UTC(year, month - 1, day, hour, minute) - offsetMinutes * 60 * 1000
+    if (adjustedUtcMs === utcMs) {
+      break
+    }
+    utcMs = adjustedUtcMs
+  }
+  return utcMs
+}
+
+function isWorkingDayLabel(day: WorkingDay, workingDays: WorkingDay[]) {
+  return workingDays.includes(day)
+}
+
+function getAlignedWorkingStartMs(member: TeamMember, referenceMs: number) {
+  const timezone = getResolvedTimezone(member.timezone)
+  const local = getZonedDateTimeParts(referenceMs, timezone)
+  const startHour = Math.max(0, Math.min(23, member.workStartHour ?? 9))
+  const endHour = Math.max(startHour + 1, Math.min(24, member.workEndHour ?? 17))
+  const workingDays = member.workingDays.length > 0 ? member.workingDays : getDefaultWorkingDays()
+
+  let probeYear = local.year
+  let probeMonth = local.month
+  let probeDay = local.day
+  let probeHour = local.hour
+
+  if (!isWorkingDayLabel(local.weekday, workingDays) || probeHour >= endHour) {
+    const nextDayUtc = zonedDateTimeToUtcMs(timezone, probeYear, probeMonth, probeDay, 12, 0) + DAY_MS
+    const nextLocal = getZonedDateTimeParts(nextDayUtc, timezone)
+    probeYear = nextLocal.year
+    probeMonth = nextLocal.month
+    probeDay = nextLocal.day
+    probeHour = startHour
+  } else if (probeHour < startHour) {
+    probeHour = startHour
+  }
+
+  while (true) {
+    const probeUtc = zonedDateTimeToUtcMs(timezone, probeYear, probeMonth, probeDay, startHour, 0)
+    const probeLocal = getZonedDateTimeParts(probeUtc, timezone)
+    if (isWorkingDayLabel(probeLocal.weekday, workingDays)) {
+      return zonedDateTimeToUtcMs(timezone, probeLocal.year, probeLocal.month, probeLocal.day, probeHour, local.minute)
+    }
+    const nextUtc = probeUtc + DAY_MS
+    const nextLocal = getZonedDateTimeParts(nextUtc, timezone)
+    probeYear = nextLocal.year
+    probeMonth = nextLocal.month
+    probeDay = nextLocal.day
+    probeHour = startHour
+  }
+}
+
+function addWorkingHours(member: TeamMember, startMs: number, totalHours: number) {
+  const timezone = getResolvedTimezone(member.timezone)
+  const startHour = Math.max(0, Math.min(23, member.workStartHour ?? 9))
+  const endHour = Math.max(startHour + 1, Math.min(24, member.workEndHour ?? 17))
+  const workingDays = member.workingDays.length > 0 ? member.workingDays : getDefaultWorkingDays()
+  let remainingMinutes = Math.round(totalHours * 60)
+  let cursorMs = startMs
+
+  while (remainingMinutes > 0) {
+    const local = getZonedDateTimeParts(cursorMs, timezone)
+    const inWorkingDay = isWorkingDayLabel(local.weekday, workingDays)
+    const dayStartMs = zonedDateTimeToUtcMs(timezone, local.year, local.month, local.day, startHour, 0)
+    const dayEndMs = zonedDateTimeToUtcMs(timezone, local.year, local.month, local.day, endHour, 0)
+
+    if (!inWorkingDay || cursorMs >= dayEndMs) {
+      const nextDay = dayStartMs + DAY_MS
+      cursorMs = getAlignedWorkingStartMs(member, nextDay)
+      continue
+    }
+
+    if (cursorMs < dayStartMs) {
+      cursorMs = dayStartMs
+    }
+
+    const availableMinutes = Math.max(0, Math.floor((dayEndMs - cursorMs) / 60000))
+    const consumedMinutes = Math.min(remainingMinutes, availableMinutes)
+    remainingMinutes -= consumedMinutes
+    cursorMs += consumedMinutes * 60000
+
+    if (remainingMinutes > 0) {
+      cursorMs = getAlignedWorkingStartMs(member, dayEndMs + DAY_MS / 2)
+    }
+  }
+
+  return cursorMs
+}
+
+function calculateP1Deadline(card: Card, member: TeamMember, assignedAtIso: string) {
+  const hours = getP1DeadlineHoursForTaskTypeId(card.taskTypeId)
+  const alignedStartMs = getAlignedWorkingStartMs(member, new Date(assignedAtIso).getTime())
+  const deadlineMs = addWorkingHours(member, alignedStartMs, hours)
+  return new Date(deadlineMs).toISOString()
+}
+
+function syncP1TimingForCard(
+  card: Card,
+  previousCard: Card | null,
+  portfolio: Portfolio,
+  nowIso: string,
+) {
+  if (card.stage !== 'In Production' || card.priority !== 1 || !card.owner) {
+    return { ...card, p1AssignedAt: null, p1Deadline: null }
+  }
+
+  const ownerChanged = previousCard && previousCard.owner !== card.owner
+  const becameP1 = !previousCard || previousCard.priority !== 1
+  if (!ownerChanged && !becameP1 && card.p1AssignedAt && card.p1Deadline) {
+    return card
+  }
+
+  const member = getTeamMemberByName(portfolio, card.owner)
+  if (!member) {
+    return { ...card, p1AssignedAt: nowIso, p1Deadline: null }
+  }
+
+  const assignedAt = nowIso
+  return {
+    ...card,
+    p1AssignedAt: assignedAt,
+    p1Deadline: calculateP1Deadline(card, member, assignedAt),
+  }
+}
+
+function getPrioritySortValue(priority: CardPriority) {
+  return isProductionPriority(priority) ? priority : Number.MAX_SAFE_INTEGER
+}
+
+function getNextAvailableProductionPriority(cards: Card[]) {
+  for (const priority of PRODUCTION_CARD_PRIORITIES) {
+    if (!cards.some((card) => card.priority === priority)) {
+      return priority
+    }
+  }
+
+  return null
+}
+
+function getInProductionCardsForOwner(
+  cards: Card[],
+  owner: string,
+  excludedCardId?: string,
+) {
+  return cards.filter(
+    (card) =>
+      !isArchivedCard(card) &&
+      card.stage === 'In Production' &&
+      card.owner === owner &&
+      card.id !== excludedCardId,
+  )
+}
+
+export function getNextProductionCardPriority(currentPriority: CardPriority): Exclude<CardPriority, null> {
+  if (currentPriority === 1) return 2
+  if (currentPriority === 2) return 3
+  return 1
 }
 
 function getOrderedLaneCards(
@@ -2868,6 +3145,13 @@ function getOrderedLaneCards(
     })
     .slice()
     .sort((left, right) => {
+      if (stage === 'In Production' && owner !== null) {
+        const leftPriority = getPrioritySortValue(left.priority)
+        const rightPriority = getPrioritySortValue(right.priority)
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority
+        }
+      }
       if (left.positionInSection !== right.positionInSection) {
         return left.positionInSection - right.positionInSection
       }
@@ -3551,7 +3835,6 @@ export function getCardMoveValidationMessage(
   }
 
   if (destinationStage === 'In Production' && nextOwner) {
-    const member = getTeamMemberByName(portfolio, nextOwner)
     const projectedWip = portfolio.cards.filter(
       (currentCard) =>
         currentCard.id !== card.id &&
@@ -3559,13 +3842,8 @@ export function getCardMoveValidationMessage(
         currentCard.stage === 'In Production' &&
         !currentCard.archivedAt,
     ).length
-    if (
-      !isBackwardMove &&
-      member?.wipCap !== null &&
-      member?.wipCap !== undefined &&
-      projectedWip >= member.wipCap
-    ) {
-      return `${nextOwner} is at capacity (${member.wipCap}/${member.wipCap})`
+    if (projectedWip >= 3) {
+      return `${nextOwner} already has 3 cards in production. Move one to Review first.`
     }
   }
 
@@ -3666,7 +3944,7 @@ export function moveCardInPortfolio(
   if (
     stageChanged &&
     isBackwardMove &&
-    (!normalizedRevisionReason || typeof revisionEstimatedHours !== 'number' || revisionEstimatedHours <= 0)
+    (!normalizedRevisionReason || typeof revisionEstimatedHours !== 'number' || revisionEstimatedHours < 0)
   ) {
     return portfolio
   }
@@ -3694,6 +3972,29 @@ export function moveCardInPortfolio(
   nextTargetLane.forEach((id, index) => positionMap.set(id, index))
 
   const ownerChanged = existingCard.owner !== nextOwner
+  const enteringInProduction =
+    destinationStage === 'In Production' && (existingCard.stage !== 'In Production' || ownerChanged)
+  const leavingInProduction = existingCard.stage === 'In Production' && destinationStage !== 'In Production'
+  const inProductionOwnerCards =
+    destinationStage === 'In Production' && nextOwner
+      ? getInProductionCardsForOwner(otherCards, nextOwner)
+      : []
+
+  if (destinationStage === 'In Production' && nextOwner && inProductionOwnerCards.length >= 3) {
+    return portfolio
+  }
+
+  const nextPriority =
+    enteringInProduction && nextOwner
+      ? getNextAvailableProductionPriority(inProductionOwnerCards)
+      : leavingInProduction
+        ? null
+        : existingCard.priority
+
+  if (enteringInProduction && nextPriority === null) {
+    return portfolio
+  }
+
   const nextHistory = stageChanged
     ? [
         ...closeCurrentStageEntry(existingCard.stageHistory, movedAt),
@@ -3726,6 +4027,9 @@ export function moveCardInPortfolio(
       : isForwardMove
         ? null
         : existingCard.revisionEstimatedHours,
+    priority: nextPriority,
+    p1AssignedAt: existingCard.p1AssignedAt,
+    p1Deadline: existingCard.p1Deadline,
   }
 
   if (ownerChanged && nextOwner) {
@@ -3751,6 +4055,8 @@ export function moveCardInPortfolio(
     )
   }
 
+  updatedCard = syncP1TimingForCard(updatedCard, existingCard, portfolio, movedAt)
+
   const updatedCards = otherCards.map((card) =>
     positionMap.has(card.id)
       ? { ...card, positionInSection: positionMap.get(card.id) ?? card.positionInSection }
@@ -3760,6 +4066,70 @@ export function moveCardInPortfolio(
   return {
     ...portfolio,
     cards: reindexCards([...updatedCards, syncGeneratedNames(updatedCard, settings)]),
+  }
+}
+
+export function setInProductionCardPriority(
+  portfolio: Portfolio,
+  cardId: string,
+  nextPriority: Exclude<CardPriority, null>,
+): Portfolio {
+  if (!isProductionPriority(nextPriority)) {
+    return portfolio
+  }
+
+  const targetCard = portfolio.cards.find((card) => card.id === cardId)
+  if (
+    !targetCard ||
+    targetCard.archivedAt ||
+    targetCard.stage !== 'In Production' ||
+    !targetCard.owner
+  ) {
+    return portfolio
+  }
+
+  const ownerInProductionCards = getInProductionCardsForOwner(portfolio.cards, targetCard.owner)
+  if (ownerInProductionCards.length > 3) {
+    return portfolio
+  }
+
+  const conflictingCard = ownerInProductionCards.find(
+    (card) => card.id !== targetCard.id && card.priority === nextPriority,
+  )
+
+  const targetPreviousPriority = targetCard.priority
+  let replacementPriority: CardPriority = null
+  if (conflictingCard) {
+    if (isProductionPriority(targetPreviousPriority) && targetPreviousPriority !== nextPriority) {
+      replacementPriority = targetPreviousPriority
+    } else {
+      const remainingCards = ownerInProductionCards.filter(
+        (card) => card.id !== targetCard.id && card.id !== conflictingCard.id,
+      )
+      const availablePriority = getNextAvailableProductionPriority([
+        ...remainingCards,
+        { ...targetCard, priority: nextPriority },
+      ])
+      replacementPriority = availablePriority
+    }
+  }
+
+  const nowIso = new Date().toISOString()
+  const nextCards = portfolio.cards.map((card) => {
+    if (card.id === targetCard.id) {
+      const updated = { ...card, priority: nextPriority }
+      return syncP1TimingForCard(updated, card, portfolio, nowIso)
+    }
+    if (conflictingCard && card.id === conflictingCard.id) {
+      const updated = { ...card, priority: replacementPriority }
+      return syncP1TimingForCard(updated, card, portfolio, nowIso)
+    }
+    return card
+  })
+
+  return {
+    ...portfolio,
+    cards: nextCards,
   }
 }
 
@@ -3887,6 +4257,8 @@ export function applyCardUpdates(
           ),
         )
       }
+
+      nextCard = syncP1TimingForCard(nextCard, previous, portfolio, timestamp)
 
       return nextCard
     }),
@@ -4293,6 +4665,43 @@ export function getAttentionSummary(
 
 export function formatHours(hours: number) {
   return `${roundToTenths(hours)}h`
+}
+
+export function getP1DeadlineStatus(card: Card, nowMs: number) {
+  if (card.priority !== 1 || !card.p1AssignedAt || !card.p1Deadline) {
+    return null
+  }
+
+  const assignedMs = new Date(card.p1AssignedAt).getTime()
+  const deadlineMs = new Date(card.p1Deadline).getTime()
+  if (!Number.isFinite(assignedMs) || !Number.isFinite(deadlineMs) || deadlineMs <= assignedMs) {
+    return null
+  }
+
+  const totalMs = deadlineMs - assignedMs
+  const remainingMs = deadlineMs - nowMs
+  const elapsedMs = nowMs - assignedMs
+  const absMs = Math.abs(remainingMs)
+  const days = Math.floor(absMs / DAY_MS)
+  const hours = Math.floor((absMs % DAY_MS) / HOUR_MS)
+  const minutes = Math.floor((absMs % HOUR_MS) / (60 * 1000))
+  const valueParts: string[] = []
+  if (days > 0) valueParts.push(`${days}d`)
+  if (hours > 0 || days > 0) valueParts.push(`${hours}h`)
+  valueParts.push(`${minutes}m`)
+  const compact = valueParts.join(' ')
+
+  if (remainingMs <= 0) {
+    return {
+      label: `OVERDUE · ${compact}`,
+      tone: 'red' as const,
+    }
+  }
+
+  return {
+    label: `Due in ${compact}`,
+    tone: elapsedMs / totalMs >= 0.5 ? ('amber' as const) : ('green' as const),
+  }
 }
 
 export function getBackwardMoveReasonsInLast30Days(

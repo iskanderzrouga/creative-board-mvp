@@ -51,6 +51,7 @@ interface SelectedCardState {
 interface PendingBackwardMove {
   portfolioId: string
   cardId: string
+  sourceStage: StageId
   destinationStage: StageId
   destinationOwner: string | null
   destinationIndex: number

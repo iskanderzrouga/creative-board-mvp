@@ -150,6 +150,9 @@ interface PersonDraft {
   portfolioId: string
   weeklyHours: number | null
   hoursPerDay: number | null
+  workingHoursPerDay: number
+  workStartHour: number
+  workEndHour: number
   workingDays: WorkingDay[]
   timezone: string
   wipCap: number | null
@@ -170,6 +173,9 @@ function createEmptyDraft(portfolios: Portfolio[]): PersonDraft {
     portfolioId: portfolios[0]?.id ?? '',
     weeklyHours: 40,
     hoursPerDay: 8,
+    workingHoursPerDay: 8,
+    workStartHour: 9,
+    workEndHour: 17,
     workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     wipCap: 3,
@@ -195,6 +201,9 @@ function draftFromPersonRow(row: PersonRow): PersonDraft {
     portfolioId: row.portfolioId ?? '',
     weeklyHours: member?.weeklyHours ?? 40,
     hoursPerDay: member?.hoursPerDay ?? 8,
+    workingHoursPerDay: member?.workingHoursPerDay ?? member?.hoursPerDay ?? 8,
+    workStartHour: member?.workStartHour ?? 9,
+    workEndHour: member?.workEndHour ?? 17,
     workingDays: member?.workingDays ?? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
     timezone: member?.timezone ?? 'UTC',
     wipCap: member?.wipCap ?? 3,
@@ -786,6 +795,7 @@ function PersonDrawer({
                       ...draft,
                       weeklyHours: nextHours,
                       hoursPerDay: nextHpd,
+                      workingHoursPerDay: Math.max(1, Math.round((nextHpd ?? 8) * 10) / 10),
                     })
                   }}
                 />
@@ -839,6 +849,7 @@ function PersonDrawer({
                                 ...draft,
                                 workingDays: nextDays,
                                 hoursPerDay: nextHpd,
+                                workingHoursPerDay: Math.max(1, Math.round((nextHpd ?? 8) * 10) / 10),
                               })
                             }}
                           />
@@ -848,20 +859,55 @@ function PersonDrawer({
                     </div>
 
                     <label className="workspace-access-field" style={{ marginTop: 8 }}>
-                      <span className="workspace-access-field-label">Hours per day (override)</span>
+                      <span className="workspace-access-field-label">Working hours per day</span>
                       <input
                         type="number"
                         min={0}
                         step={0.5}
-                        value={draft.hoursPerDay ?? ''}
+                        value={draft.workingHoursPerDay}
                         onChange={(e) =>
                           onDraftChange({
                             ...draft,
-                            hoursPerDay: e.target.value ? Number(e.target.value) : null,
+                            workingHoursPerDay: Math.max(1, Number(e.target.value) || 1),
+                            hoursPerDay: Math.max(1, Number(e.target.value) || 1),
                           })
                         }
                       />
                     </label>
+                    <div className="workspace-access-row">
+                      <label className="workspace-access-field">
+                        <span className="workspace-access-field-label">Work start hour</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={23}
+                          step={1}
+                          value={draft.workStartHour}
+                          onChange={(e) =>
+                            onDraftChange({
+                              ...draft,
+                              workStartHour: Math.max(0, Math.min(23, Number(e.target.value) || 9)),
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="workspace-access-field">
+                        <span className="workspace-access-field-label">Work end hour</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={24}
+                          step={1}
+                          value={draft.workEndHour}
+                          onChange={(e) =>
+                            onDraftChange({
+                              ...draft,
+                              workEndHour: Math.max(1, Math.min(24, Number(e.target.value) || 17)),
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1080,6 +1126,9 @@ export function PeopleSection({
                       accessEmail: linkedAccessEmail,
                       weeklyHours: activeDraft.weeklyHours,
                       hoursPerDay: activeDraft.hoursPerDay,
+                      workingHoursPerDay: activeDraft.workingHoursPerDay,
+                      workStartHour: activeDraft.workStartHour,
+                      workEndHour: activeDraft.workEndHour,
                       workingDays: activeDraft.workingDays,
                       timezone: activeDraft.timezone,
                       wipCap: activeDraft.wipCap,
@@ -1103,6 +1152,9 @@ export function PeopleSection({
                     accessEmail: linkedAccessEmail,
                     weeklyHours: activeDraft.weeklyHours,
                     hoursPerDay: activeDraft.hoursPerDay,
+                    workingHoursPerDay: activeDraft.workingHoursPerDay,
+                    workStartHour: activeDraft.workStartHour,
+                    workEndHour: activeDraft.workEndHour,
                     workingDays: activeDraft.workingDays,
                     timezone: activeDraft.timezone,
                   wipCap: activeDraft.wipCap,
@@ -1120,6 +1172,9 @@ export function PeopleSection({
             accessEmail: linkedAccessEmail,
             weeklyHours: activeDraft.weeklyHours,
             hoursPerDay: activeDraft.hoursPerDay,
+            workingHoursPerDay: activeDraft.workingHoursPerDay,
+            workStartHour: activeDraft.workStartHour,
+            workEndHour: activeDraft.workEndHour,
             workingDays: activeDraft.workingDays,
             timezone: activeDraft.timezone,
             wipCap: activeDraft.wipCap,

@@ -7,10 +7,12 @@ import {
   getBrandTextColor,
   getCardAgeMs,
   getTaskTypeById,
+  getP1DeadlineStatus,
   getTypePillLabel,
   isCreativeTaskTypeId,
   getRevisionCount,
   type Card,
+  type CardPriority,
   type GlobalSettings,
   type Portfolio,
 } from '../board'
@@ -28,6 +30,17 @@ interface BoardCardSurfaceProps {
   isInvalid?: boolean
   attributes?: DraggableAttributes
   listeners?: DraggableSyntheticListeners
+  onCyclePriority?: () => void
+}
+
+function getPriorityBadgeTone(priority: CardPriority) {
+  if (priority === 1) return 'priority-1'
+  if (priority === 2) return 'priority-2'
+  return 'priority-3'
+}
+
+function getPriorityLabel(priority: CardPriority) {
+  return priority === 1 || priority === 2 || priority === 3 ? String(priority) : '1'
 }
 
 function BoardCardSurfaceComponent({
@@ -42,12 +55,18 @@ function BoardCardSurfaceComponent({
   isInvalid = false,
   attributes,
   listeners,
+  onCyclePriority,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
   const tone = getAgeToneFromMs(ageMs, settings)
   const revisionCount = getRevisionCount(card)
   const showFunnelStage = isCreativeTaskTypeId(taskType.id)
+  const showPriorityControl =
+    card.stage === 'In Production' && Boolean(card.owner) && !isOverlay && Boolean(onCyclePriority)
+  const priorityTone = getPriorityBadgeTone(card.priority)
+  const priorityLabel = getPriorityLabel(card.priority)
+  const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
 
   return (
     <button
@@ -71,6 +90,29 @@ function BoardCardSurfaceComponent({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+        {showPriorityControl ? (
+          <span
+            className={`production-priority-badge ${priorityTone}`}
+            role="button"
+            tabIndex={0}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              onCyclePriority?.()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onCyclePriority?.()
+              }
+            }}
+            aria-label={`Set ${card.id} priority (current ${priorityLabel})`}
+          >
+            P{priorityLabel}
+          </span>
+        ) : null}
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 
@@ -106,7 +148,11 @@ function BoardCardSurfaceComponent({
         <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
           {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
         </span>
-        <span className={`card-age tone-${tone}`}>{formatDateShort(card.dateCreated)}</span>
+        {p1DeadlineStatus ? (
+          <span className={`p1-deadline-chip tone-${p1DeadlineStatus.tone}`}>{p1DeadlineStatus.label}</span>
+        ) : (
+          <span className={`card-age tone-${tone}`}>{formatDateShort(card.dateCreated)}</span>
+        )}
       </div>
     </button>
   )
