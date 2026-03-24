@@ -851,6 +851,30 @@ button {
   background: #2563eb;
 }
 
+.p1-deadline-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.p1-deadline-chip.tone-green {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.p1-deadline-chip.tone-amber {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.p1-deadline-chip.tone-red {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .board-card-title {
   display: -webkit-box;
   margin: 4px 0 8px;

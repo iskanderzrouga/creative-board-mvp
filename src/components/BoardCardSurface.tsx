@@ -7,6 +7,7 @@ import {
   getBrandTextColor,
   getCardAgeMs,
   getTaskTypeById,
+  getP1DeadlineStatus,
   getTypePillLabel,
   isCreativeTaskTypeId,
   getRevisionCount,
@@ -65,6 +66,7 @@ function BoardCardSurfaceComponent({
     card.stage === 'In Production' && Boolean(card.owner) && !isOverlay && Boolean(onCyclePriority)
   const priorityTone = getPriorityBadgeTone(card.priority)
   const priorityLabel = getPriorityLabel(card.priority)
+  const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
 
   return (
     <button
@@ -146,7 +148,11 @@ function BoardCardSurfaceComponent({
         <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
           {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
         </span>
-        <span className={`card-age tone-${tone}`}>{formatDateShort(card.dateCreated)}</span>
+        {p1DeadlineStatus ? (
+          <span className={`p1-deadline-chip tone-${p1DeadlineStatus.tone}`}>{p1DeadlineStatus.label}</span>
+        ) : (
+          <span className={`card-age tone-${tone}`}>{formatDateShort(card.dateCreated)}</span>
+        )}
       </div>
     </button>
   )
