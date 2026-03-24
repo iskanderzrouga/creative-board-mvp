@@ -1690,7 +1690,14 @@ function App() {
       return
     }
 
-    const nextPriority = getNextProductionCardPriority(card.priority)
+    handleSetProductionPriority(portfolioId, cardId, getNextProductionCardPriority(card.priority))
+  }
+
+  function handleSetProductionPriority(
+    portfolioId: string,
+    cardId: string,
+    nextPriority: 1 | 2 | 3,
+  ) {
     setState((prev) => ({
       ...prev,
       portfolios: prev.portfolios.map((currentPortfolio) =>
@@ -2273,6 +2280,9 @@ function App() {
           onClose={requestCloseSelectedCard}
           onCopy={handleCopy}
           onSave={saveOpenCard}
+          onSetProductionPriority={(priority) =>
+            handleSetProductionPriority(activeSelectedPortfolioView.id, selectedCardData.id, priority)
+          }
           onAddComment={addCommentToCard}
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}

@@ -2975,6 +2975,52 @@ button {
   color: var(--muted-strong);
 }
 
+.panel-priority-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.panel-priority-selector > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel-priority-buttons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.panel-priority-button {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.panel-priority-button.is-active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.12);
+}
+
+.panel-priority-button.priority-1 {
+  background: #dc2626;
+}
+
+.panel-priority-button.priority-2 {
+  background: #d97706;
+}
+
+.panel-priority-button.priority-3 {
+  background: #2563eb;
+}
+
 .block-toggle-row {
   display: flex;
   align-items: flex-start;
