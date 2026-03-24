@@ -167,6 +167,9 @@ export function BacklogCardDetailPanel({
 }: BacklogCardDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null)
   const debounceRef = useRef<number | null>(null)
+  const draftsRef = useRef<TextDrafts | null>(null)
+  const cardRef = useRef<BacklogCard | null>(null)
+  const onSaveRef = useRef(onSave)
   const titleId = useId()
   const [drafts, setDrafts] = useState<TextDrafts>(() => (card ? getInitialDrafts(card) : EMPTY_TEXT_DRAFTS))
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
@@ -187,6 +190,33 @@ export function BacklogCardDetailPanel({
       onSave(pendingUpdates)
     }
   }
+
+  useEffect(() => {
+    draftsRef.current = drafts
+  }, [drafts])
+
+  useEffect(() => {
+    cardRef.current = card
+  }, [card])
+
+  useEffect(() => {
+    onSaveRef.current = onSave
+  }, [onSave])
+
+  useEffect(() => {
+    return () => {
+      const latestDrafts = draftsRef.current
+      if (!latestDrafts) {
+        return
+      }
+
+      const pendingUpdates = getPendingDraftUpdates(cardRef.current, latestDrafts)
+      clearDebounce()
+      if (pendingUpdates) {
+        onSaveRef.current(pendingUpdates)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!isOpen || !drafts) {

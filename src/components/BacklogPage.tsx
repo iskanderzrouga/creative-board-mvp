@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useId, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -42,7 +42,7 @@ interface BacklogPageProps {
   canCreate: boolean
   showToast: (message: string, tone: 'green' | 'amber' | 'red' | 'blue') => void
   headerUtilityContent?: ReactNode
-  onChange: (nextState: BacklogState) => void
+  onChange: Dispatch<SetStateAction<BacklogState>>
   onMoveToProduction: (card: BacklogCard) => { ok: true; cardId: string; portfolioId: string } | { ok: false }
 }
 
@@ -418,14 +418,14 @@ export function BacklogPage({
       return
     }
 
-    const nextState = addBacklogCard(backlog, {
-      name: nextName,
-      taskType: form.taskType,
-      brand: form.brand,
-      addedBy: actorName,
-    })
-
-    onChange(nextState)
+    onChange((current) =>
+      addBacklogCard(current, {
+        name: nextName,
+        taskType: form.taskType,
+        brand: form.brand,
+        addedBy: actorName,
+      }),
+    )
     setQuickCreateOpen(false)
     setForm(getDefaultQuickCreateForm(brandOptions))
   }
@@ -488,7 +488,7 @@ export function BacklogPage({
         productionResult,
       })
       if (!productionResult.ok) {
-        onChange(moveBacklogCard(backlog, cardId, 'prioritized'))
+        onChange((current) => moveBacklogCard(current, cardId, 'prioritized'))
         showToast('Could not create the Production card. The backlog card was returned to Prioritized.', 'red')
         return
       }
@@ -498,21 +498,21 @@ export function BacklogPage({
         productionCardId: productionResult.cardId,
         portfolioId: productionResult.portfolioId,
       })
-      onChange(deleteBacklogCard(backlog, cardId))
+      onChange((current) => deleteBacklogCard(current, cardId))
       setSelectedCardId(null)
       showToast(`Moved to Production as ${productionResult.cardId}.`, 'green')
       return
     }
 
-    onChange(moveBacklogCard(backlog, cardId, target.column, target.opsSubStage))
+    onChange((current) => moveBacklogCard(current, cardId, target.column, target.opsSubStage))
   }
 
   function handleSaveCard(cardId: string, updates: Partial<BacklogCard>) {
-    onChange(updateBacklogCard(backlog, cardId, updates))
+    onChange((current) => updateBacklogCard(current, cardId, updates))
   }
 
   function handleDeleteCard(cardId: string) {
-    onChange(deleteBacklogCard(backlog, cardId))
+    onChange((current) => deleteBacklogCard(current, cardId))
     setSelectedCardId(null)
   }
 
