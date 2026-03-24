@@ -1683,7 +1683,7 @@ button {
 
 .overview-card span {
   font-size: 13px;
-  color: var(--muted-strong);
+  color: var(--text);
 }
 
 .overview-progress {
@@ -1726,6 +1726,10 @@ button {
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
+}
+
+.analytics-page .brand-legend-item {
+  color: #475569;
 }
 
 .funnel-row {

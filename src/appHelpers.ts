@@ -141,12 +141,16 @@ export function isLikelyEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
-export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode) {
-  if (page === 'settings' && roleMode === 'viewer') {
-    return 'board' as AppPage
+export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode | 'editor') {
+  if (roleMode === 'owner' || roleMode === 'manager') {
+    return page
   }
 
-  return page
+  if (roleMode === 'contributor' || roleMode === 'editor') {
+    return page === 'board' || page === 'workload' ? page : ('board' as AppPage)
+  }
+
+  return 'board' as AppPage
 }
 
 export function getRoleFromWorkspaceAccess(

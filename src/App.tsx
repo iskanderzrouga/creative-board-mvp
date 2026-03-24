@@ -725,17 +725,27 @@ function App() {
       const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
 
       if (nextPage === 'backlog') {
-        setRoutePage('backlog')
+        if (canAccessBacklog && (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+          setRoutePage('backlog')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
         return
       }
 
-      setRoutePage(nextPage)
+      const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
+      setRoutePage(allowedPage)
       setState((current) =>
-        current.activePage === nextPage
+        current.activePage === allowedPage
           ? current
           : {
               ...current,
-              activePage: nextPage,
+              activePage: allowedPage,
             },
       )
     }
@@ -746,7 +756,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [state])
+  }, [canAccessBacklog, state])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
