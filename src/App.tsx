@@ -19,10 +19,12 @@ import {
   canEditorDragStage,
   copyToClipboard,
   getAllowedPageForRole,
+  getBackwardMoveReasonOptions,
   getCurrentPage,
   getDefaultBackwardMoveForm,
   getRoleFromWorkspaceAccess,
   getSearchCountLabel,
+  isBackwardMoveOtherReasonId,
   isLikelyEmail,
   type BackwardMoveFormState,
 } from './appHelpers'
@@ -74,7 +76,6 @@ import {
   getDefaultBoardFilters,
   getEditorOptions,
   getEditorSummary,
-  getRevisionReasonById,
   getQuickCreateDefaults,
   getTeamMemberById,
   getVisibleCards,
@@ -126,6 +127,7 @@ interface SelectedCardState {
 interface PendingBackwardMove {
   portfolioId: string
   cardId: string
+  sourceStage: StageId
   destinationStage: StageId
   destinationOwner: string | null
   destinationIndex: number
@@ -1716,12 +1718,13 @@ function App() {
       setPendingBackwardMove({
         portfolioId: activePortfolioView.id,
         cardId: card.id,
+        sourceStage: card.stage,
         destinationStage: target.lane.stage as StageId,
         destinationOwner: nextOwner,
         destinationIndex,
         movedAt,
       })
-      setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings))
+      setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings, card.stage))
       return
     }
 
@@ -1771,13 +1774,15 @@ function App() {
     if (!pendingBackwardMove) {
       return
     }
-    const selectedReason = getRevisionReasonById(state.settings, backwardMoveForm.reasonId)
+    const reasonOptions = getBackwardMoveReasonOptions(pendingBackwardMove.sourceStage)
+    const selectedReason = reasonOptions.find((reason) => reason.id === backwardMoveForm.reasonId) ?? null
     const reason =
-      selectedReason?.id === 'revision-other'
+      isBackwardMoveOtherReasonId(selectedReason?.id)
         ? backwardMoveForm.otherReason.trim()
         : selectedReason?.name ?? ''
-    const revisionEstimatedHours = Number(backwardMoveForm.estimatedHours) || 0
-    if (!reason || revisionEstimatedHours <= 0) {
+    const revisionEstimatedHours =
+      backwardMoveForm.estimatedHours === '' ? Number.NaN : Number(backwardMoveForm.estimatedHours)
+    if (!reason || !Number.isFinite(revisionEstimatedHours) || revisionEstimatedHours < 0) {
       return
     }
     const revisionFeedback = backwardMoveForm.feedback.trim()
@@ -2195,8 +2200,8 @@ function App() {
       {pendingBackwardMove && pendingBackwardCard ? (
         <BackwardMoveModal
           card={pendingBackwardCard}
+          sourceStage={pendingBackwardMove.sourceStage}
           destinationStage={pendingBackwardMove.destinationStage}
-          settings={state.settings}
           formState={backwardMoveForm}
           onChange={(updates) =>
             setBackwardMoveForm((current) => ({

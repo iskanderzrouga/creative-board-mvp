@@ -1,11 +1,13 @@
 import { useId, useRef } from 'react'
 import {
   formatHours,
-  getRevisionReasonById,
   type Card,
-  type GlobalSettings,
   type StageId,
 } from '../board'
+import {
+  getBackwardMoveReasonOptions,
+  isBackwardMoveOtherReasonId,
+} from '../appHelpers'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import { XIcon } from './icons/AppIcons'
 
@@ -18,22 +20,18 @@ interface BackwardMoveFormState {
 
 interface BackwardMoveModalProps {
   card: Card
+  sourceStage: StageId
   destinationStage: StageId
-  settings: GlobalSettings
   formState: BackwardMoveFormState
   onChange: (updates: Partial<BackwardMoveFormState>) => void
   onCancel: () => void
   onConfirm: () => void
 }
 
-function getSortedRevisionReasons(settings: GlobalSettings) {
-  return settings.revisionReasons.slice().sort((left, right) => left.order - right.order)
-}
-
 export function BackwardMoveModal({
   card,
+  sourceStage,
   destinationStage,
-  settings,
   formState,
   onChange,
   onCancel,
@@ -41,13 +39,13 @@ export function BackwardMoveModal({
 }: BackwardMoveModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
-  const reasons = getSortedRevisionReasons(settings)
-  const selectedReason = getRevisionReasonById(settings, formState.reasonId)
-  const otherSelected = selectedReason?.id === 'revision-other'
+  const reasons = getBackwardMoveReasonOptions(sourceStage)
+  const selectedReason = reasons.find((reason) => reason.id === formState.reasonId) ?? null
+  const otherSelected = isBackwardMoveOtherReasonId(selectedReason?.id)
   const canConfirm =
     Boolean(selectedReason) &&
-    Boolean(formState.estimatedHours) &&
-    Number(formState.estimatedHours) > 0 &&
+    formState.estimatedHours !== '' &&
+    Number(formState.estimatedHours) >= 0 &&
     (!otherSelected || formState.otherReason.trim())
 
   useModalAccessibility(modalRef, true)
@@ -88,7 +86,7 @@ export function BackwardMoveModal({
                     onChange({
                       reasonId: reason.id,
                       estimatedHours: reason.estimatedHours,
-                      otherReason: reason.id === 'revision-other' ? formState.otherReason : '',
+                      otherReason: isBackwardMoveOtherReasonId(reason.id) ? formState.otherReason : '',
                     })
                   }
                 />
@@ -117,7 +115,7 @@ export function BackwardMoveModal({
             <span>Estimated revision time (hours)</span>
             <input
               type="number"
-              min={1}
+              min={0}
               step={0.5}
               value={formState.estimatedHours}
               onChange={(event) =>

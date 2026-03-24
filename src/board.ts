@@ -3666,7 +3666,7 @@ export function moveCardInPortfolio(
   if (
     stageChanged &&
     isBackwardMove &&
-    (!normalizedRevisionReason || typeof revisionEstimatedHours !== 'number' || revisionEstimatedHours <= 0)
+    (!normalizedRevisionReason || typeof revisionEstimatedHours !== 'number' || revisionEstimatedHours < 0)
   ) {
     return portfolio
   }
