@@ -2047,7 +2047,7 @@ button {
   border: none;
   border-radius: 12px;
   background: transparent;
-  color: var(--muted-strong);
+  color: #334155;
   font-size: 13px;
   font-weight: 600;
   justify-content: flex-start;
@@ -2055,7 +2055,7 @@ button {
 
 .sidebar-nav-item:hover:not(:disabled) {
   background: var(--surface-shell);
-  color: var(--text);
+  color: #1e293b;
 }
 
 .sidebar-nav-item.is-active {
@@ -2072,6 +2072,7 @@ button {
 
 .sidebar-nav-icon {
   position: relative;
+  color: inherit;
   width: 18px;
   min-width: 18px;
   display: inline-flex;
