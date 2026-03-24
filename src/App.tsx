@@ -19,10 +19,12 @@ import {
   canEditorDragStage,
   copyToClipboard,
   getAllowedPageForRole,
+  getBackwardMoveReasonOptions,
   getCurrentPage,
   getDefaultBackwardMoveForm,
   getRoleFromWorkspaceAccess,
   getSearchCountLabel,
+  isBackwardMoveOtherReasonId,
   isLikelyEmail,
   type BackwardMoveFormState,
 } from './appHelpers'
@@ -74,7 +76,7 @@ import {
   getDefaultBoardFilters,
   getEditorOptions,
   getEditorSummary,
-  getRevisionReasonById,
+  getNextProductionCardPriority,
   getQuickCreateDefaults,
   getTeamMemberById,
   getVisibleCards,
@@ -88,6 +90,7 @@ import {
   loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
+  setInProductionCardPriority,
   type ActiveRole,
   type AppNotification,
   type AppPage,
@@ -126,6 +129,7 @@ interface SelectedCardState {
 interface PendingBackwardMove {
   portfolioId: string
   cardId: string
+  sourceStage: StageId
   destinationStage: StageId
   destinationOwner: string | null
   destinationIndex: number
@@ -721,17 +725,27 @@ function App() {
       const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
 
       if (nextPage === 'backlog') {
-        setRoutePage('backlog')
+        if (canAccessBacklog && (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+          setRoutePage('backlog')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
         return
       }
 
-      setRoutePage(nextPage)
+      const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
+      setRoutePage(allowedPage)
       setState((current) =>
-        current.activePage === nextPage
+        current.activePage === allowedPage
           ? current
           : {
               ...current,
-              activePage: nextPage,
+              activePage: allowedPage,
             },
       )
     }
@@ -742,7 +756,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [state])
+  }, [canAccessBacklog, state])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
@@ -1550,7 +1564,10 @@ function App() {
       return {
         valid: false,
         message: validationMessage,
-        tone: validationMessage.includes('at capacity') ? ('red' as ToastTone) : ('blue' as ToastTone),
+        tone:
+          validationMessage.includes('already has 3 cards in production')
+            ? ('red' as ToastTone)
+            : ('blue' as ToastTone),
       }
     }
 
@@ -1666,6 +1683,31 @@ function App() {
     }
   }
 
+  function handleCycleProductionPriority(portfolioId: string, cardId: string) {
+    const portfolio = state.portfolios.find((item) => item.id === portfolioId)
+    const card = portfolio?.cards.find((item) => item.id === cardId)
+    if (!portfolio || !card || card.stage !== 'In Production') {
+      return
+    }
+
+    handleSetProductionPriority(portfolioId, cardId, getNextProductionCardPriority(card.priority))
+  }
+
+  function handleSetProductionPriority(
+    portfolioId: string,
+    cardId: string,
+    nextPriority: 1 | 2 | 3,
+  ) {
+    setState((prev) => ({
+      ...prev,
+      portfolios: prev.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolioId
+          ? setInProductionCardPriority(currentPortfolio, cardId, nextPriority)
+          : currentPortfolio,
+      ),
+    }))
+  }
+
   function handleBoardDragEnd(event: DragEndEvent) {
     const cardId = String(event.active.id)
     const target = getDropTarget(
@@ -1716,12 +1758,13 @@ function App() {
       setPendingBackwardMove({
         portfolioId: activePortfolioView.id,
         cardId: card.id,
+        sourceStage: card.stage,
         destinationStage: target.lane.stage as StageId,
         destinationOwner: nextOwner,
         destinationIndex,
         movedAt,
       })
-      setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings))
+      setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings, card.stage))
       return
     }
 
@@ -1771,13 +1814,15 @@ function App() {
     if (!pendingBackwardMove) {
       return
     }
-    const selectedReason = getRevisionReasonById(state.settings, backwardMoveForm.reasonId)
+    const reasonOptions = getBackwardMoveReasonOptions(pendingBackwardMove.sourceStage)
+    const selectedReason = reasonOptions.find((reason) => reason.id === backwardMoveForm.reasonId) ?? null
     const reason =
-      selectedReason?.id === 'revision-other'
+      isBackwardMoveOtherReasonId(selectedReason?.id)
         ? backwardMoveForm.otherReason.trim()
         : selectedReason?.name ?? ''
-    const revisionEstimatedHours = Number(backwardMoveForm.estimatedHours) || 0
-    if (!reason || revisionEstimatedHours <= 0) {
+    const revisionEstimatedHours =
+      backwardMoveForm.estimatedHours === '' ? Number.NaN : Number(backwardMoveForm.estimatedHours)
+    if (!reason || !Number.isFinite(revisionEstimatedHours) || revisionEstimatedHours < 0) {
       return
     }
     const revisionFeedback = backwardMoveForm.feedback.trim()
@@ -2071,6 +2116,7 @@ function App() {
                   : viewerContext.editorName === card.owner && canEditorDragStage(card.stage)))
             }
             onOpenCard={openCard}
+            onCycleProductionPriority={handleCycleProductionPriority}
             onQuickCreateOpen={() => {
               setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
               setQuickCreateOpen(true)
@@ -2195,8 +2241,8 @@ function App() {
       {pendingBackwardMove && pendingBackwardCard ? (
         <BackwardMoveModal
           card={pendingBackwardCard}
+          sourceStage={pendingBackwardMove.sourceStage}
           destinationStage={pendingBackwardMove.destinationStage}
-          settings={state.settings}
           formState={backwardMoveForm}
           onChange={(updates) =>
             setBackwardMoveForm((current) => ({
@@ -2234,6 +2280,9 @@ function App() {
           onClose={requestCloseSelectedCard}
           onCopy={handleCopy}
           onSave={saveOpenCard}
+          onSetProductionPriority={(priority) =>
+            handleSetProductionPriority(activeSelectedPortfolioView.id, selectedCardData.id, priority)
+          }
           onAddComment={addCommentToCard}
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}

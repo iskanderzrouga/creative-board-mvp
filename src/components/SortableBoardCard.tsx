@@ -13,6 +13,7 @@ interface SortableBoardCardProps {
   cursorMode: 'drag' | 'pointer'
   isInvalid: boolean
   onOpen: () => void
+  onCyclePriority?: () => void
 }
 
 function SortableBoardCardComponent({
@@ -24,6 +25,7 @@ function SortableBoardCardComponent({
   cursorMode,
   isInvalid,
   onOpen,
+  onCyclePriority,
 }: SortableBoardCardProps) {
   const {
     attributes,
@@ -62,6 +64,7 @@ function SortableBoardCardComponent({
               onOpen()
             }
           }}
+          onCyclePriority={onCyclePriority}
           cursorMode={cursorMode}
           isDragging={isDragging}
           isInvalid={isInvalid && isDragging}

@@ -115,26 +115,18 @@ function SidebarComponent({
   onPageChange,
   onSignOut,
 }: SidebarProps) {
+  const canAccessAllPages = role.mode === 'owner' || role.mode === 'manager'
+  const canAccessWorkload = role.mode === 'owner' || role.mode === 'manager' || role.mode === 'contributor'
   const navItems: Array<{
     page: ExtendedPage
     disabled: boolean
     tooltip?: string
   }> = [
-    ...(canAccessBacklog ? [{ page: 'backlog' as const, disabled: false }] : []),
+    ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
     { page: 'board', disabled: false },
-    {
-      page: 'analytics',
-      disabled: false,
-    },
-    {
-      page: 'workload',
-      disabled: false,
-    },
-    {
-      page: 'settings',
-      disabled: role.mode === 'viewer',
-      tooltip: role.mode === 'viewer' ? 'Owner, Manager, and Contributor only' : undefined,
-    },
+    ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
+    ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
+    ...(canAccessAllPages ? [{ page: 'settings' as const, disabled: false }] : []),
   ]
   const avatarSource = userName || userSecondaryLabel || 'User'
   const avatarInitial = avatarSource.charAt(0).toUpperCase() || 'U'
