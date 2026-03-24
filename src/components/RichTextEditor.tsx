@@ -168,6 +168,7 @@ export function RichTextEditor({
       <div
         ref={editorRef}
         className="rich-text-surface"
+        data-placeholder="Write brief here…"
         contentEditable={!readOnly}
         suppressContentEditableWarning
         onInput={handleInput}

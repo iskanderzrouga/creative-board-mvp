@@ -109,6 +109,12 @@ export function CardDetailPanel({
   const [audienceDraft, setAudienceDraft] = useState(card.audience)
   const [landingPageDraft, setLandingPageDraft] = useState(card.landingPage)
   const [figmaUrlDraft, setFigmaUrlDraft] = useState(card.figmaUrl)
+  const [keyMessageDraft, setKeyMessageDraft] = useState(card.keyMessage)
+  const [visualDirectionDraft, setVisualDirectionDraft] = useState(card.visualDirection)
+  const [ctaDraft, setCtaDraft] = useState(card.cta)
+  const [referenceLinksDraft, setReferenceLinksDraft] = useState(card.referenceLinks)
+  const [adCopyDraft, setAdCopyDraft] = useState(card.adCopy)
+  const [notesDraft, setNotesDraft] = useState(card.notes)
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -160,6 +166,7 @@ export function CardDetailPanel({
     ...(creativeTask ? [{ id: 'naming', label: 'Naming' }] : []),
     { id: 'drive', label: 'Drive' },
     { id: 'brief', label: 'Brief' },
+    ...(creativeTask ? [{ id: 'creative-direction', label: 'Creative Direction' }] : []),
     { id: 'links', label: 'Links' },
     { id: 'comments', label: 'Comments' },
     { id: 'activity', label: 'Activity' },
@@ -215,7 +222,21 @@ export function CardDetailPanel({
     })
   }
 
-  function commitTextDraft(key: 'title' | 'angle' | 'audience' | 'landingPage' | 'figmaUrl', value: string) {
+  function commitTextDraft(
+    key:
+      | 'title'
+      | 'angle'
+      | 'audience'
+      | 'landingPage'
+      | 'figmaUrl'
+      | 'keyMessage'
+      | 'visualDirection'
+      | 'cta'
+      | 'referenceLinks'
+      | 'adCopy'
+      | 'notes',
+    value: string,
+  ) {
     if (value === card[key]) {
       return
     }
@@ -830,6 +851,95 @@ export function CardDetailPanel({
             readOnly={!canEditOwnedContent}
           />
         </section>
+
+        {creativeTask ? (
+          <section
+            ref={(node) => {
+              sectionRefs.current['creative-direction'] = node
+            }}
+            className="panel-section"
+          >
+            <div className="section-rule-title">Creative Direction</div>
+            <div className="metadata-grid creative-direction-grid">
+              <label>
+                <span>Key Message</span>
+                {canEditOwnedContent ? (
+                  <input
+                    value={keyMessageDraft}
+                    onChange={(event) => setKeyMessageDraft(event.target.value)}
+                    onBlur={() => commitTextDraft('keyMessage', keyMessageDraft)}
+                  />
+                ) : (
+                  <strong>{card.keyMessage || '—'}</strong>
+                )}
+              </label>
+              <label>
+                <span>CTA</span>
+                {canEditOwnedContent ? (
+                  <input
+                    value={ctaDraft}
+                    onChange={(event) => setCtaDraft(event.target.value)}
+                    onBlur={() => commitTextDraft('cta', ctaDraft)}
+                  />
+                ) : (
+                  <strong>{card.cta || '—'}</strong>
+                )}
+              </label>
+              <label className="full-width">
+                <span>Visual Direction</span>
+                {canEditOwnedContent ? (
+                  <textarea
+                    value={visualDirectionDraft}
+                    onChange={(event) => setVisualDirectionDraft(event.target.value)}
+                    onBlur={() => commitTextDraft('visualDirection', visualDirectionDraft)}
+                    rows={4}
+                  />
+                ) : (
+                  <strong>{card.visualDirection || '—'}</strong>
+                )}
+              </label>
+              <label className="full-width">
+                <span>Reference Links</span>
+                {canEditOwnedContent ? (
+                  <textarea
+                    value={referenceLinksDraft}
+                    onChange={(event) => setReferenceLinksDraft(event.target.value)}
+                    onBlur={() => commitTextDraft('referenceLinks', referenceLinksDraft)}
+                    rows={4}
+                  />
+                ) : (
+                  <strong>{card.referenceLinks || '—'}</strong>
+                )}
+              </label>
+              <label className="full-width">
+                <span>Ad Copy</span>
+                {canEditOwnedContent ? (
+                  <textarea
+                    value={adCopyDraft}
+                    onChange={(event) => setAdCopyDraft(event.target.value)}
+                    onBlur={() => commitTextDraft('adCopy', adCopyDraft)}
+                    rows={4}
+                  />
+                ) : (
+                  <strong>{card.adCopy || '—'}</strong>
+                )}
+              </label>
+              <label className="full-width">
+                <span>Notes</span>
+                {canEditOwnedContent ? (
+                  <textarea
+                    value={notesDraft}
+                    onChange={(event) => setNotesDraft(event.target.value)}
+                    onBlur={() => commitTextDraft('notes', notesDraft)}
+                    rows={4}
+                  />
+                ) : (
+                  <strong>{card.notes || '—'}</strong>
+                )}
+              </label>
+            </div>
+          </section>
+        ) : null}
 
         <section
           ref={(node) => {

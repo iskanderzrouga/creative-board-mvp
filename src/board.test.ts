@@ -1035,3 +1035,103 @@ describe('board integrity helpers', () => {
     expect(getCardScheduledHours({ ...card, revisionEstimatedHours: null, estimatedHours: 0 })).toBe(1)
   })
 })
+
+
+describe('backlog to production helpers', () => {
+  it('requires production task type before creative cards can move to production', async () => {
+    const backlog = await import('./backlog')
+    const state = backlog.createBacklogSeedState()
+    const creativeCard = backlog.addBacklogCard(state, {
+      name: 'Angle test',
+      taskType: 'creative',
+      brand: 'Pluxy',
+      addedBy: 'Naomi',
+    }).cards[0]!
+
+    const missingWithoutTaskType = backlog.getBacklogMissingProductionFields({
+      ...creativeCard,
+      brief: 'Brief',
+      targetAudience: 'Audience',
+      visualDirection: 'Visual',
+      platform: 'Meta',
+      funnelStage: 'Cold',
+      angleTheme: 'Angle',
+      cta: 'Shop now',
+      referenceLinks: 'https://example.com',
+    })
+
+    expect(missingWithoutTaskType).toContain('Production Task Type')
+    expect(missingWithoutTaskType).not.toContain('Brief')
+
+    const missingWithTaskType = backlog.getBacklogMissingProductionFields({
+      ...creativeCard,
+      productionTaskType: 'video-ugc-short',
+      brief: 'Brief',
+      targetAudience: 'Audience',
+      visualDirection: 'Visual',
+      platform: 'Meta',
+      funnelStage: 'Cold',
+      angleTheme: 'Angle',
+      cta: 'Shop now',
+      referenceLinks: 'https://example.com',
+    })
+
+    expect(missingWithTaskType).not.toContain('Production Task Type')
+  })
+
+  it('maps backlog creative details into a created production card', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const actor = 'Naomi'
+
+    const created = createCardFromQuickInput(
+      portfolio,
+      state.settings,
+      {
+        title: 'Backlog concept',
+        brand: portfolio.brands[0]!.name,
+        taskTypeId: 'video-ugc-short',
+        product: portfolio.brands[0]!.products[0]!,
+        angle: 'Pain point angle',
+        sourceCardId: null,
+      },
+      actor,
+    )
+
+    const mapped = {
+      ...created,
+      brief: 'Creative brief',
+      audience: 'Busy parents',
+      platform: 'TikTok' as const,
+      funnelStage: 'Warm' as const,
+      angle: 'Pain point angle',
+      keyMessage: 'Fast cleanup',
+      visualDirection: 'Before and after',
+      cta: 'Buy now',
+      referenceLinks: 'https://example.com/ref',
+      adCopy: 'Primary text',
+      notes: 'Internal notes',
+    }
+
+    const nextPortfolio = addCardToPortfolio(portfolio, mapped, MANAGER_VIEWER)
+    const stored = nextPortfolio.cards.find((card) => card.id === mapped.id)
+
+    expect(stored).toMatchObject({
+      title: 'Backlog concept',
+      brand: portfolio.brands[0]!.name,
+      product: portfolio.brands[0]!.products[0]!,
+      taskTypeId: 'video-ugc-short',
+      brief: 'Creative brief',
+      audience: 'Busy parents',
+      platform: 'TikTok',
+      funnelStage: 'Warm',
+      angle: 'Pain point angle',
+      keyMessage: 'Fast cleanup',
+      visualDirection: 'Before and after',
+      cta: 'Buy now',
+      referenceLinks: 'https://example.com/ref',
+      adCopy: 'Primary text',
+      notes: 'Internal notes',
+    })
+  })
+})

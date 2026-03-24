@@ -31,6 +31,7 @@ import { AccessGate } from './components/AccessGate'
 import { AccessVerificationGate } from './components/AccessVerificationGate'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { AuthGate } from './components/AuthGate'
+import { BacklogPage } from './components/BacklogPage'
 import { BackwardMoveModal } from './components/BackwardMoveModal'
 import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
@@ -50,6 +51,12 @@ import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
 import {
+  loadBacklogState,
+  persistBacklogState,
+  type BacklogCard,
+  type BacklogState,
+} from './backlog'
+import {
   isSupabaseConfigured,
 } from './supabase'
 import {
@@ -63,7 +70,6 @@ import {
   getActivePortfolio,
   getAttentionSummary,
   getBoardStats,
-  getCardFolderName,
   getCardMoveValidationMessage,
   getDefaultBoardFilters,
   getEditorOptions,
@@ -106,6 +112,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
+type ExtendedPage = AppPage | 'backlog'
 
 interface CopyState {
   key: string
@@ -134,10 +141,55 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
+const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+
+function getPathForPage(page: ExtendedPage) {
+  switch (page) {
+    case 'backlog':
+      return '/backlog'
+    case 'analytics':
+      return '/analytics'
+    case 'workload':
+      return '/workload'
+    case 'settings':
+      return '/settings'
+    case 'board':
+    default:
+      return '/board'
+  }
+}
+
+function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage {
+  switch (pathname) {
+    case '/backlog':
+      return 'backlog'
+    case '/analytics':
+      return 'analytics'
+    case '/workload':
+      return 'workload'
+    case '/settings':
+      return 'settings'
+    case '/board':
+    case '/':
+      return 'board'
+    default:
+      return fallback
+  }
+}
+
+function canAccessBacklogByEmail(email: string | null) {
+  if (!email) {
+    return false
+  }
+
+  const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
+  return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
+}
 
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
+  const [backlogState, setBacklogState] = useState<BacklogState>(() => loadBacklogState())
   const [boardFilters, setBoardFilters] = useState<BoardFilters>(() =>
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
@@ -200,6 +252,13 @@ function App() {
   const cardPanelCloseTimerRef = useRef<number | null>(null)
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
+  const backlogPersistTimerRef = useRef<number | null>(null)
+  const [routePage, setRoutePage] = useState<ExtendedPage>(() =>
+    getPageFromPathname(
+      typeof window !== 'undefined' ? window.location.pathname : '/board',
+      getCurrentPage(loadAppState()),
+    ),
+  )
 
   const {
     authStatus,
@@ -257,7 +316,8 @@ function App() {
     null
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
-  const currentPage = getCurrentPage(state)
+  const productionPage = getCurrentPage(state)
+  const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -391,6 +451,44 @@ function App() {
   const userSecondaryLabel = authEnabled
     ? authSession?.email ?? workspaceAccess?.email ?? null
     : 'Local mode'
+  const backlogAccessEmail =
+    authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
+  const canAccessBacklog = !authEnabled || canAccessBacklogByEmail(backlogAccessEmail)
+  const backlogBrandOptions = useMemo(() => {
+    const uniqueBrands = new Set<string>()
+    scopedPortfolios.forEach((portfolio) => {
+      portfolio.brands.forEach((brand) => {
+        uniqueBrands.add(brand.name)
+      })
+    })
+    return Array.from(uniqueBrands)
+  }, [scopedPortfolios])
+  const backlogBrandStyles = useMemo(() => {
+    const styles: Record<string, { background: string; color: string }> = {}
+    scopedPortfolios.forEach((portfolio) => {
+      portfolio.brands.forEach((brand) => {
+        styles[brand.name] = {
+          background: brand.surfaceColor,
+          color: brand.textColor,
+        }
+      })
+    })
+    return styles
+  }, [scopedPortfolios])
+  const creativeProductionTaskTypeOptions = useMemo(
+    () =>
+      state.settings.taskLibrary
+        .filter((taskType) => taskType.category === 'Creative')
+        .map((taskType) => ({ id: taskType.id, name: taskType.name })),
+    [state.settings.taskLibrary],
+  )
+  const devProductionTaskTypeOptions = useMemo(
+    () =>
+      state.settings.taskLibrary
+        .filter((taskType) => taskType.category === 'Dev')
+        .map((taskType) => ({ id: taskType.id, name: taskType.name })),
+    [state.settings.taskLibrary],
+  )
   const localModeBanner = !authEnabled ? (
     <section className="local-mode-banner" role="status" aria-live="polite">
       <div className="local-mode-copy">
@@ -464,7 +562,7 @@ function App() {
           }
           setSelectedCard({ portfolioId: notification.portfolioId, cardId: notification.cardId })
           if (currentPage !== 'board') {
-            setState((prev) => ({ ...prev, activePage: 'board' }))
+            setPage('board')
           }
         }}
       />
@@ -541,7 +639,7 @@ function App() {
     setKeyboardShortcutsOpen,
     editorMenuOpen,
     setEditorMenuOpen,
-    currentPage,
+    currentPage: productionPage,
     searchRef,
     activePortfolio: activePortfolioView,
     roleMode: state.activeRole.mode,
@@ -595,9 +693,83 @@ function App() {
         : {
             ...current,
             brandNames: normalizedBrandNames,
-          }
+      }
     })
   }, [activePortfolioView])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (routePage !== 'backlog' && routePage !== productionPage) {
+      return
+    }
+
+    const nextPath = getPathForPage(currentPage)
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState({}, '', nextPath)
+    }
+  }, [currentPage, productionPage, routePage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handlePopState = () => {
+      const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
+
+      if (nextPage === 'backlog') {
+        setRoutePage('backlog')
+        return
+      }
+
+      setRoutePage(nextPage)
+      setState((current) =>
+        current.activePage === nextPage
+          ? current
+          : {
+              ...current,
+              activePage: nextPage,
+            },
+      )
+    }
+
+    handlePopState()
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [state])
+
+  useEffect(() => {
+    if (!canAccessBacklog && routePage === 'backlog') {
+      setRoutePage(productionPage)
+    }
+  }, [canAccessBacklog, productionPage, routePage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (backlogPersistTimerRef.current !== null) {
+      window.clearTimeout(backlogPersistTimerRef.current)
+    }
+
+    backlogPersistTimerRef.current = window.setTimeout(() => {
+      persistBacklogState(backlogState)
+      backlogPersistTimerRef.current = null
+    }, 180)
+
+    return () => {
+      if (backlogPersistTimerRef.current !== null) {
+        window.clearTimeout(backlogPersistTimerRef.current)
+      }
+    }
+  }, [backlogState])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -641,6 +813,9 @@ function App() {
       toastTimerIdsRef.current = {}
       if (cardPanelCloseTimerRef.current !== null) {
         window.clearTimeout(cardPanelCloseTimerRef.current)
+      }
+      if (backlogPersistTimerRef.current !== null) {
+        window.clearTimeout(backlogPersistTimerRef.current)
       }
     }
   }, [])
@@ -763,11 +938,23 @@ function App() {
     }
   }
 
-  function setPage(page: AppPage) {
+  function setPage(page: ExtendedPage) {
+    if (page === 'backlog') {
+      if (!canAccessBacklog) {
+        setRoutePage(productionPage)
+        return
+      }
+
+      setRoutePage('backlog')
+      setSelectedCard(null)
+      return
+    }
+
     if (getAllowedPageForRole(page, state.activeRole.mode) !== page) {
       return
     }
 
+    setRoutePage(page)
     setState((current) => ({
       ...current,
       activePage: page,
@@ -790,7 +977,7 @@ function App() {
     }
   }
 
-  function handleSidebarPageChange(page: AppPage) {
+  function handleSidebarPageChange(page: ExtendedPage) {
     setPage(page)
     if (touchSidebarEnabled) {
       setTouchSidebarOpen(false)
@@ -877,6 +1064,248 @@ function App() {
       portfolioId: activePortfolioView.id,
       cardId: card.id,
     })
+  }
+
+  function handleBacklogToProduction(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    console.log('[Backlog→Production] handleBacklogToProduction called', {
+      backlogCardId: card.id,
+      backlogCardName: card.name,
+      brand: card.brand,
+      taskType: card.taskType,
+      productionTaskType: card.productionTaskType,
+    })
+
+    const matchingPortfolioViews = scopedPortfolios.filter((portfolio) =>
+      portfolio.brands.some((brand) => brand.name === card.brand),
+    )
+    console.log('[Backlog→Production] matching portfolios for brand', {
+      brand: card.brand,
+      portfolioIds: matchingPortfolioViews.map((portfolio) => portfolio.id),
+    })
+
+    if (matchingPortfolioViews.length !== 1) {
+      console.log('[Backlog→Production] unable to resolve a unique target portfolio', {
+        brand: card.brand,
+        matchCount: matchingPortfolioViews.length,
+      })
+      console.log('[Backlog→Production] returning', { ok: false })
+      return { ok: false }
+    }
+
+    const portfolioView = matchingPortfolioViews[0]
+    const portfolioSource =
+      state.portfolios.find((portfolio) => portfolio.id === portfolioView.id) ?? portfolioView ?? null
+
+    if (!portfolioSource) {
+      console.log('[Backlog→Production] target portfolio source missing', {
+        portfolioId: portfolioView.id,
+      })
+      console.log('[Backlog→Production] returning', { ok: false })
+      return { ok: false }
+    }
+
+    const brand = portfolioSource.brands.find((item) => item.name === card.brand)
+    const product = brand?.products[0] ?? ''
+    const actor = getActorName(portfolioSource)
+
+    console.log('[Backlog→Production] resolved target portfolio', {
+      portfolioId: portfolioSource.id,
+      portfolioName: portfolioSource.name,
+      product,
+    })
+
+    let productionCard: Card
+
+    try {
+      productionCard = createCardFromQuickInput(
+        portfolioSource,
+        state.settings,
+        {
+          title: card.name,
+          brand: card.brand,
+          taskTypeId: card.productionTaskType ?? '',
+          product,
+          angle: card.angleTheme ?? '',
+          sourceCardId: null,
+        },
+        actor,
+      )
+      console.log('[Backlog→Production] createCardFromQuickInput result', {
+        cardId: productionCard.id,
+        stage: productionCard.stage,
+        brand: productionCard.brand,
+        product: productionCard.product,
+      })
+    } catch (error) {
+      console.log('[Backlog→Production] createCardFromQuickInput failed', {
+        error,
+      })
+      console.log('[Backlog→Production] returning', { ok: false })
+      return { ok: false }
+    }
+
+    const referenceLinks =
+      card.taskType === 'dev-cro'
+        ? [
+            card.linkForTest?.trim() ? `Test Link: ${card.linkForTest.trim()}` : '',
+            card.linkForChanges?.trim() ? `Changes Link: ${card.linkForChanges.trim()}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : card.referenceLinks ?? ''
+
+    productionCard = {
+      ...productionCard,
+      brief: card.taskType === 'creative' ? card.brief ?? '' : card.taskDescription ?? '',
+      audience: card.targetAudience ?? '',
+      platform: (card.platform as Card['platform'] | undefined) ?? productionCard.platform,
+      funnelStage: (card.funnelStage as Card['funnelStage'] | undefined) ?? productionCard.funnelStage,
+      angle: card.angleTheme ?? '',
+      keyMessage: card.keyMessage ?? '',
+      visualDirection: card.visualDirection ?? '',
+      cta: card.cta ?? '',
+      referenceLinks,
+      adCopy: card.adCopy ?? '',
+      notes: card.notes ?? '',
+    }
+
+    let createdCardId: string | null = null
+    let createdPortfolioId: string | null = null
+    updatePortfolio(portfolioSource.id, (portfolio) => {
+      const nextPortfolio = addCardToPortfolio(portfolio, productionCard, viewerContext)
+      const insertedCard = nextPortfolio.cards.find((existingCard) => existingCard.id === productionCard.id) ?? null
+
+      console.log('[Backlog→Production] addCardToPortfolio result', {
+        portfolioId: portfolio.id,
+        samePortfolioReference: nextPortfolio === portfolio,
+        previousCardCount: portfolio.cards.length,
+        nextCardCount: nextPortfolio.cards.length,
+        insertedCardId: insertedCard?.id ?? null,
+        insertedCardStage: insertedCard?.stage ?? null,
+      })
+
+      if (insertedCard) {
+        createdCardId = insertedCard.id
+        createdPortfolioId = portfolio.id
+      }
+
+      return nextPortfolio
+    })
+
+    console.log('[Backlog→Production] post-updatePortfolio state', {
+      createdCardId,
+      createdPortfolioId,
+      statePortfolioCardCount:
+        createdPortfolioId
+          ? localFallbackStateRef.current.portfolios.find((portfolio) => portfolio.id === createdPortfolioId)?.cards.length ?? null
+          : null,
+    })
+
+    if (!createdCardId || !createdPortfolioId) {
+      console.log('[Backlog→Production] returning', { ok: false })
+      return { ok: false }
+    }
+
+    if (state.activePortfolioId !== createdPortfolioId) {
+      updateState((current) => ({
+        ...current,
+        activePortfolioId: createdPortfolioId!,
+      }))
+      console.log('[Backlog→Production] switched active portfolio', {
+        activePortfolioId: createdPortfolioId,
+      })
+    }
+
+    setBoardFilters((current) => {
+      if (current.brandNames.length === 0 || current.brandNames.includes(card.brand)) {
+        return current
+      }
+
+      const nextFilters = {
+        ...current,
+        brandNames: [...current.brandNames, card.brand],
+      }
+      console.log('[Backlog→Production] updated board filters for visibility', nextFilters)
+      return nextFilters
+    })
+
+    const resolvedWebhookUrl =
+      portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim() || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
+
+    if (card.taskType === 'creative' && resolvedWebhookUrl) {
+      const nextProductionCardId = createdCardId
+      const webhookPayload = {
+        cardId: nextProductionCardId,
+        cardTitle: card.name,
+        brand: card.brand,
+        brief: card.brief ?? '',
+        targetAudience: card.targetAudience ?? '',
+        keyMessage: card.keyMessage ?? '',
+        visualDirection: card.visualDirection ?? '',
+        platform: card.platform ?? '',
+        funnelStage: card.funnelStage ?? '',
+        angleTheme: card.angleTheme ?? '',
+        cta: card.cta ?? '',
+        referenceLinks: card.referenceLinks ?? '',
+        adCopy: card.adCopy ?? '',
+        notes: card.notes ?? '',
+      }
+
+      void (async () => {
+        try {
+          const response = await fetch(resolvedWebhookUrl, {
+            method: 'POST',
+            redirect: 'follow',
+            body: JSON.stringify(webhookPayload),
+          })
+
+          let result: {
+            success?: boolean
+            folderUrl?: string
+            subfolderUrl?: string
+            briefDocUrl?: string
+            message?: string
+          } | null = null
+
+          try {
+            result = await response.json()
+          } catch {
+            throw new Error('Drive webhook returned an invalid JSON response.')
+          }
+
+          if (!response.ok || !result?.success) {
+            throw new Error(result?.message || `Drive webhook failed with status ${response.status}.`)
+          }
+
+          updatePortfolio(portfolioSource.id, (portfolio) => ({
+            ...portfolio,
+            cards: portfolio.cards.map((existingCard) =>
+              existingCard.id === nextProductionCardId
+                ? {
+                    ...existingCard,
+                    driveFolderUrl: result?.folderUrl ?? existingCard.driveFolderUrl,
+                    driveFolderCreated: true,
+                  }
+                : existingCard,
+            ),
+          }))
+          showToast('Card moved to Production board. Drive folder created.', 'green')
+        } catch (error) {
+          console.error('Backlog to Production Drive folder creation failed.', {
+            cardId: nextProductionCardId,
+            error,
+          })
+          showToast(
+            'Card moved to Production but Drive folder creation failed. Use the manual Create Drive Folder button.',
+            'amber',
+          )
+        }
+      })()
+    }
+
+    const result = { ok: true as const, cardId: createdCardId, portfolioId: createdPortfolioId }
+    console.log('[Backlog→Production] returning', result)
+    return result
   }
 
   function openCard(portfolioId: string, cardId: string) {
@@ -1011,57 +1440,45 @@ function App() {
     }
 
     const webhookUrl =
-      activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl
+      activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
     if (!webhookUrl) {
       showToast('No Drive webhook configured — add one in Settings → General or the portfolio.', 'red')
       return
     }
 
-    const brand = activeSelectedPortfolio.brands.find(
-      (b) => b.name === selectedCardData.brand,
-    )
-    if (!brand?.driveParentFolderId) {
-      showToast(
-        `No Drive folder ID configured for brand "${selectedCardData.brand}" — add one in Settings → Portfolios.`,
-        'red',
-      )
-      return
+    const payload = {
+      cardId: selectedCardData.id,
+      cardTitle: selectedCardData.title,
+      brand: selectedCardData.brand,
+      brief: selectedCardData.brief,
+      targetAudience: selectedCardData.audience,
+      keyMessage: selectedCardData.keyMessage,
+      visualDirection: selectedCardData.visualDirection,
+      platform: selectedCardData.platform,
+      funnelStage: selectedCardData.funnelStage,
+      angleTheme: selectedCardData.angle,
+      cta: selectedCardData.cta,
+      referenceLinks: selectedCardData.referenceLinks,
+      adCopy: selectedCardData.adCopy,
+      notes: selectedCardData.notes,
     }
 
     setCreatingDriveCardId(selectedCardData.id)
     try {
-      const response = await fetch(webhookUrl, {
+      await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cardId: selectedCardData.id,
-          cardTitle: selectedCardData.title,
-          productName: selectedCardData.product,
-          brandName: selectedCardData.brand,
-          parentFolderId: brand.driveParentFolderId,
-          folderName: getCardFolderName(selectedCardData),
-        }),
+        mode: 'no-cors',
+        redirect: 'follow',
+        body: JSON.stringify(payload),
       })
 
-      let folderUrl: string | null = null
-      try {
-        const result = await response.json()
-        folderUrl = result?.folderUrl ?? result?.folder_url ?? null
-      } catch {
-        // response may not be JSON (e.g. plain text from Apps Script)
-      }
-
-      if (folderUrl) {
-        saveOpenCard({ driveFolderUrl: folderUrl, driveFolderCreated: true })
-        showToast('Drive folder created!', 'green')
-      } else {
-        // Mark as created even without URL — user can find it in Drive
-        saveOpenCard({ driveFolderCreated: true })
-        showToast('Drive folder request sent — check your Google Drive.', 'blue')
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error'
-      showToast(`Drive folder creation failed: ${message}`, 'red')
+      saveOpenCard({
+        driveFolderCreated: true,
+        driveFolderUrl: `https://drive.google.com/drive/search?q=${encodeURIComponent(selectedCardData.title)}`,
+      })
+      showToast('Drive folder creation triggered. Check your Drive in a few seconds.', 'green')
+    } catch {
+      showToast('Drive folder creation failed. Check your network connection.', 'red')
     } finally {
       setCreatingDriveCardId(null)
     }
@@ -1411,6 +1828,7 @@ function App() {
       activeRole: { mode: 'owner', editorId: null },
       activePage: 'settings',
     })
+    setRoutePage('settings')
     setSelectedCard(null)
     setPendingAppConfirm(null)
     showToast('Fresh start applied. Brands and products were kept.', 'amber')
@@ -1573,6 +1991,7 @@ function App() {
           portfolio={activePortfolioView}
           portfolios={scopedPortfolios}
           role={state.activeRole}
+          canAccessBacklog={canAccessBacklog}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
           signOutPending={signOutPending}
@@ -1663,6 +2082,22 @@ function App() {
             onDragOver={handleBoardDragOver}
             onDragCancel={clearBoardDragState}
             onDragEnd={handleBoardDragEnd}
+          />
+        ) : null}
+
+        {currentPage === 'backlog' ? (
+          <BacklogPage
+            backlog={backlogState}
+            brandOptions={backlogBrandOptions}
+            brandStyles={backlogBrandStyles}
+            creativeProductionTaskTypeOptions={creativeProductionTaskTypeOptions}
+            devProductionTaskTypeOptions={devProductionTaskTypeOptions}
+            actorName={userDisplayName}
+            canCreate={canAccessBacklog}
+            showToast={showToast}
+            headerUtilityContent={headerUtilityContent}
+            onChange={setBacklogState}
+            onMoveToProduction={handleBacklogToProduction}
           />
         ) : null}
 

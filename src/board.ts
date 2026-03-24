@@ -159,6 +159,12 @@ export interface Card {
   stageEnteredAt: string
   stageHistory: StageHistoryEntry[]
   brief: string
+  keyMessage: string
+  visualDirection: string
+  cta: string
+  referenceLinks: string
+  adCopy: string
+  notes: string
   comments: CommentEntry[]
   attachments: Attachment[]
   driveFolderUrl: string
@@ -1603,6 +1609,12 @@ function inflateSeedCard(
     dateAssigned: string
     dateCreated?: string
     brief?: string
+    keyMessage?: string
+    visualDirection?: string
+    cta?: string
+    referenceLinks?: string
+    adCopy?: string
+    notes?: string
     comments?: CommentEntry[]
     attachments?: Attachment[]
     frameioLink?: string
@@ -1680,6 +1692,12 @@ function inflateSeedCard(
     stageEnteredAt,
     stageHistory,
     brief: seed.brief ?? '',
+    keyMessage: seed.keyMessage ?? '',
+    visualDirection: seed.visualDirection ?? '',
+    cta: seed.cta ?? '',
+    referenceLinks: seed.referenceLinks ?? '',
+    adCopy: seed.adCopy ?? '',
+    notes: seed.notes ?? '',
     comments: seed.comments ?? [],
     attachments: seed.attachments ?? [],
     driveFolderUrl: seed.driveFolderUrl ?? '',
@@ -2108,6 +2126,12 @@ function normalizePortfolio(
           typeof raw.relatedLpDesignCardId === 'string' && raw.relatedLpDesignCardId
             ? raw.relatedLpDesignCardId
             : null,
+        keyMessage: typeof raw.keyMessage === 'string' ? raw.keyMessage : '',
+        visualDirection: typeof raw.visualDirection === 'string' ? raw.visualDirection : '',
+        cta: typeof raw.cta === 'string' ? raw.cta : '',
+        referenceLinks: typeof raw.referenceLinks === 'string' ? raw.referenceLinks : '',
+        adCopy: typeof raw.adCopy === 'string' ? raw.adCopy : '',
+        notes: typeof raw.notes === 'string' ? raw.notes : '',
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
         activityLog,
@@ -2751,6 +2775,12 @@ export function createCardFromQuickInput(
       },
     ],
     brief: '',
+    keyMessage: '',
+    visualDirection: '',
+    cta: '',
+    referenceLinks: '',
+    adCopy: '',
+    notes: '',
     comments: [],
     attachments: [],
     driveFolderUrl: '',
@@ -2799,6 +2829,12 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('angle')
     allowedKeys.add('audience')
     allowedKeys.add('brief')
+    allowedKeys.add('keyMessage')
+    allowedKeys.add('visualDirection')
+    allowedKeys.add('cta')
+    allowedKeys.add('referenceLinks')
+    allowedKeys.add('adCopy')
+    allowedKeys.add('notes')
     allowedKeys.add('attachments')
     allowedKeys.add('frameioLink')
     allowedKeys.add('landingPage')
