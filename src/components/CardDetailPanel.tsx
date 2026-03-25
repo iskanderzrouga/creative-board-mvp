@@ -30,9 +30,10 @@ import {
   isLpDesignTaskTypeId,
   isLpDevTaskTypeId,
   isPackagingBrandingTaskTypeId,
-    type Card,
-    type CardPriority,
-    type GlobalSettings,
+  type Batch,
+  type Card,
+  type CardPriority,
+  type GlobalSettings,
   type Portfolio,
   type RoleMode,
 } from '../board'
@@ -57,6 +58,8 @@ interface CardDetailPanelProps {
   onClose: () => void
   onCopy: (key: string, value: string) => void
   onSave: (updates: Partial<Card>) => void
+  onAssignBatch: (batchId: string | null) => void
+  onCreateBatch: (name: string) => string | null
   onSetProductionPriority: (priority: Exclude<CardPriority, null>) => void
   onAddComment: (text: string, imageDataUrl?: string) => void
   onCreateDriveFolder: () => void
@@ -99,6 +102,8 @@ export function CardDetailPanel({
   onClose,
   onCopy,
   onSave,
+  onAssignBatch,
+  onCreateBatch,
   onSetProductionPriority,
   onAddComment,
   onCreateDriveFolder,
@@ -127,6 +132,8 @@ export function CardDetailPanel({
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [trackingOpen, setTrackingOpen] = useState(false)
+  const [showCreateBatch, setShowCreateBatch] = useState(false)
+  const [batchNameDraft, setBatchNameDraft] = useState('')
   const commentImageRef = useRef<HTMLInputElement | null>(null)
 
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
@@ -157,6 +164,13 @@ export function CardDetailPanel({
     : card.activityLog.slice(0, ACTIVITY_PREVIEW_COUNT)
   const commentCharactersRemaining = COMMENT_MAX_LENGTH - commentDraft.length
   const currentBrand = getBrandByName(portfolio, card.brand)
+  const brandBatches = useMemo<Batch[]>(
+    () =>
+      portfolio.batches
+        .filter((batch) => batch.brand === card.brand)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [card.brand, portfolio.batches],
+  )
   const iterationSourceCards = useMemo(
     () => getIterationSourceCards(portfolio, settings, card.brand, card.product, card.id),
     [card.brand, card.id, card.product, portfolio, settings],
@@ -479,6 +493,56 @@ export function CardDetailPanel({
                     </select>
                   ) : (
                     <strong>{card.owner ?? 'Unassigned'}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Batch</span>
+                  {canManage ? (
+                    <div className="panel-batch-control">
+                      <select
+                        value={card.batchId ?? ''}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          if (value === '__create__') {
+                            setShowCreateBatch(true)
+                            return
+                          }
+                          onAssignBatch(value || null)
+                        }}
+                      >
+                        <option value="">No batch</option>
+                        {brandBatches.map((batch) => (
+                          <option key={batch.id} value={batch.id}>
+                            {batch.name}
+                          </option>
+                        ))}
+                        <option value="__create__">+ Create new batch</option>
+                      </select>
+                      {showCreateBatch ? (
+                        <div className="panel-batch-create-row">
+                          <input
+                            value={batchNameDraft}
+                            onChange={(event) => setBatchNameDraft(event.target.value)}
+                            placeholder="Batch name"
+                          />
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => {
+                              const created = onCreateBatch(batchNameDraft)
+                              if (created) {
+                                setBatchNameDraft('')
+                                setShowCreateBatch(false)
+                              }
+                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <strong>{brandBatches.find((batch) => batch.id === card.batchId)?.name ?? '—'}</strong>
                   )}
                 </label>
                 <label>

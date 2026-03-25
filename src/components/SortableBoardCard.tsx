@@ -14,6 +14,8 @@ interface SortableBoardCardProps {
   isInvalid: boolean
   onOpen: () => void
   onCyclePriority?: () => void
+  onAssignBatch?: (batchId: string | null) => void
+  canManageBatch: boolean
 }
 
 function SortableBoardCardComponent({
@@ -26,6 +28,8 @@ function SortableBoardCardComponent({
   isInvalid,
   onOpen,
   onCyclePriority,
+  onAssignBatch,
+  canManageBatch,
 }: SortableBoardCardProps) {
   const {
     attributes,
@@ -65,6 +69,8 @@ function SortableBoardCardComponent({
             }
           }}
           onCyclePriority={onCyclePriority}
+          onAssignBatch={onAssignBatch}
+          canManageBatch={canManageBatch}
           cursorMode={cursorMode}
           isDragging={isDragging}
           isInvalid={isInvalid && isDragging}

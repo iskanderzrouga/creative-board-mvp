@@ -15,6 +15,7 @@ import {
   removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   syncPortfolioCardProducts,
+  type BatchStatus,
   type AccessScopeMode,
   type ActiveRole,
   type AppState,
@@ -61,6 +62,8 @@ interface SettingsPageProps {
     previousEmail?: string
   }) => Promise<void>
   onWorkspaceAccessDelete: (email: string) => Promise<void>
+  onBatchStatusChange: (portfolioId: string, batchId: string, status: BatchStatus) => void
+  onDeleteEmptyBatch: (portfolioId: string, batchId: string) => void
   showToast: (message: string, tone: ToastTone) => void
 }
 
@@ -171,6 +174,8 @@ export function SettingsPage({
   onFreshStartData,
   onWorkspaceAccessSave,
   onWorkspaceAccessDelete,
+  onBatchStatusChange,
+  onDeleteEmptyBatch,
   showToast,
 }: SettingsPageProps) {
   const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
@@ -304,6 +309,22 @@ export function SettingsPage({
       removeTeamMemberFromPortfolio(currentPortfolio, pendingSettingsDelete.memberIndex),
     )
     setPendingSettingsDelete(null)
+  }
+
+  function getBatchStageSummary(portfolio: Portfolio, batchId: string) {
+    const cards = portfolio.cards.filter((card) => card.batchId === batchId)
+    const byStage = cards.reduce<Record<string, number>>((acc, card) => {
+      acc[card.stage] = (acc[card.stage] ?? 0) + 1
+      return acc
+    }, {})
+    return {
+      cards,
+      byStage,
+      summary: Object.entries(byStage)
+        .map(([stage, count]) => `${stage}: ${count}`)
+        .join(' · '),
+      hasNotReadyCards: cards.some((card) => card.stage !== 'Ready' && card.stage !== 'Live'),
+    }
   }
 
   function getSettingsDeleteDialog() {
@@ -1264,6 +1285,78 @@ export function SettingsPage({
               }
               showToast={showToast}
             />
+
+            <div className="settings-block">
+              <SettingsToolbar
+                title="Batches"
+                description="Manage concept/ad-set batches grouped by brand."
+              />
+              <div className="settings-section">
+                {state.portfolios.map((portfolio) => (
+                  <div key={portfolio.id} className="nested-settings-block">
+                    <div className="nested-settings-title">{portfolio.name}</div>
+                    {portfolio.brands.map((brand) => {
+                      const brandBatches = portfolio.batches.filter((batch) => batch.brand === brand.name)
+                      return (
+                        <div key={brand.name} className="batch-management-brand">
+                          <strong className="batch-management-brand-name">{brand.name}</strong>
+                          {brandBatches.length === 0 ? (
+                            <p className="muted-copy">No batches yet.</p>
+                          ) : (
+                            <div className="batch-management-grid">
+                              {brandBatches.map((batch) => {
+                                const batchSummary = getBatchStageSummary(portfolio, batch.id)
+                                const canDelete = batchSummary.cards.length === 0
+                                return (
+                                  <div key={batch.id} className="batch-management-row">
+                                    <div>
+                                      <strong>{batch.name}</strong>
+                                      <p className="muted-copy">
+                                        {batchSummary.cards.length} cards
+                                        {batchSummary.summary ? ` · ${batchSummary.summary}` : ''}
+                                      </p>
+                                      {batch.status === 'ready-to-launch' && batchSummary.hasNotReadyCards ? (
+                                        <p className="warning-copy">
+                                          Some cards are not in Ready/Live yet.
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <div className="batch-management-actions">
+                                      <select
+                                        value={batch.status}
+                                        onChange={(event) =>
+                                          onBatchStatusChange(
+                                            portfolio.id,
+                                            batch.id,
+                                            event.target.value as BatchStatus,
+                                          )
+                                        }
+                                      >
+                                        <option value="draft">Draft</option>
+                                        <option value="ready-to-launch">Ready to Launch</option>
+                                        <option value="launched">Launched</option>
+                                      </select>
+                                      <button
+                                        type="button"
+                                        className="ghost-button"
+                                        disabled={!canDelete}
+                                        onClick={() => onDeleteEmptyBatch(portfolio.id, batch.id)}
+                                      >
+                                        Delete empty
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : null}
 

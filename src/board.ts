@@ -44,7 +44,9 @@ export const FUNNEL_STAGES = [
 export const PLATFORMS = ['Meta', 'AppLovin', 'TikTok', 'Google', 'Other'] as const
 export const DESIGN_TYPES = ['Packaging', 'Logo', 'Brand Asset', 'Other'] as const
 export const PRODUCTION_CARD_PRIORITIES = [1, 2, 3] as const
+export const BATCH_STATUSES = ['draft', 'ready-to-launch', 'launched'] as const
 export type CardPriority = (typeof PRODUCTION_CARD_PRIORITIES)[number] | null
+export type BatchStatus = (typeof BATCH_STATUSES)[number]
 export const CARD_FIELDS = [
   'angle',
   'funnelStage',
@@ -152,6 +154,7 @@ export interface Card {
   figmaUrl: string
   sourceCardId: string | null
   relatedLpDesignCardId: string | null
+  batchId: string | null
   generatedSheetName: string
   generatedAdName: string
   owner: string | null
@@ -184,6 +187,19 @@ export interface Card {
   actualHoursLogged: number
   activityLog: ActivityEntry[]
   legacyNaming?: boolean
+}
+
+export interface Batch {
+  id: string
+  name: string
+  brand: string
+  status: BatchStatus
+  createdAt: string
+  createdBy: string
+  metaCampaignId: string | null
+  metaAdSetId: string | null
+  metaAdSetName: string | null
+  launchedAt: string | null
 }
 
 export interface Brand {
@@ -220,6 +236,7 @@ export interface Portfolio {
   brands: Brand[]
   team: TeamMember[]
   cards: Card[]
+  batches: Batch[]
   webhookUrl: string
   lastIdPerPrefix: Record<string, number>
 }
@@ -330,6 +347,7 @@ export interface ViewerContext {
 export interface BoardFilters {
   brandNames: string[]
   ownerNames: string[]
+  batchIds: string[]
   searchQuery: string
   overdueOnly: boolean
   stuckOnly: boolean
@@ -1079,6 +1097,14 @@ export function getBrandByName(portfolio: Portfolio, brandName: string) {
   return portfolio.brands.find((brand) => brand.name === brandName) ?? null
 }
 
+export function getBatchById(portfolio: Portfolio, batchId: string | null) {
+  if (!batchId) {
+    return null
+  }
+
+  return portfolio.batches.find((batch) => batch.id === batchId) ?? null
+}
+
 function getPrimaryProductForBrand(brand: Brand | null) {
   return brand?.products[0] ?? ''
 }
@@ -1690,6 +1716,7 @@ function inflateSeedCard(
     figmaUrl: '',
     sourceCardId: null,
     relatedLpDesignCardId: null,
+    batchId: null,
     generatedSheetName: seed.generatedSheetName ?? seed.title,
     generatedAdName:
       seed.generatedAdName ??
@@ -1933,6 +1960,7 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
       createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 25, 5, 2, 'Asia/Shanghai', 9, 14),
     ],
     cards: brandLabCards,
+    batches: [],
     webhookUrl: '',
     lastIdPerPrefix: getLastIdPerPrefix(brandLabBrands, brandLabCards),
   }
@@ -2139,6 +2167,24 @@ function normalizePortfolio(
     }
   })
 
+  const normalizedBatches = Array.isArray((portfolio as Portfolio & { batches?: Batch[] }).batches)
+    ? (portfolio as Portfolio & { batches?: Batch[] }).batches!.map((batch, index) => ({
+      id: typeof batch.id === 'string' && batch.id.trim() ? batch.id : createId('batch'),
+      name: typeof batch.name === 'string' ? batch.name : `Batch ${index + 1}`,
+      brand: typeof batch.brand === 'string' ? batch.brand : '',
+      status: BATCH_STATUSES.includes(batch.status as BatchStatus)
+        ? (batch.status as BatchStatus)
+        : 'draft',
+      createdAt: typeof batch.createdAt === 'string' ? batch.createdAt : new Date().toISOString(),
+      createdBy: typeof batch.createdBy === 'string' ? batch.createdBy : 'Unknown',
+      metaCampaignId: typeof batch.metaCampaignId === 'string' ? batch.metaCampaignId : null,
+      metaAdSetId: typeof batch.metaAdSetId === 'string' ? batch.metaAdSetId : null,
+      metaAdSetName: typeof batch.metaAdSetName === 'string' ? batch.metaAdSetName : null,
+      launchedAt: typeof batch.launchedAt === 'string' ? batch.launchedAt : null,
+    }))
+    : []
+  const batchIdSet = new Set(normalizedBatches.map((batch) => batch.id))
+
   const normalizedCards = reindexCards(
     portfolio.cards.map((rawCard) => {
       const taskTypeId =
@@ -2191,6 +2237,10 @@ function normalizePortfolio(
           typeof raw.relatedLpDesignCardId === 'string' && raw.relatedLpDesignCardId
             ? raw.relatedLpDesignCardId
             : null,
+        batchId:
+          typeof raw.batchId === 'string' && raw.batchId && batchIdSet.has(raw.batchId)
+            ? raw.batchId
+            : null,
         keyMessage: typeof raw.keyMessage === 'string' ? raw.keyMessage : '',
         visualDirection: typeof raw.visualDirection === 'string' ? raw.visualDirection : '',
         cta: typeof raw.cta === 'string' ? raw.cta : '',
@@ -2212,6 +2262,7 @@ function normalizePortfolio(
     brands: normalizedBrands,
     team: normalizedTeam,
     cards: normalizedCards,
+    batches: normalizedBatches,
     webhookUrl: portfolio.webhookUrl ?? '',
     lastIdPerPrefix: {
       ...getLastIdPerPrefix(normalizedBrands, normalizedCards),
@@ -2421,6 +2472,7 @@ export function createEmptyPortfolio(name: string, existingCount: number): Portf
     brands: [],
     team: [createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null)],
     cards: [],
+    batches: [],
     webhookUrl: '',
     lastIdPerPrefix: {},
   }
@@ -2431,6 +2483,7 @@ export function createFreshStartState(state: AppState): AppState {
     ...portfolio,
     team: [],
     cards: [],
+    batches: [],
     lastIdPerPrefix: Object.fromEntries(portfolio.brands.map((brand) => [brand.prefix, 0])),
   }))
 
@@ -2602,6 +2655,7 @@ export function getDefaultBoardFilters(portfolio: Portfolio | null): BoardFilter
   return {
     brandNames: portfolio ? portfolio.brands.map((brand) => brand.name) : [],
     ownerNames: [],
+    batchIds: [],
     searchQuery: '',
     overdueOnly: false,
     stuckOnly: false,
@@ -2826,6 +2880,7 @@ export function createCardFromQuickInput(
     figmaUrl: '',
     sourceCardId: isIterationTaskTypeId(taskType.id) ? sourceCard?.id ?? null : null,
     relatedLpDesignCardId: null,
+    batchId: null,
     generatedSheetName: getQuickCreateGeneratedSheetName(taskType.id, title, angle),
     generatedAdName: '',
     owner: null,
@@ -3200,6 +3255,7 @@ export function getVisibleCards(
       ? new Set(filters.brandNames)
       : new Set(viewer.visibleBrandNames ?? portfolio.brands.map((brand) => brand.name))
   const visibleOwnerNames = new Set(filters.ownerNames)
+  const visibleBatchIds = new Set(filters.batchIds)
 
   return portfolio.cards.filter((card) => {
     const archived = isArchivedCard(card)
@@ -3229,6 +3285,9 @@ export function getVisibleCards(
       return false
     }
     if (filters.blockedOnly && card.blocked === null) {
+      return false
+    }
+    if (visibleBatchIds.size > 0 && (!card.batchId || !visibleBatchIds.has(card.batchId))) {
       return false
     }
 
