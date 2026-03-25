@@ -950,7 +950,8 @@ button {
   font-size: 12px;
   padding: 6px 8px;
   border-radius: 6px;
-  color: var(--text);
+  color: #334155;
+  font-weight: 500;
 }
 
 .batch-menu-item:hover,
@@ -959,7 +960,8 @@ button {
 }
 
 .batch-menu-item.is-danger {
-  color: var(--danger-text);
+  color: #b91c1c;
+  font-weight: 600;
 }
 
 .batch-filter-pill.is-active {
