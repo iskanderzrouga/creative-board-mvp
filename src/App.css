@@ -3106,6 +3106,13 @@ button {
   color: var(--muted);
 }
 
+.backward-move-modal {
+  width: min(400px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
 .shortcut-modal {
   width: min(460px, calc(100vw - 24px));
 }
@@ -3197,6 +3204,9 @@ button {
 .backward-move-body {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .backward-move-fieldset {
