@@ -14,6 +14,7 @@ import {
   getBrandRemovalBlocker,
   getBoardStats,
   getCardScheduledHours,
+  getCardMoveValidationMessage,
   getDefaultBoardFilters,
   getDueStatus,
   getTeamMemberRemovalBlocker,
@@ -26,6 +27,7 @@ import {
   removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
+  setInProductionCardPriority,
   type ViewerContext,
 } from './board'
 
@@ -285,6 +287,159 @@ describe('board integrity helpers', () => {
     ).toBe(reviewPortfolio)
   })
 
+  it('bypasses the in-production cap for review revisions and inserts them at the top', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const owner = portfolio.team.find((member) => member.role === 'Editor')?.name ?? portfolio.team[0]?.name
+
+    expect(owner).toBeTruthy()
+    if (!owner) {
+      throw new Error('Expected an editor owner in seed data.')
+    }
+    const seededCards = portfolio.cards.slice(0, 4)
+    expect(seededCards).toHaveLength(4)
+
+    const inProductionCards = seededCards
+      .slice(0, 3)
+      .map((card, index) => ({
+        ...card,
+        owner,
+        stage: 'In Production' as const,
+        priority: ((index + 1) as 1 | 2 | 3),
+        positionInSection: index,
+      }))
+    const reviewCard = {
+      ...seededCards[3]!,
+      owner,
+      stage: 'Review' as const,
+      priority: null,
+    }
+
+    expect(inProductionCards).toHaveLength(3)
+
+    const constrainedPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) => {
+        const inProductionMatch = inProductionCards.find((item) => item.id === card.id)
+        if (inProductionMatch) {
+          return inProductionMatch
+        }
+        if (card.id === reviewCard.id) {
+          return reviewCard
+        }
+        return card
+      }),
+    }
+
+    expect(
+      getCardMoveValidationMessage(
+        constrainedPortfolio,
+        MANAGER_VIEWER,
+        reviewCard.id,
+        'In Production',
+        owner,
+      ),
+    ).toBeNull()
+    const ownerCountBeforeMove = constrainedPortfolio.cards.filter(
+      (card) => card.stage === 'In Production' && card.owner === owner && !card.archivedAt,
+    ).length
+
+    const moved = moveCardInPortfolio(
+      constrainedPortfolio,
+      reviewCard.id,
+      'In Production',
+      owner,
+      2,
+      '2026-03-12T10:45:00Z',
+      'Naomi',
+      MANAGER_VIEWER,
+      'Client requested revisions',
+      2,
+    )
+    const ownerLane = moved.cards
+      .filter((card) => card.stage === 'In Production' && card.owner === owner && !card.archivedAt)
+      .slice()
+      .sort((left, right) => left.positionInSection - right.positionInSection)
+    const movedCard = moved.cards.find((card) => card.id === reviewCard.id)
+
+    expect(ownerLane).toHaveLength(ownerCountBeforeMove + 1)
+    expect(ownerLane[0]?.id).toBe(reviewCard.id)
+    expect(movedCard?.priority).toBe(1)
+    expect(ownerLane[1]?.priority).toBe(2)
+    expect(ownerLane[2]?.priority).toBe(3)
+    expect(ownerLane[3]?.priority).toBeNull()
+  })
+
+  it('still blocks forward moves into in production when an editor already has 3 cards', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]
+    const owner = portfolio.team.find((member) => member.role === 'Editor')?.name ?? portfolio.team[0]?.name
+
+    expect(owner).toBeTruthy()
+    if (!owner) {
+      throw new Error('Expected an editor owner in seed data.')
+    }
+    const seededCards = portfolio.cards.slice(0, 4)
+    expect(seededCards).toHaveLength(4)
+    const briefedCard = {
+      ...seededCards[3]!,
+      stage: 'Briefed' as const,
+      owner,
+      priority: null,
+    }
+    const inProductionCards = seededCards.slice(0, 3).map((card, index) => ({
+      ...card,
+      stage: 'In Production' as const,
+      owner,
+      priority: ((index + 1) as 1 | 2 | 3),
+      positionInSection: index,
+    }))
+    expect(inProductionCards).toHaveLength(3)
+
+    const constrainedPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) => {
+        const index = inProductionCards.findIndex((item) => item.id === card.id)
+        if (index >= 0) {
+          return {
+            ...card,
+            stage: 'In Production' as const,
+            owner,
+            priority: ((index + 1) as 1 | 2 | 3),
+            positionInSection: index,
+          }
+        }
+        if (card.id === briefedCard.id) {
+          return briefedCard
+        }
+        return card
+      }),
+    }
+
+    expect(
+      getCardMoveValidationMessage(
+        constrainedPortfolio,
+        MANAGER_VIEWER,
+        briefedCard.id,
+        'In Production',
+        owner,
+      ),
+    ).toContain('already has 3 cards in production')
+
+    expect(
+      moveCardInPortfolio(
+        constrainedPortfolio,
+        briefedCard.id,
+        'In Production',
+        owner,
+        0,
+        '2026-03-12T11:00:00Z',
+        'Naomi',
+        MANAGER_VIEWER,
+      ),
+    ).toBe(constrainedPortfolio)
+  })
+
   it('clears the revision estimate once the card moves forward again', () => {
     const portfolio = createSeedState().portfolios[0]
     const sourceCard = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
@@ -461,6 +616,75 @@ describe('board integrity helpers', () => {
     for (const card of sortedLaneCards) {
       expect(card.positionInSection).toBe(originalPositions.get(card.id))
     }
+  })
+
+  it('recomputes in-production priorities from lane order and updates when panel priority is set', () => {
+    const portfolio = createSeedState().portfolios[0]
+    const owner = portfolio.team.find((member) => member.role === 'Editor')?.name ?? portfolio.team[0]?.name
+
+    expect(owner).toBeTruthy()
+    if (!owner) {
+      throw new Error('Expected an editor owner in seed data.')
+    }
+    const laneCards = portfolio.cards.slice(0, 4).map((card, index) => ({
+      ...card,
+      stage: 'In Production' as const,
+      owner,
+      positionInSection: index,
+      priority: index < 3 ? ((index + 1) as 1 | 2 | 3) : null,
+    }))
+    expect(laneCards.length).toBeGreaterThanOrEqual(3)
+
+    const reorderedPortfolio = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) => {
+        const laneIndex = laneCards.findIndex((item) => item.id === card.id)
+        if (laneIndex >= 0) {
+          const reversePosition = laneCards.length - 1 - laneIndex
+          return {
+            ...card,
+            stage: 'In Production' as const,
+            owner,
+            positionInSection: reversePosition,
+            priority: null,
+          }
+        }
+        return card
+      }),
+    }
+
+    const topCard = laneCards[0]!
+    const moved = moveCardInPortfolio(
+      reorderedPortfolio,
+      topCard.id,
+      'In Production',
+      owner,
+      0,
+      '2026-03-12T16:30:00Z',
+      'Naomi',
+      MANAGER_VIEWER,
+    )
+    const movedLane = moved.cards
+      .filter((card) => card.stage === 'In Production' && card.owner === owner && !card.archivedAt)
+      .slice()
+      .sort((left, right) => left.positionInSection - right.positionInSection)
+    const firstThreePriorities = movedLane.slice(0, 3).map((card) => card.priority)
+
+    expect(firstThreePriorities).toEqual([1, 2, 3])
+    expect(movedLane.slice(3).every((card) => card.priority === null)).toBe(true)
+
+    const thirdCard = movedLane[2]
+    expect(thirdCard).toBeTruthy()
+    const reprioritized = setInProductionCardPriority(moved, thirdCard!.id, 1)
+    const reprioritizedLane = reprioritized.cards
+      .filter((card) => card.stage === 'In Production' && card.owner === owner && !card.archivedAt)
+      .slice()
+      .sort((left, right) => left.positionInSection - right.positionInSection)
+
+    expect(reprioritizedLane[0]?.id).toBe(thirdCard!.id)
+    expect(reprioritizedLane[0]?.priority).toBe(1)
+    expect(reprioritizedLane[1]?.priority).toBe(2)
+    expect(reprioritizedLane[2]?.priority).toBe(3)
   })
 
   it('migrates older saved app states to the current version', () => {
