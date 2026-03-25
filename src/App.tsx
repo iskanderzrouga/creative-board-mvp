@@ -1620,6 +1620,7 @@ function App() {
       return
     }
     let moved = false
+    let inProductionCountAfterMove: number | null = null
     updatePortfolio(portfolioId, (currentPortfolio) => {
       const nextPortfolio = moveCardInPortfolio(
         currentPortfolio,
@@ -1636,6 +1637,20 @@ function App() {
         state.settings,
       )
       moved = nextPortfolio !== currentPortfolio
+      if (
+        moved &&
+        revisionReason &&
+        card.stage === 'Review' &&
+        destinationStage === 'In Production' &&
+        destinationOwner
+      ) {
+        inProductionCountAfterMove = nextPortfolio.cards.filter(
+          (item) =>
+            item.owner === destinationOwner &&
+            item.stage === 'In Production' &&
+            item.archivedAt === null,
+        ).length
+      }
       return nextPortfolio
     })
 
@@ -1645,7 +1660,19 @@ function App() {
     }
 
     if (revisionReason) {
-      showToast(`${card.id} moved back to ${destinationStage}`, 'amber')
+      const isReviewReturnToProduction = card.stage === 'Review' && destinationStage === 'In Production'
+      if (
+        isReviewReturnToProduction &&
+        destinationOwner &&
+        inProductionCountAfterMove !== null
+      ) {
+        showToast(
+          `Revision card added as top priority. ${destinationOwner} now has ${inProductionCountAfterMove} cards in production.`,
+          'amber',
+        )
+      } else {
+        showToast(`${card.id} moved back to ${destinationStage}`, 'amber')
+      }
       const notification = createNotification(
         'revision_requested',
         `"${card.title}" moved back to ${destinationStage}`,
@@ -1755,13 +1782,15 @@ function App() {
     clearBoardDragState()
 
     if (isBackwardMove && state.activeRole.mode !== 'viewer') {
+      const isReviewReturnToProduction =
+        card.stage === 'Review' && target.lane.stage === 'In Production'
       setPendingBackwardMove({
         portfolioId: activePortfolioView.id,
         cardId: card.id,
         sourceStage: card.stage,
         destinationStage: target.lane.stage as StageId,
         destinationOwner: nextOwner,
-        destinationIndex,
+        destinationIndex: isReviewReturnToProduction ? 0 : destinationIndex,
         movedAt,
       })
       setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings, card.stage))

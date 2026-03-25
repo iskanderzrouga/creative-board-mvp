@@ -3096,20 +3096,6 @@ function syncP1TimingForCard(
   }
 }
 
-function getPrioritySortValue(priority: CardPriority) {
-  return isProductionPriority(priority) ? priority : Number.MAX_SAFE_INTEGER
-}
-
-function getNextAvailableProductionPriority(cards: Card[]) {
-  for (const priority of PRODUCTION_CARD_PRIORITIES) {
-    if (!cards.some((card) => card.priority === priority)) {
-      return priority
-    }
-  }
-
-  return null
-}
-
 function getInProductionCardsForOwner(
   cards: Card[],
   owner: string,
@@ -3122,6 +3108,53 @@ function getInProductionCardsForOwner(
       card.owner === owner &&
       card.id !== excludedCardId,
   )
+}
+
+function getPositionSortValue(card: Card) {
+  return [card.positionInSection, card.dateCreated, card.id] as const
+}
+
+function syncInProductionLanePriorities(
+  cards: Card[],
+  owner: string,
+  previousCardsById: Map<string, Card>,
+  portfolio: Portfolio,
+  nowIso: string,
+) {
+  const laneCards = cards
+    .filter(
+      (card) =>
+        !isArchivedCard(card) &&
+        card.stage === 'In Production' &&
+        card.owner === owner,
+    )
+    .slice()
+    .sort((left, right) => {
+      const [leftPosition, leftDateCreated, leftId] = getPositionSortValue(left)
+      const [rightPosition, rightDateCreated, rightId] = getPositionSortValue(right)
+      if (leftPosition !== rightPosition) {
+        return leftPosition - rightPosition
+      }
+      if (leftDateCreated !== rightDateCreated) {
+        return leftDateCreated.localeCompare(rightDateCreated)
+      }
+      return leftId.localeCompare(rightId)
+    })
+
+  const nextPriorities = new Map<string, CardPriority>()
+  laneCards.forEach((card, index) => {
+    nextPriorities.set(card.id, index < PRODUCTION_CARD_PRIORITIES.length ? ((index + 1) as 1 | 2 | 3) : null)
+  })
+
+  return cards.map((card) => {
+    if (card.stage !== 'In Production' || card.owner !== owner || card.archivedAt) {
+      return card
+    }
+    const nextPriority = nextPriorities.get(card.id) ?? null
+    const updatedCard = card.priority === nextPriority ? card : { ...card, priority: nextPriority }
+    const previousCard = previousCardsById.get(card.id) ?? null
+    return syncP1TimingForCard(updatedCard, previousCard, portfolio, nowIso)
+  })
 }
 
 export function getNextProductionCardPriority(currentPriority: CardPriority): Exclude<CardPriority, null> {
@@ -3145,13 +3178,6 @@ function getOrderedLaneCards(
     })
     .slice()
     .sort((left, right) => {
-      if (stage === 'In Production' && owner !== null) {
-        const leftPriority = getPrioritySortValue(left.priority)
-        const rightPriority = getPrioritySortValue(right.priority)
-        if (leftPriority !== rightPriority) {
-          return leftPriority - rightPriority
-        }
-      }
       if (left.positionInSection !== right.positionInSection) {
         return left.positionInSection - right.positionInSection
       }
@@ -3770,6 +3796,9 @@ export function getCardMoveValidationMessage(
   const nextOwner = destinationStage === 'Backlog' ? null : destinationOwner ?? card.owner
   const isBackwardMove = STAGES.indexOf(destinationStage) < STAGES.indexOf(card.stage)
   const isForwardMove = STAGES.indexOf(destinationStage) > STAGES.indexOf(card.stage)
+  const enteringInProduction =
+    destinationStage === 'In Production' &&
+    (card.stage !== 'In Production' || nextOwner !== card.owner)
   const isLaunchOpsViewer = viewer.mode === 'contributor' && isLaunchOpsRole(viewer.memberRole)
   const movingWithinSameSection = destinationStage === card.stage && nextOwner === card.owner
 
@@ -3834,7 +3863,10 @@ export function getCardMoveValidationMessage(
     return 'Revisions from Review return to In Production.'
   }
 
-  if (destinationStage === 'In Production' && nextOwner) {
+  const isReviewReturnToProduction =
+    card.stage === 'Review' && destinationStage === 'In Production'
+
+  if (enteringInProduction && nextOwner) {
     const projectedWip = portfolio.cards.filter(
       (currentCard) =>
         currentCard.id !== card.id &&
@@ -3842,7 +3874,7 @@ export function getCardMoveValidationMessage(
         currentCard.stage === 'In Production' &&
         !currentCard.archivedAt,
     ).length
-    if (projectedWip >= 3) {
+    if (!isReviewReturnToProduction && projectedWip >= 3) {
       return `${nextOwner} already has 3 cards in production. Move one to Review first.`
     }
   }
@@ -3964,7 +3996,10 @@ export function moveCardInPortfolio(
     destinationStage,
     nextOwner,
   ).map((card) => card.id)
-  const boundedIndex = Math.max(0, Math.min(destinationIndex, targetLaneCards.length))
+  const isReviewReturnToProduction =
+    existingCard.stage === 'Review' && destinationStage === 'In Production'
+  const requestedIndex = isReviewReturnToProduction ? 0 : destinationIndex
+  const boundedIndex = Math.max(0, Math.min(requestedIndex, targetLaneCards.length))
   const nextTargetLane = [...targetLaneCards]
   nextTargetLane.splice(boundedIndex, 0, cardId)
   const positionMap = new Map<string, number>()
@@ -3974,26 +4009,24 @@ export function moveCardInPortfolio(
   const ownerChanged = existingCard.owner !== nextOwner
   const enteringInProduction =
     destinationStage === 'In Production' && (existingCard.stage !== 'In Production' || ownerChanged)
-  const leavingInProduction = existingCard.stage === 'In Production' && destinationStage !== 'In Production'
   const inProductionOwnerCards =
     destinationStage === 'In Production' && nextOwner
       ? getInProductionCardsForOwner(otherCards, nextOwner)
       : []
 
-  if (destinationStage === 'In Production' && nextOwner && inProductionOwnerCards.length >= 3) {
+  if (
+    enteringInProduction &&
+    nextOwner &&
+    inProductionOwnerCards.length >= 3 &&
+    !isReviewReturnToProduction
+  ) {
     return portfolio
   }
 
   const nextPriority =
-    enteringInProduction && nextOwner
-      ? getNextAvailableProductionPriority(inProductionOwnerCards)
-      : leavingInProduction
-        ? null
-        : existingCard.priority
-
-  if (enteringInProduction && nextPriority === null) {
-    return portfolio
-  }
+    destinationStage === 'In Production' && existingCard.stage === 'In Production'
+      ? existingCard.priority
+      : null
 
   const nextHistory = stageChanged
     ? [
@@ -4057,15 +4090,27 @@ export function moveCardInPortfolio(
 
   updatedCard = syncP1TimingForCard(updatedCard, existingCard, portfolio, movedAt)
 
+  const previousCardsById = new Map(portfolio.cards.map((card) => [card.id, card]))
   const updatedCards = otherCards.map((card) =>
     positionMap.has(card.id)
       ? { ...card, positionInSection: positionMap.get(card.id) ?? card.positionInSection }
       : card,
   )
+  const affectedOwners = new Set<string>()
+  if (existingCard.stage === 'In Production' && existingCard.owner) {
+    affectedOwners.add(existingCard.owner)
+  }
+  if (destinationStage === 'In Production' && nextOwner) {
+    affectedOwners.add(nextOwner)
+  }
+  let nextCards = [...updatedCards, syncGeneratedNames(updatedCard, settings)]
+  affectedOwners.forEach((owner) => {
+    nextCards = syncInProductionLanePriorities(nextCards, owner, previousCardsById, portfolio, movedAt)
+  })
 
   return {
     ...portfolio,
-    cards: reindexCards([...updatedCards, syncGeneratedNames(updatedCard, settings)]),
+    cards: reindexCards(nextCards),
   }
 }
 
@@ -4089,47 +4134,47 @@ export function setInProductionCardPriority(
   }
 
   const ownerInProductionCards = getInProductionCardsForOwner(portfolio.cards, targetCard.owner)
-  if (ownerInProductionCards.length > 3) {
+  const targetIndex = Math.max(0, Math.min(nextPriority - 1, ownerInProductionCards.length - 1))
+  const laneOrder = ownerInProductionCards
+    .slice()
+    .sort((left, right) => {
+      const [leftPosition, leftDateCreated, leftId] = getPositionSortValue(left)
+      const [rightPosition, rightDateCreated, rightId] = getPositionSortValue(right)
+      if (leftPosition !== rightPosition) {
+        return leftPosition - rightPosition
+      }
+      if (leftDateCreated !== rightDateCreated) {
+        return leftDateCreated.localeCompare(rightDateCreated)
+      }
+      return leftId.localeCompare(rightId)
+    })
+    .map((card) => card.id)
+  const currentIndex = laneOrder.indexOf(targetCard.id)
+  if (currentIndex === -1) {
     return portfolio
   }
-
-  const conflictingCard = ownerInProductionCards.find(
-    (card) => card.id !== targetCard.id && card.priority === nextPriority,
-  )
-
-  const targetPreviousPriority = targetCard.priority
-  let replacementPriority: CardPriority = null
-  if (conflictingCard) {
-    if (isProductionPriority(targetPreviousPriority) && targetPreviousPriority !== nextPriority) {
-      replacementPriority = targetPreviousPriority
-    } else {
-      const remainingCards = ownerInProductionCards.filter(
-        (card) => card.id !== targetCard.id && card.id !== conflictingCard.id,
-      )
-      const availablePriority = getNextAvailableProductionPriority([
-        ...remainingCards,
-        { ...targetCard, priority: nextPriority },
-      ])
-      replacementPriority = availablePriority
-    }
-  }
-
+  laneOrder.splice(currentIndex, 1)
+  laneOrder.splice(targetIndex, 0, targetCard.id)
+  const lanePositionMap = new Map<string, number>()
+  laneOrder.forEach((id, index) => lanePositionMap.set(id, index))
+  const previousCardsById = new Map(portfolio.cards.map((card) => [card.id, card]))
   const nowIso = new Date().toISOString()
-  const nextCards = portfolio.cards.map((card) => {
-    if (card.id === targetCard.id) {
-      const updated = { ...card, priority: nextPriority }
-      return syncP1TimingForCard(updated, card, portfolio, nowIso)
-    }
-    if (conflictingCard && card.id === conflictingCard.id) {
-      const updated = { ...card, priority: replacementPriority }
-      return syncP1TimingForCard(updated, card, portfolio, nowIso)
-    }
-    return card
-  })
+  const reorderedCards = portfolio.cards.map((card) =>
+    lanePositionMap.has(card.id)
+      ? { ...card, positionInSection: lanePositionMap.get(card.id) ?? card.positionInSection }
+      : card,
+  )
+  const nextCards = syncInProductionLanePriorities(
+    reorderedCards,
+    targetCard.owner,
+    previousCardsById,
+    portfolio,
+    nowIso,
+  )
 
   return {
     ...portfolio,
-    cards: nextCards,
+    cards: reindexCards(nextCards),
   }
 }
 
