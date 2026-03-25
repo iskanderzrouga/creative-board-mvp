@@ -1,10 +1,11 @@
-import { memo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import {
   formatDateShort,
   getAgeToneFromMs,
   getBrandSurface,
   getBrandTextColor,
+  getBatchById,
   getCardAgeMs,
   getTaskTypeById,
   getP1DeadlineStatus,
@@ -31,6 +32,8 @@ interface BoardCardSurfaceProps {
   attributes?: DraggableAttributes
   listeners?: DraggableSyntheticListeners
   onCyclePriority?: () => void
+  onAssignBatch?: (batchId: string | null) => void
+  canManageBatch: boolean
 }
 
 function getPriorityBadgeTone(priority: CardPriority) {
@@ -56,6 +59,8 @@ function BoardCardSurfaceComponent({
   attributes,
   listeners,
   onCyclePriority,
+  onAssignBatch,
+  canManageBatch,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
@@ -67,6 +72,15 @@ function BoardCardSurfaceComponent({
   const priorityTone = getPriorityBadgeTone(card.priority)
   const priorityLabel = getPriorityLabel(card.priority)
   const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
+  const [batchMenuOpen, setBatchMenuOpen] = useState(false)
+  const batch = getBatchById(portfolio, card.batchId)
+  const brandBatches = useMemo(
+    () =>
+      portfolio.batches
+        .filter((item) => item.brand === card.brand)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [card.brand, portfolio.batches],
+  )
 
   return (
     <button
@@ -114,6 +128,57 @@ function BoardCardSurfaceComponent({
           </span>
         ) : null}
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
+        {batch ? (
+          <div className="batch-pill-shell">
+            <span
+              className={`batch-pill ${canManageBatch ? 'is-editable' : ''}`}
+              role={canManageBatch ? 'button' : undefined}
+              tabIndex={canManageBatch ? 0 : -1}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                if (!canManageBatch) {
+                  return
+                }
+                event.stopPropagation()
+                event.preventDefault()
+                setBatchMenuOpen((current) => !current)
+              }}
+            >
+              {batch.name}
+            </span>
+            {canManageBatch && batchMenuOpen ? (
+              <div
+                className="batch-menu"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {brandBatches.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`batch-menu-item ${card.batchId === option.id ? 'is-active' : ''}`}
+                    onClick={() => {
+                      onAssignBatch?.(option.id)
+                      setBatchMenuOpen(false)
+                    }}
+                  >
+                    {option.name}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="batch-menu-item is-danger"
+                  onClick={() => {
+                    onAssignBatch?.(null)
+                    setBatchMenuOpen(false)
+                  }}
+                >
+                  Remove batch
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <p className="board-card-title">{card.title}</p>

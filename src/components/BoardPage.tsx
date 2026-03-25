@@ -64,6 +64,7 @@ interface BoardPageProps {
   canDragCard: (card: Card) => boolean
   onOpenCard: (portfolioId: string, cardId: string) => void
   onCycleProductionPriority: (portfolioId: string, cardId: string) => void
+  onAssignCardBatch: (portfolioId: string, cardId: string, batchId: string | null) => void
   onQuickCreateOpen: () => void
   onOpenSettings: () => void
   onResetFilters: () => void
@@ -100,6 +101,7 @@ export function BoardPage({
   canDragCard,
   onOpenCard,
   onCycleProductionPriority,
+  onAssignCardBatch,
   onQuickCreateOpen,
   onOpenSettings,
   onResetFilters,
@@ -110,6 +112,8 @@ export function BoardPage({
   onDragEnd,
 }: BoardPageProps) {
   const allBrandsSelected = boardFilters.brandNames.length === portfolio.brands.length
+  const activeBatches = portfolio.batches.filter((batch) => batch.status !== 'launched')
+  const visibleBatchPills = activeBatches.filter((batch) => boardFilters.brandNames.includes(batch.brand))
   const hasVisibleCards = columns.some((column) => column.count > 0)
   const hasBoardCards = portfolio.cards.some((card) => !card.archivedAt)
 
@@ -264,6 +268,32 @@ export function BoardPage({
               </div>
             </>
           ) : null}
+
+          <span className="filter-group-divider" aria-hidden="true" />
+          <div className="manager-filter-cluster">
+            <span className="filter-group-label">Batch</span>
+            <div className="manager-filter-group">
+              {visibleBatchPills.map((batch) => (
+                <button
+                  key={batch.id}
+                  type="button"
+                  className={`filter-pill batch-filter-pill ${
+                    boardFilters.batchIds.includes(batch.id) ? 'is-active' : ''
+                  }`}
+                  onClick={() =>
+                    setBoardFilters((current) => ({
+                      ...current,
+                      batchIds: current.batchIds.includes(batch.id)
+                        ? current.batchIds.filter((item) => item !== batch.id)
+                        : [...current.batchIds, batch.id],
+                    }))
+                  }
+                >
+                  {batch.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <span className="filter-group-divider" aria-hidden="true" />
 
@@ -459,6 +489,10 @@ export function BoardPage({
                                   isInvalid={isBlocked}
                                   onOpen={() => onOpenCard(portfolio.id, card.id)}
                                   onCyclePriority={() => onCycleProductionPriority(portfolio.id, card.id)}
+                                  onAssignBatch={(batchId) =>
+                                    onAssignCardBatch(portfolio.id, card.id, batchId)
+                                  }
+                                  canManageBatch={activeRoleMode === 'owner' || activeRoleMode === 'manager'}
                                 />
                               ))}
                             </SortableContext>
@@ -500,6 +534,8 @@ export function BoardPage({
               nowMs={nowMs}
               onOpen={() => undefined}
               onCyclePriority={undefined}
+              onAssignBatch={undefined}
+              canManageBatch={false}
               cursorMode="drag"
               isOverlay
             />

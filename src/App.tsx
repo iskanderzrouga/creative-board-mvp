@@ -68,6 +68,7 @@ import {
   applyCardUpdates,
   createCardFromQuickInput,
   createFreshStartState,
+  getBatchById,
   createSeedState,
   getActivePortfolio,
   getAttentionSummary,
@@ -95,6 +96,8 @@ import {
   type AppNotification,
   type AppPage,
   type AppState,
+  type Batch,
+  type BatchStatus,
   type BoardFilters,
   type Card,
   type LaneModel,
@@ -188,6 +191,14 @@ function canAccessBacklogByEmail(email: string | null) {
 
   const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
   return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
+}
+
+function createBatchId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `batch-${crypto.randomUUID()}`
+  }
+
+  return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function App() {
@@ -381,6 +392,7 @@ function App() {
   const hasActiveBoardFilters = Boolean(
     boardFilters.searchQuery.trim() ||
       boardFilters.ownerNames.length > 0 ||
+      boardFilters.batchIds.length > 0 ||
       boardFilters.stuckOnly ||
       boardFilters.blockedOnly ||
       boardFilters.showArchived ||
@@ -676,6 +688,7 @@ function App() {
   useEffect(() => {
     const availableBrandNames = activePortfolioView?.brands.map((brand) => brand.name) ?? []
     const availableBrandSet = new Set(availableBrandNames)
+    const availableBatchSet = new Set(activePortfolioView?.batches.map((batch) => batch.id) ?? [])
 
     setBoardFilters((current) => {
       const nextBrandNames =
@@ -691,12 +704,17 @@ function App() {
       const sameBrandSelection =
         normalizedBrandNames.length === current.brandNames.length &&
         normalizedBrandNames.every((brandName, index) => brandName === current.brandNames[index])
+      const normalizedBatchIds = current.batchIds.filter((batchId) => availableBatchSet.has(batchId))
+      const sameBatchSelection =
+        normalizedBatchIds.length === current.batchIds.length &&
+        normalizedBatchIds.every((batchId, index) => batchId === current.batchIds[index])
 
-      return sameBrandSelection
+      return sameBrandSelection && sameBatchSelection
         ? current
         : {
             ...current,
             brandNames: normalizedBrandNames,
+            batchIds: normalizedBatchIds,
       }
     })
   }, [activePortfolioView])
@@ -893,6 +911,9 @@ function App() {
           current.ownerNames.filter((owner) =>
             nextPortfolio.team.some((member) => member.name === owner),
           ),
+        batchIds: current.batchIds.filter((batchId) =>
+          nextPortfolio.batches.some((batch) => batch.id === batchId),
+        ),
       }))
       setSettingsPortfolioId(nextPortfolio.id)
     }
@@ -1360,6 +1381,114 @@ function App() {
         viewerContext,
       ),
     )
+  }
+
+  function createBatch(portfolioId: string, brand: string, name: string, actor: string) {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      return null
+    }
+
+    const newBatch: Batch = {
+      id: createBatchId(),
+      name: trimmedName,
+      brand,
+      status: 'draft',
+      createdAt: new Date().toISOString(),
+      createdBy: actor,
+      metaCampaignId: null,
+      metaAdSetId: null,
+      metaAdSetName: null,
+      launchedAt: null,
+    }
+
+    updatePortfolio(portfolioId, (portfolio) => ({
+      ...portfolio,
+      batches: [...portfolio.batches, newBatch],
+    }))
+
+    return newBatch.id
+  }
+
+  function handleAssignCardBatch(portfolioId: string, cardId: string, batchId: string | null) {
+    if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+      return
+    }
+
+    updatePortfolio(portfolioId, (portfolio) => {
+      const targetCard = portfolio.cards.find((card) => card.id === cardId)
+      if (!targetCard) {
+        return portfolio
+      }
+      const validBatch = batchId ? getBatchById(portfolio, batchId) : null
+      if (batchId && (!validBatch || validBatch.brand !== targetCard.brand)) {
+        return portfolio
+      }
+
+      return applyCardUpdates(
+        portfolio,
+        state.settings,
+        cardId,
+        { batchId: batchId ?? null },
+        getActorName(portfolio),
+        new Date().toISOString(),
+        viewerContext,
+      )
+    })
+  }
+
+  function handleCreateBatchFromCard(portfolioId: string, cardId: string, name: string) {
+    if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+      return null
+    }
+
+    const portfolio = state.portfolios.find((item) => item.id === portfolioId)
+    const card = portfolio?.cards.find((item) => item.id === cardId)
+    if (!portfolio || !card) {
+      return null
+    }
+    const existing = portfolio.batches.find(
+      (batch) => batch.brand === card.brand && batch.name.toLowerCase() === name.trim().toLowerCase(),
+    )
+    const batchId = existing?.id ?? createBatch(portfolioId, card.brand, name, getActorName(portfolio))
+    if (batchId) {
+      handleAssignCardBatch(portfolioId, cardId, batchId)
+    }
+    return batchId
+  }
+
+  function handleBatchStatusChange(portfolioId: string, batchId: string, status: BatchStatus) {
+    if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+      return
+    }
+    updatePortfolio(portfolioId, (portfolio) => ({
+      ...portfolio,
+      batches: portfolio.batches.map((batch) =>
+        batch.id === batchId
+          ? {
+              ...batch,
+              status,
+              launchedAt: status === 'launched' ? batch.launchedAt ?? new Date().toISOString() : null,
+            }
+          : batch,
+      ),
+    }))
+  }
+
+  function handleDeleteEmptyBatch(portfolioId: string, batchId: string) {
+    if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+      return
+    }
+    updatePortfolio(portfolioId, (portfolio) => {
+      const hasCards = portfolio.cards.some((card) => card.batchId === batchId)
+      if (hasCards) {
+        return portfolio
+      }
+      return {
+        ...portfolio,
+        batches: portfolio.batches.filter((batch) => batch.id !== batchId),
+      }
+    })
   }
 
   function requestDeleteOpenCard() {
@@ -2117,6 +2246,7 @@ function App() {
             }
             onOpenCard={openCard}
             onCycleProductionPriority={handleCycleProductionPriority}
+            onAssignCardBatch={handleAssignCardBatch}
             onQuickCreateOpen={() => {
               setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
               setQuickCreateOpen(true)
@@ -2220,6 +2350,8 @@ function App() {
           onFreshStartData={freshStartData}
           onWorkspaceAccessSave={handleSaveWorkspaceAccessEntry}
           onWorkspaceAccessDelete={handleDeleteWorkspaceAccessEntry}
+          onBatchStatusChange={handleBatchStatusChange}
+          onDeleteEmptyBatch={handleDeleteEmptyBatch}
           showToast={showToast}
           />
         ) : null}
@@ -2280,6 +2412,12 @@ function App() {
           onClose={requestCloseSelectedCard}
           onCopy={handleCopy}
           onSave={saveOpenCard}
+          onAssignBatch={(batchId) =>
+            handleAssignCardBatch(activeSelectedPortfolioView.id, selectedCardData.id, batchId)
+          }
+          onCreateBatch={(name) =>
+            handleCreateBatchFromCard(activeSelectedPortfolioView.id, selectedCardData.id, name)
+          }
           onSetProductionPriority={(priority) =>
             handleSetProductionPriority(activeSelectedPortfolioView.id, selectedCardData.id, priority)
           }
