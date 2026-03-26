@@ -269,9 +269,9 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [showCompleted, setShowCompleted] = useState(true)
   const [commentDraft, setCommentDraft] = useState('')
-  const [quickCreateOpen, setQuickCreateOpen] = useState(false)
+  const [showQuickCreate, setShowQuickCreate] = useState(false)
   const [quickCreatePending, setQuickCreatePending] = useState(false)
-  const [quickCreateForm, setQuickCreateForm] = useState<DevQuickCreateForm>(() => getDefaultQuickCreateForm(brandOptions))
+  const [quickCreateValue, setQuickCreateValue] = useState<DevQuickCreateForm>(() => getDefaultQuickCreateForm(brandOptions))
   const allBrandsSelected = brandFilter.length === 0
   const brandColorByName: Record<string, string> = {
     Pluxy: '#f87171',
@@ -387,8 +387,8 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
               type="button"
               className="primary-button"
               onClick={() => {
-                setQuickCreateForm(getDefaultQuickCreateForm(brandOptions))
-                setQuickCreateOpen(true)
+                setQuickCreateValue(getDefaultQuickCreateForm(brandOptions))
+                setShowQuickCreate(true)
               }}
             >
               + Add task
@@ -624,15 +624,15 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
         ) : null}
       </aside>
 
-      {quickCreateOpen ? (
+      {showQuickCreate ? (
         <DevQuickCreateModal
           pending={quickCreatePending}
-          value={quickCreateForm}
+          value={quickCreateValue}
           brandOptions={brandOptions}
-          onChange={(updates) => setQuickCreateForm((current) => ({ ...current, ...updates }))}
-          onClose={() => setQuickCreateOpen(false)}
+          onChange={(updates) => setQuickCreateValue((current) => ({ ...current, ...updates }))}
+          onClose={() => setShowQuickCreate(false)}
           onCreate={() => {
-            if (!quickCreateForm.title.trim() || !quickCreateForm.brand) {
+            if (!quickCreateValue.title.trim() || !quickCreateValue.brand) {
               return
             }
             setQuickCreatePending(true)
@@ -640,16 +640,16 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
               addDevBoardQuickTask(
                 current,
                 {
-                  title: quickCreateForm.title,
-                  brand: quickCreateForm.brand,
-                  taskDescription: quickCreateForm.taskDescription,
-                  assignedDeveloper: quickCreateForm.assignedDeveloper,
+                  title: quickCreateValue.title,
+                  brand: quickCreateValue.brand,
+                  taskDescription: quickCreateValue.taskDescription,
+                  assignedDeveloper: quickCreateValue.assignedDeveloper,
                 },
                 actorName,
               ),
             )
             setQuickCreatePending(false)
-            setQuickCreateOpen(false)
+            setShowQuickCreate(false)
             showToast('Dev task created in To Brief.', 'green')
           }}
         />
