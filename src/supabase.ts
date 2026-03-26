@@ -127,6 +127,22 @@ const DEFAULT_LOCAL_WORKSPACE_ACCESS_ENTRIES: WorkspaceAccessEntry[] = [
     scopeAssignments: [],
     updatedAt: null,
   },
+  {
+    email: 'thao.sinaptica40@gmail.com',
+    roleMode: 'contributor',
+    editorName: 'Daniel J',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
+  {
+    email: 'smithgangyouji@gmail.com',
+    roleMode: 'contributor',
+    editorName: 'Kevin Ma',
+    scopeMode: 'all-portfolios',
+    scopeAssignments: [],
+    updatedAt: null,
+  },
 ]
 
 function hasBrowser() {

@@ -39,6 +39,7 @@ import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
+import { DevBoardPage } from './components/DevBoardPage'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { PageHeader } from './components/PageHeader'
@@ -58,6 +59,12 @@ import {
   type BacklogCard,
   type BacklogState,
 } from './backlog'
+import {
+  addDevBoardCardFromBacklog,
+  loadDevBoardState,
+  persistDevBoardState,
+  type DevBoardState,
+} from './devBoard'
 import {
   isSupabaseConfigured,
 } from './supabase'
@@ -115,7 +122,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
-type ExtendedPage = AppPage | 'backlog'
+type ExtendedPage = AppPage | 'backlog' | 'dev'
 
 interface CopyState {
   key: string
@@ -146,11 +153,20 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
 const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+const DEV_ALLOWED_EMAILS = new Set([
+  'iskander@bluebrands.co',
+  'naomi@bluebrands.co',
+  'nicolas@bluebrands.co',
+  'thao.sinaptica40@gmail.com',
+  'smithgangyouji@gmail.com',
+])
 
 function getPathForPage(page: ExtendedPage) {
   switch (page) {
     case 'backlog':
       return '/backlog'
+    case 'dev':
+      return '/dev'
     case 'analytics':
       return '/analytics'
     case 'workload':
@@ -167,6 +183,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
   switch (pathname) {
     case '/backlog':
       return 'backlog'
+    case '/dev':
+      return 'dev'
     case '/analytics':
       return 'analytics'
     case '/workload':
@@ -190,10 +208,19 @@ function canAccessBacklogByEmail(email: string | null) {
   return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
 }
 
+function canAccessDevByEmail(email: string | null) {
+  if (!email) {
+    return false
+  }
+
+  return DEV_ALLOWED_EMAILS.has(email.trim().toLowerCase())
+}
+
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [backlogState, setBacklogState] = useState<BacklogState>(() => loadBacklogState())
+  const [devBoardState, setDevBoardState] = useState<DevBoardState>(() => loadDevBoardState())
   const [boardFilters, setBoardFilters] = useState<BoardFilters>(() =>
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
@@ -257,6 +284,7 @@ function App() {
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
   const backlogPersistTimerRef = useRef<number | null>(null)
+  const devBoardPersistTimerRef = useRef<number | null>(null)
   const [routePage, setRoutePage] = useState<ExtendedPage>(() =>
     getPageFromPathname(
       typeof window !== 'undefined' ? window.location.pathname : '/board',
@@ -321,7 +349,8 @@ function App() {
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const productionPage = getCurrentPage(state)
-  const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
+  const currentPage: ExtendedPage =
+    routePage === 'backlog' || routePage === 'dev' ? routePage : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -458,6 +487,11 @@ function App() {
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const canAccessBacklog = !authEnabled || canAccessBacklogByEmail(backlogAccessEmail)
+  const canAccessDev =
+    !authEnabled ||
+    state.activeRole.mode === 'owner' ||
+    state.activeRole.mode === 'manager' ||
+    canAccessDevByEmail(backlogAccessEmail)
   const backlogBrandOptions = useMemo(() => {
     const uniqueBrands = new Set<string>()
     scopedPortfolios.forEach((portfolio) => {
@@ -706,7 +740,7 @@ function App() {
       return
     }
 
-    if (routePage !== 'backlog' && routePage !== productionPage) {
+    if (routePage !== 'backlog' && routePage !== 'dev' && routePage !== productionPage) {
       return
     }
 
@@ -737,6 +771,19 @@ function App() {
         }
         return
       }
+      if (nextPage === 'dev') {
+        if (canAccessDev) {
+          setRoutePage('dev')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
+        return
+      }
 
       const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
       setRoutePage(allowedPage)
@@ -756,13 +803,19 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [canAccessBacklog, state])
+  }, [canAccessBacklog, canAccessDev, state])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
       setRoutePage(productionPage)
     }
   }, [canAccessBacklog, productionPage, routePage])
+
+  useEffect(() => {
+    if (!canAccessDev && routePage === 'dev') {
+      setRoutePage(productionPage)
+    }
+  }, [canAccessDev, productionPage, routePage])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -784,6 +837,27 @@ function App() {
       }
     }
   }, [backlogState])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (devBoardPersistTimerRef.current !== null) {
+      window.clearTimeout(devBoardPersistTimerRef.current)
+    }
+
+    devBoardPersistTimerRef.current = window.setTimeout(() => {
+      persistDevBoardState(devBoardState)
+      devBoardPersistTimerRef.current = null
+    }, 180)
+
+    return () => {
+      if (devBoardPersistTimerRef.current !== null) {
+        window.clearTimeout(devBoardPersistTimerRef.current)
+      }
+    }
+  }, [devBoardState])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -830,6 +904,9 @@ function App() {
       }
       if (backlogPersistTimerRef.current !== null) {
         window.clearTimeout(backlogPersistTimerRef.current)
+      }
+      if (devBoardPersistTimerRef.current !== null) {
+        window.clearTimeout(devBoardPersistTimerRef.current)
       }
     }
   }, [])
@@ -960,6 +1037,16 @@ function App() {
       }
 
       setRoutePage('backlog')
+      setSelectedCard(null)
+      return
+    }
+    if (page === 'dev') {
+      if (!canAccessDev) {
+        setRoutePage(productionPage)
+        return
+      }
+
+      setRoutePage('dev')
       setSelectedCard(null)
       return
     }
@@ -1320,6 +1407,41 @@ function App() {
     const result = { ok: true as const, cardId: createdCardId, portfolioId: createdPortfolioId }
     console.log('[Backlog→Production] returning', result)
     return result
+  }
+
+  function handleBacklogToDev(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    let createdCardId: string | null = null
+
+    setDevBoardState((current) => {
+      const next = addDevBoardCardFromBacklog(
+        current,
+        {
+          title: card.name,
+          brand: card.brand,
+          taskDescription: card.taskDescription ?? '',
+          linkForTest: card.linkForTest ?? '',
+          linkForChanges: card.linkForChanges ?? '',
+        },
+        getActorName(activePortfolioView),
+      )
+      const inserted = next.cards[next.cards.length - 1]
+      createdCardId = inserted?.id ?? null
+      return next
+    })
+
+    if (!createdCardId) {
+      return { ok: false }
+    }
+
+    return { ok: true, cardId: createdCardId, portfolioId: 'development' }
+  }
+
+  function handleBacklogTransfer(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    if (card.taskType === 'dev-cro') {
+      return handleBacklogToDev(card)
+    }
+
+    return handleBacklogToProduction(card)
   }
 
   function openCard(portfolioId: string, cardId: string) {
@@ -2037,6 +2159,7 @@ function App() {
           portfolios={scopedPortfolios}
           role={state.activeRole}
           canAccessBacklog={canAccessBacklog}
+          canAccessDev={canAccessDev}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
           signOutPending={signOutPending}
@@ -2143,7 +2266,19 @@ function App() {
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
             onChange={setBacklogState}
-            onMoveToProduction={handleBacklogToProduction}
+            onMoveToProduction={handleBacklogTransfer}
+          />
+        ) : null}
+
+        {currentPage === 'dev' ? (
+          <DevBoardPage
+            board={devBoardState}
+            actorName={userDisplayName}
+            brandOptions={backlogBrandOptions}
+            headerUtilityContent={headerUtilityContent}
+            showToast={showToast}
+            nowMs={nowMs}
+            onChange={setDevBoardState}
           />
         ) : null}
 
