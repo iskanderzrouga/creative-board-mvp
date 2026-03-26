@@ -1931,6 +1931,8 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
       createDefaultTeamMember('ayoub', 'Ayoub', 'Editor', 40, 8, 3, 'Asia/Makassar', 9, 17),
       createDefaultTeamMember('charit', 'Charit', 'Designer', 40, 8, 3, 'Asia/Bangkok', 9, 17),
       createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 25, 5, 2, 'Asia/Shanghai', 9, 14),
+      createDefaultTeamMember('daniel-j', 'Daniel J', 'Developer', 40, 8, 2, 'Asia/Shanghai', 9, 17),
+      createDefaultTeamMember('kevin-ma', 'Kevin Ma', 'Developer', 40, 8, 2, 'Asia/Shanghai', 9, 17),
     ],
     cards: brandLabCards,
     webhookUrl: '',

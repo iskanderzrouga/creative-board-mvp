@@ -500,7 +500,11 @@ export function BacklogPage({
       })
       onChange((current) => deleteBacklogCard(current, cardId))
       setSelectedCardId(null)
-      showToast(`Moved to Production as ${productionResult.cardId}.`, 'green')
+      if (currentCard.taskType === 'dev-cro') {
+        showToast('Dev card moved to Development board', 'green')
+      } else {
+        showToast(`Moved to Production as ${productionResult.cardId}.`, 'green')
+      }
       return
     }
 
