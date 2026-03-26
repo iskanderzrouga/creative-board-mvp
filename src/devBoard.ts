@@ -56,6 +56,13 @@ interface AddDevBoardCardInput {
   linkForChanges: string
 }
 
+interface AddDevBoardQuickTaskInput {
+  title: string
+  brand: string
+  taskDescription: string
+  assignedDeveloper: DevBoardCard['assignedDeveloper']
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 const WORKING_DAY_MINUTES = 8 * 60
 
@@ -376,6 +383,39 @@ export function addDevBoardCardFromBacklog(state: DevBoardState, input: AddDevBo
       {
         id: createId('activity'),
         message: `${actor} moved this card from Backlog to Development`,
+        createdAt,
+      },
+    ],
+    createdAt,
+    p1AssignedAt: null,
+    p1Deadline: null,
+  }
+
+  return {
+    cards: [...state.cards, nextCard],
+    lastCardNumber: state.lastCardNumber + 1,
+  }
+}
+
+export function addDevBoardQuickTask(state: DevBoardState, input: AddDevBoardQuickTaskInput, actor: string): DevBoardState {
+  const createdAt = new Date().toISOString()
+  const nextCard: DevBoardCard = {
+    id: getNextCardId(state),
+    title: input.title.trim(),
+    brand: input.brand,
+    taskDescription: input.taskDescription.trim(),
+    linkForTest: '',
+    linkForChanges: '',
+    assignedDeveloper: input.assignedDeveloper,
+    priority: null,
+    column: 'to-brief',
+    positionInColumn: state.cards.filter((card) => card.column === 'to-brief').length,
+    statusNotes: '',
+    comments: [],
+    activity: [
+      {
+        id: createId('activity'),
+        message: `${actor} created ${input.title.trim() || 'a dev task'}`,
         createdAt,
       },
     ],

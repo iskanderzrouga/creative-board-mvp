@@ -11,10 +11,12 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useId, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import { PageHeader } from './PageHeader'
 import {
   DEV_BOARD_COLUMNS,
+  addDevBoardQuickTask,
   addDevBoardComment,
   moveDevBoardCard,
   updateDevBoardCard,
@@ -22,6 +24,7 @@ import {
   type DevBoardColumnId,
   type DevBoardState,
 } from '../devBoard'
+import { XIcon } from './icons/AppIcons'
 
 interface DevBoardPageProps {
   board: DevBoardState
@@ -37,6 +40,22 @@ interface DevCardItemProps {
   card: DevBoardCard
   nowMs: number
   onOpen: (cardId: string) => void
+}
+
+interface DevQuickCreateForm {
+  title: string
+  brand: string
+  taskDescription: string
+  assignedDeveloper: DevBoardCard['assignedDeveloper']
+}
+
+function getDefaultQuickCreateForm(brandOptions: string[]): DevQuickCreateForm {
+  return {
+    title: '',
+    brand: brandOptions[0] ?? '',
+    taskDescription: '',
+    assignedDeveloper: null,
+  }
 }
 
 function getDropTargetFromId(value: string): DevBoardColumnId | null {
@@ -136,6 +155,113 @@ function DevColumn({
   )
 }
 
+function DevQuickCreateModal({
+  pending,
+  value,
+  brandOptions,
+  onChange,
+  onClose,
+  onCreate,
+}: {
+  pending: boolean
+  value: DevQuickCreateForm
+  brandOptions: string[]
+  onChange: (updates: Partial<DevQuickCreateForm>) => void
+  onClose: () => void
+  onCreate: () => void
+}) {
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const titleId = useId()
+  useModalAccessibility(modalRef, true)
+  const canCreate = Boolean(value.title.trim() && value.brand)
+
+  return (
+    <>
+      <div className="modal-overlay" aria-hidden="true" onClick={onClose} />
+      <div
+        ref={modalRef}
+        className="quick-create-modal backlog-create-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
+        <div className="quick-create-head">
+          <div>
+            <h2 id={titleId}>Add task</h2>
+            <p className="muted-copy">Create a new Development task in To Brief.</p>
+          </div>
+          <button type="button" className="close-icon-button" aria-label="Close add task dialog" onClick={onClose}>
+            <XIcon />
+          </button>
+        </div>
+
+        <label className="quick-create-field full-width">
+          <span>Task name</span>
+          <input
+            autoFocus
+            value={value.title}
+            onChange={(event) => onChange({ title: event.target.value })}
+            placeholder="Task name"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && canCreate) {
+                event.preventDefault()
+                onCreate()
+              }
+            }}
+          />
+        </label>
+
+        <label className="quick-create-field full-width">
+          <span>Brand</span>
+          <select value={value.brand} onChange={(event) => onChange({ brand: event.target.value })}>
+            {brandOptions.map((brand) => (
+              <option key={brand} value={brand}>
+                {brand}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="quick-create-field full-width">
+          <span>Task description</span>
+          <textarea
+            rows={4}
+            value={value.taskDescription}
+            onChange={(event) => onChange({ taskDescription: event.target.value })}
+            placeholder="Describe the development task"
+          />
+        </label>
+
+        <label className="quick-create-field full-width">
+          <span>Assigned developer</span>
+          <select
+            value={value.assignedDeveloper ?? ''}
+            onChange={(event) =>
+              onChange({
+                assignedDeveloper: (event.target.value || null) as DevBoardCard['assignedDeveloper'],
+              })
+            }
+          >
+            <option value="">Unassigned</option>
+            <option value="Daniel J">Daniel J</option>
+            <option value="Kevin Ma">Kevin Ma</option>
+          </select>
+        </label>
+
+        <div className="quick-create-actions">
+          <button type="button" className="ghost-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="primary-button" disabled={!canCreate || pending} onClick={onCreate}>
+            Add task
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 export function DevBoardPage({ board, showToast, headerUtilityContent, actorName, brandOptions, nowMs, onChange }: DevBoardPageProps) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [dragCardId, setDragCardId] = useState<string | null>(null)
@@ -143,6 +269,9 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [showCompleted, setShowCompleted] = useState(true)
   const [commentDraft, setCommentDraft] = useState('')
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false)
+  const [quickCreatePending, setQuickCreatePending] = useState(false)
+  const [quickCreateForm, setQuickCreateForm] = useState<DevQuickCreateForm>(() => getDefaultQuickCreateForm(brandOptions))
   const allBrandsSelected = brandFilter.length === 0
   const brandColorByName: Record<string, string> = {
     Pluxy: '#f87171',
@@ -250,7 +379,24 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
 
   return (
     <div className="page-shell backlog-page-shell">
-      <PageHeader title="Development" rightContent={headerUtilityContent} />
+      <PageHeader
+        title="Development"
+        rightContent={
+          <>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                setQuickCreateForm(getDefaultQuickCreateForm(brandOptions))
+                setQuickCreateOpen(true)
+              }}
+            >
+              + Add task
+            </button>
+            {headerUtilityContent}
+          </>
+        }
+      />
       <p className="backlog-page-subtitle">Track and manage development and CRO tasks through the pipeline.</p>
 
       <section className="stats-bar" aria-label="Development statistics">
@@ -477,6 +623,37 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
           </>
         ) : null}
       </aside>
+
+      {quickCreateOpen ? (
+        <DevQuickCreateModal
+          pending={quickCreatePending}
+          value={quickCreateForm}
+          brandOptions={brandOptions}
+          onChange={(updates) => setQuickCreateForm((current) => ({ ...current, ...updates }))}
+          onClose={() => setQuickCreateOpen(false)}
+          onCreate={() => {
+            if (!quickCreateForm.title.trim() || !quickCreateForm.brand) {
+              return
+            }
+            setQuickCreatePending(true)
+            onChange((current) =>
+              addDevBoardQuickTask(
+                current,
+                {
+                  title: quickCreateForm.title,
+                  brand: quickCreateForm.brand,
+                  taskDescription: quickCreateForm.taskDescription,
+                  assignedDeveloper: quickCreateForm.assignedDeveloper,
+                },
+                actorName,
+              ),
+            )
+            setQuickCreatePending(false)
+            setQuickCreateOpen(false)
+            showToast('Dev task created in To Brief.', 'green')
+          }}
+        />
+      ) : null}
     </div>
   )
 }
