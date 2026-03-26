@@ -169,6 +169,8 @@ export interface Card {
   attachments: Attachment[]
   driveFolderUrl: string
   driveFolderCreated: boolean
+  briefDocUrl: string
+  briefDocId: string | null
   frameioLink: string
   dateAssigned: string
   dateCreated: string
@@ -1637,6 +1639,8 @@ function inflateSeedCard(
     attachments?: Attachment[]
     frameioLink?: string
     driveFolderUrl?: string
+    briefDocUrl?: string
+    briefDocId?: string | null
     generatedSheetName?: string
     generatedAdName?: string
     customStageHistory?: StageHistoryEntry[]
@@ -1720,6 +1724,8 @@ function inflateSeedCard(
     attachments: seed.attachments ?? [],
     driveFolderUrl: seed.driveFolderUrl ?? '',
     driveFolderCreated: Boolean(seed.driveFolderUrl),
+    briefDocUrl: seed.briefDocUrl ?? '',
+    briefDocId: seed.briefDocId ?? null,
     frameioLink: seed.frameioLink ?? '',
     dateAssigned: seed.dateAssigned,
     dateCreated,
@@ -1931,6 +1937,8 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
       createDefaultTeamMember('ayoub', 'Ayoub', 'Editor', 40, 8, 3, 'Asia/Makassar', 9, 17),
       createDefaultTeamMember('charit', 'Charit', 'Designer', 40, 8, 3, 'Asia/Bangkok', 9, 17),
       createDefaultTeamMember('ivan', 'Ivan', 'Launch Ops', 25, 5, 2, 'Asia/Shanghai', 9, 14),
+      createDefaultTeamMember('daniel-j', 'Daniel J', 'Developer', 40, 8, 2, 'Asia/Shanghai', 9, 17),
+      createDefaultTeamMember('kevin-ma', 'Kevin Ma', 'Developer', 40, 8, 2, 'Asia/Shanghai', 9, 17),
     ],
     cards: brandLabCards,
     webhookUrl: '',
@@ -2197,6 +2205,11 @@ function normalizePortfolio(
         referenceLinks: typeof raw.referenceLinks === 'string' ? raw.referenceLinks : '',
         adCopy: typeof raw.adCopy === 'string' ? raw.adCopy : '',
         notes: typeof raw.notes === 'string' ? raw.notes : '',
+        briefDocUrl: typeof raw.briefDocUrl === 'string' ? raw.briefDocUrl : '',
+        briefDocId:
+          typeof raw.briefDocId === 'string' && raw.briefDocId.trim().length > 0
+            ? raw.briefDocId.trim()
+            : null,
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
         activityLog,
@@ -2850,6 +2863,8 @@ export function createCardFromQuickInput(
     attachments: [],
     driveFolderUrl: '',
     driveFolderCreated: false,
+    briefDocUrl: '',
+    briefDocId: null,
     frameioLink: '',
     dateAssigned: dateOnly,
     dateCreated: dateOnly,

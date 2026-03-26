@@ -39,6 +39,7 @@ import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
+import { DevBoardPage } from './components/DevBoardPage'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { PageHeader } from './components/PageHeader'
@@ -58,6 +59,12 @@ import {
   type BacklogCard,
   type BacklogState,
 } from './backlog'
+import {
+  addDevBoardCardFromBacklog,
+  loadDevBoardState,
+  persistDevBoardState,
+  type DevBoardState,
+} from './devBoard'
 import {
   isSupabaseConfigured,
 } from './supabase'
@@ -115,7 +122,30 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
-type ExtendedPage = AppPage | 'backlog'
+type ExtendedPage = AppPage | 'backlog' | 'dev'
+type DriveWebhookMode = 'create' | 'update'
+
+interface DriveWebhookPayload {
+  mode: DriveWebhookMode
+  cardId: string
+  cardTitle: string
+  brand: string
+  product: string
+  platform: string
+  funnelStage: string
+  assignedEditor: string
+  batchName: string
+  brief: string
+  targetAudience: string
+  keyMessage: string
+  visualDirection: string
+  angleTheme: string
+  cta: string
+  adCopy: string
+  referenceLinks: string
+  notes: string
+  briefDocId?: string
+}
 
 interface CopyState {
   key: string
@@ -146,11 +176,20 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
 const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+const DEV_ALLOWED_EMAILS = new Set([
+  'iskander@bluebrands.co',
+  'naomi@bluebrands.co',
+  'nicolas@bluebrands.co',
+  'thao.sinaptica40@gmail.com',
+  'smithgangyouji@gmail.com',
+])
 
 function getPathForPage(page: ExtendedPage) {
   switch (page) {
     case 'backlog':
       return '/backlog'
+    case 'dev':
+      return '/dev'
     case 'analytics':
       return '/analytics'
     case 'workload':
@@ -167,6 +206,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
   switch (pathname) {
     case '/backlog':
       return 'backlog'
+    case '/dev':
+      return 'dev'
     case '/analytics':
       return 'analytics'
     case '/workload':
@@ -190,10 +231,19 @@ function canAccessBacklogByEmail(email: string | null) {
   return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
 }
 
+function canAccessDevByEmail(email: string | null) {
+  if (!email) {
+    return false
+  }
+
+  return DEV_ALLOWED_EMAILS.has(email.trim().toLowerCase())
+}
+
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
   const [backlogState, setBacklogState] = useState<BacklogState>(() => loadBacklogState())
+  const [devBoardState, setDevBoardState] = useState<DevBoardState>(() => loadDevBoardState())
   const [boardFilters, setBoardFilters] = useState<BoardFilters>(() =>
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
@@ -257,6 +307,8 @@ function App() {
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
   const backlogPersistTimerRef = useRef<number | null>(null)
+  const devBoardPersistTimerRef = useRef<number | null>(null)
+  const briefSyncTimersRef = useRef<Record<string, number>>({})
   const [routePage, setRoutePage] = useState<ExtendedPage>(() =>
     getPageFromPathname(
       typeof window !== 'undefined' ? window.location.pathname : '/board',
@@ -321,7 +373,8 @@ function App() {
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const productionPage = getCurrentPage(state)
-  const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
+  const currentPage: ExtendedPage =
+    routePage === 'backlog' || routePage === 'dev' ? routePage : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -458,6 +511,11 @@ function App() {
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const canAccessBacklog = !authEnabled || canAccessBacklogByEmail(backlogAccessEmail)
+  const canAccessDev =
+    !authEnabled ||
+    state.activeRole.mode === 'owner' ||
+    state.activeRole.mode === 'manager' ||
+    canAccessDevByEmail(backlogAccessEmail)
   const backlogBrandOptions = useMemo(() => {
     const uniqueBrands = new Set<string>()
     scopedPortfolios.forEach((portfolio) => {
@@ -706,7 +764,7 @@ function App() {
       return
     }
 
-    if (routePage !== 'backlog' && routePage !== productionPage) {
+    if (routePage !== 'backlog' && routePage !== 'dev' && routePage !== productionPage) {
       return
     }
 
@@ -737,6 +795,19 @@ function App() {
         }
         return
       }
+      if (nextPage === 'dev') {
+        if (canAccessDev) {
+          setRoutePage('dev')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
+        return
+      }
 
       const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
       setRoutePage(allowedPage)
@@ -756,13 +827,19 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [canAccessBacklog, state])
+  }, [canAccessBacklog, canAccessDev, state])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
       setRoutePage(productionPage)
     }
   }, [canAccessBacklog, productionPage, routePage])
+
+  useEffect(() => {
+    if (!canAccessDev && routePage === 'dev') {
+      setRoutePage(productionPage)
+    }
+  }, [canAccessDev, productionPage, routePage])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -784,6 +861,27 @@ function App() {
       }
     }
   }, [backlogState])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    if (devBoardPersistTimerRef.current !== null) {
+      window.clearTimeout(devBoardPersistTimerRef.current)
+    }
+
+    devBoardPersistTimerRef.current = window.setTimeout(() => {
+      persistDevBoardState(devBoardState)
+      devBoardPersistTimerRef.current = null
+    }, 180)
+
+    return () => {
+      if (devBoardPersistTimerRef.current !== null) {
+        window.clearTimeout(devBoardPersistTimerRef.current)
+      }
+    }
+  }, [devBoardState])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -831,6 +929,13 @@ function App() {
       if (backlogPersistTimerRef.current !== null) {
         window.clearTimeout(backlogPersistTimerRef.current)
       }
+      if (devBoardPersistTimerRef.current !== null) {
+        window.clearTimeout(devBoardPersistTimerRef.current)
+      }
+      Object.values(briefSyncTimersRef.current).forEach((timerId) => {
+        window.clearTimeout(timerId)
+      })
+      briefSyncTimersRef.current = {}
     }
   }, [])
 
@@ -963,6 +1068,16 @@ function App() {
       setSelectedCard(null)
       return
     }
+    if (page === 'dev') {
+      if (!canAccessDev) {
+        setRoutePage(productionPage)
+        return
+      }
+
+      setRoutePage('dev')
+      setSelectedCard(null)
+      return
+    }
 
     if (getAllowedPageForRole(page, state.activeRole.mode) !== page) {
       return
@@ -1015,6 +1130,98 @@ function App() {
     }
 
     return portfolio?.team.find((member) => member.id === state.activeRole.editorId)?.name ?? 'Workspace user'
+  }
+
+  function getResolvedDriveWebhookUrl(portfolio: Portfolio) {
+    return (
+      portfolio.webhookUrl.trim() ||
+      state.settings.integrations.globalDriveWebhookUrl.trim() ||
+      'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
+    )
+  }
+
+  function getCardBatchName(portfolio: Portfolio, card: Card) {
+    const cardWithBatch = card as Card & { batchId?: string | null }
+    const portfolioWithBatches = portfolio as Portfolio & {
+      batches?: Array<{ id: string; name: string }>
+    }
+    if (!cardWithBatch.batchId || !Array.isArray(portfolioWithBatches.batches)) {
+      return ''
+    }
+    return portfolioWithBatches.batches.find((batch) => batch.id === cardWithBatch.batchId)?.name ?? ''
+  }
+
+  function buildDriveWebhookPayload(
+    portfolio: Portfolio,
+    card: Card,
+    mode: DriveWebhookMode,
+  ): DriveWebhookPayload {
+    const payload: DriveWebhookPayload = {
+      mode,
+      cardId: card.id,
+      cardTitle: card.title,
+      brand: card.brand,
+      product: card.product,
+      platform: card.platform,
+      funnelStage: card.funnelStage,
+      assignedEditor: card.owner ?? '',
+      batchName: getCardBatchName(portfolio, card),
+      brief: card.brief,
+      targetAudience: card.audience,
+      keyMessage: card.keyMessage,
+      visualDirection: card.visualDirection,
+      angleTheme: card.angle,
+      cta: card.cta,
+      adCopy: card.adCopy,
+      referenceLinks: card.referenceLinks,
+      notes: card.notes,
+    }
+    if (mode === 'update' && card.briefDocId) {
+      payload.briefDocId = card.briefDocId
+    }
+    return payload
+  }
+
+  async function sendDriveUpdateWebhookInBackground(portfolio: Portfolio, card: Card) {
+    if (!card.briefDocId) {
+      return
+    }
+    const webhookUrl = getResolvedDriveWebhookUrl(portfolio)
+    if (!webhookUrl) {
+      return
+    }
+    const payload = buildDriveWebhookPayload(portfolio, card, 'update')
+    await fetch(webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      redirect: 'follow',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  function scheduleBriefDocAutoUpdate(portfolioId: string, cardId: string) {
+    const timerKey = `${portfolioId}:${cardId}`
+    const currentTimer = briefSyncTimersRef.current[timerKey]
+    if (currentTimer !== undefined) {
+      window.clearTimeout(currentTimer)
+    }
+
+    briefSyncTimersRef.current[timerKey] = window.setTimeout(() => {
+      delete briefSyncTimersRef.current[timerKey]
+
+      const latestPortfolio = localFallbackStateRef.current.portfolios.find((item) => item.id === portfolioId)
+      const latestCard = latestPortfolio?.cards.find((item) => item.id === cardId)
+      if (!latestPortfolio || !latestCard) {
+        return
+      }
+      if (STAGES.indexOf(latestCard.stage) < STAGES.indexOf('Briefed') || !latestCard.briefDocId) {
+        return
+      }
+
+      void sendDriveUpdateWebhookInBackground(latestPortfolio, latestCard).catch(() => {
+        showToast('Auto-sync failed for brief document.', 'red')
+      })
+    }, 5000)
   }
 
   function setRole(nextRole: ActiveRole) {
@@ -1249,15 +1456,19 @@ function App() {
     if (card.taskType === 'creative' && resolvedWebhookUrl) {
       const nextProductionCardId = createdCardId
       const webhookPayload = {
+        mode: 'create' as const,
         cardId: nextProductionCardId,
         cardTitle: card.name,
         brand: card.brand,
+        product: '',
         brief: card.brief ?? '',
         targetAudience: card.targetAudience ?? '',
         keyMessage: card.keyMessage ?? '',
         visualDirection: card.visualDirection ?? '',
         platform: card.platform ?? '',
         funnelStage: card.funnelStage ?? '',
+        assignedEditor: '',
+        batchName: '',
         angleTheme: card.angleTheme ?? '',
         cta: card.cta ?? '',
         referenceLinks: card.referenceLinks ?? '',
@@ -1278,6 +1489,7 @@ function App() {
             folderUrl?: string
             subfolderUrl?: string
             briefDocUrl?: string
+            briefDocId?: string
             message?: string
           } | null = null
 
@@ -1295,10 +1507,12 @@ function App() {
             ...portfolio,
             cards: portfolio.cards.map((existingCard) =>
               existingCard.id === nextProductionCardId
-                ? {
+                  ? {
                     ...existingCard,
                     driveFolderUrl: result?.folderUrl ?? existingCard.driveFolderUrl,
                     driveFolderCreated: true,
+                    briefDocUrl: result?.briefDocUrl ?? existingCard.briefDocUrl,
+                    briefDocId: result?.briefDocId ?? existingCard.briefDocId,
                   }
                 : existingCard,
             ),
@@ -1320,6 +1534,41 @@ function App() {
     const result = { ok: true as const, cardId: createdCardId, portfolioId: createdPortfolioId }
     console.log('[Backlog→Production] returning', result)
     return result
+  }
+
+  function handleBacklogToDev(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    let createdCardId: string | null = null
+
+    setDevBoardState((current) => {
+      const next = addDevBoardCardFromBacklog(
+        current,
+        {
+          title: card.name,
+          brand: card.brand,
+          taskDescription: card.taskDescription ?? '',
+          linkForTest: card.linkForTest ?? '',
+          linkForChanges: card.linkForChanges ?? '',
+        },
+        getActorName(activePortfolioView),
+      )
+      const inserted = next.cards[next.cards.length - 1]
+      createdCardId = inserted?.id ?? null
+      return next
+    })
+
+    if (!createdCardId) {
+      return { ok: false }
+    }
+
+    return { ok: true, cardId: createdCardId, portfolioId: 'development' }
+  }
+
+  function handleBacklogTransfer(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    if (card.taskType === 'dev-cro') {
+      return handleBacklogToDev(card)
+    }
+
+    return handleBacklogToProduction(card)
   }
 
   function openCard(portfolioId: string, cardId: string) {
@@ -1348,6 +1597,9 @@ function App() {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
+    const selectedCardId = selectedCard.cardId
+    const isInBriefedOrLater =
+      STAGES.indexOf(selectedCardData?.stage ?? 'Backlog') >= STAGES.indexOf('Briefed')
     const actor = getActorName(activeSelectedPortfolio)
     updatePortfolio(activeSelectedPortfolio.id, (portfolio) =>
       applyCardUpdates(
@@ -1360,6 +1612,10 @@ function App() {
         viewerContext,
       ),
     )
+
+    if (isInBriefedOrLater) {
+      scheduleBriefDocAutoUpdate(activeSelectedPortfolio.id, selectedCardId)
+    }
   }
 
   function requestDeleteOpenCard() {
@@ -1453,29 +1709,13 @@ function App() {
       return
     }
 
-    const webhookUrl =
-      activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
+    const webhookUrl = getResolvedDriveWebhookUrl(activeSelectedPortfolio)
     if (!webhookUrl) {
       showToast('No Drive webhook configured — add one in Settings → General or the portfolio.', 'red')
       return
     }
 
-    const payload = {
-      cardId: selectedCardData.id,
-      cardTitle: selectedCardData.title,
-      brand: selectedCardData.brand,
-      brief: selectedCardData.brief,
-      targetAudience: selectedCardData.audience,
-      keyMessage: selectedCardData.keyMessage,
-      visualDirection: selectedCardData.visualDirection,
-      platform: selectedCardData.platform,
-      funnelStage: selectedCardData.funnelStage,
-      angleTheme: selectedCardData.angle,
-      cta: selectedCardData.cta,
-      referenceLinks: selectedCardData.referenceLinks,
-      adCopy: selectedCardData.adCopy,
-      notes: selectedCardData.notes,
-    }
+    const payload = buildDriveWebhookPayload(activeSelectedPortfolio, selectedCardData, 'create')
 
     setCreatingDriveCardId(selectedCardData.id)
     try {
@@ -1642,6 +1882,103 @@ function App() {
     if (!moved) {
       showToast('That move is not allowed.', 'red')
       return
+    }
+
+    if (destinationStage === 'Briefed') {
+      const refreshedPortfolio = localFallbackStateRef.current.portfolios.find((item) => item.id === portfolioId)
+      const refreshedCard = refreshedPortfolio?.cards.find((item) => item.id === cardId)
+
+      if (refreshedPortfolio && refreshedCard) {
+        const webhookUrl = getResolvedDriveWebhookUrl(refreshedPortfolio)
+
+        if (!refreshedCard.driveFolderCreated || !refreshedCard.driveFolderUrl) {
+          const payload = buildDriveWebhookPayload(refreshedPortfolio, refreshedCard, 'create')
+          void (async () => {
+            try {
+              const response = await fetch(webhookUrl, {
+                method: 'POST',
+                redirect: 'follow',
+                body: JSON.stringify(payload),
+              })
+
+              let result: {
+                success?: boolean
+                folderUrl?: string
+                briefDocUrl?: string
+                briefDocId?: string
+                message?: string
+              } | null = null
+
+              try {
+                result = await response.json()
+              } catch {
+                throw new Error('Drive webhook returned an invalid JSON response.')
+              }
+
+              if (!response.ok || !result?.success) {
+                throw new Error(result?.message || `Drive webhook failed with status ${response.status}.`)
+              }
+
+              updatePortfolio(portfolioId, (portfolio) =>
+                applyCardUpdates(
+                  portfolio,
+                  state.settings,
+                  cardId,
+                  {
+                    driveFolderCreated: true,
+                    driveFolderUrl:
+                      result?.folderUrl ??
+                      `https://drive.google.com/drive/search?q=${encodeURIComponent(refreshedCard.title)}`,
+                    briefDocUrl: result?.briefDocUrl ?? refreshedCard.briefDocUrl,
+                    briefDocId: result?.briefDocId ?? refreshedCard.briefDocId,
+                  },
+                  getActorName(portfolio),
+                  new Date().toISOString(),
+                  viewerContext,
+                ),
+              )
+              showToast('Drive folder and brief created automatically', 'green')
+            } catch {
+              try {
+                await fetch(webhookUrl, {
+                  method: 'POST',
+                  mode: 'no-cors',
+                  redirect: 'follow',
+                  body: JSON.stringify(payload),
+                })
+                updatePortfolio(portfolioId, (portfolio) =>
+                  applyCardUpdates(
+                    portfolio,
+                    state.settings,
+                    cardId,
+                    {
+                      driveFolderCreated: true,
+                      driveFolderUrl: `https://drive.google.com/drive/search?q=${encodeURIComponent(refreshedCard.title)}`,
+                    },
+                    getActorName(portfolio),
+                    new Date().toISOString(),
+                    viewerContext,
+                  ),
+                )
+                showToast(
+                  "Drive folder created but auto-updates won't work. Re-deploy the webhook with CORS support to enable auto-sync.",
+                  'amber',
+                )
+              } catch {
+                showToast('Automatic Drive/brief creation failed. Use Create Drive Folder as fallback.', 'red')
+              }
+            }
+          })()
+        } else if (refreshedCard.briefDocId) {
+          void sendDriveUpdateWebhookInBackground(refreshedPortfolio, refreshedCard)
+            .then(() => {
+              showToast('Brief document updated', 'green')
+            })
+            .catch(() => {
+              showToast('Brief document update failed.', 'red')
+            })
+        }
+      }
     }
 
     if (revisionReason) {
@@ -2037,6 +2374,7 @@ function App() {
           portfolios={scopedPortfolios}
           role={state.activeRole}
           canAccessBacklog={canAccessBacklog}
+          canAccessDev={canAccessDev}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
           signOutPending={signOutPending}
@@ -2143,7 +2481,19 @@ function App() {
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
             onChange={setBacklogState}
-            onMoveToProduction={handleBacklogToProduction}
+            onMoveToProduction={handleBacklogTransfer}
+          />
+        ) : null}
+
+        {currentPage === 'dev' ? (
+          <DevBoardPage
+            board={devBoardState}
+            actorName={userDisplayName}
+            brandOptions={backlogBrandOptions}
+            headerUtilityContent={headerUtilityContent}
+            showToast={showToast}
+            nowMs={nowMs}
+            onChange={setDevBoardState}
           />
         ) : null}
 
