@@ -121,17 +121,18 @@ function DevColumn({
   })
 
   return (
-    <div className="backlog-column" role="listitem">
-      <div className="backlog-column-header">
-        <strong>{label}</strong>
-        <span>{cards.length}</span>
+    <section className="stage-column" role="listitem">
+      <div className="stage-column-header">
+        <h2>
+          {label} <span>· {cards.length}</span>
+        </h2>
       </div>
-      <div ref={setNodeRef} className={`backlog-drop-zone ${isOver ? 'is-over' : ''}`}>
+      <div ref={setNodeRef} className={`stage-column-content ${isOver ? 'is-hovered' : ''}`}>
         {cards.map((card) => (
           <DevCardItem key={card.id} card={card} nowMs={nowMs} onOpen={onOpenCard} />
         ))}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -142,6 +143,12 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
   const [brandFilter, setBrandFilter] = useState<string[]>([])
   const [showCompleted, setShowCompleted] = useState(true)
   const [commentDraft, setCommentDraft] = useState('')
+  const allBrandsSelected = brandFilter.length === 0
+  const brandColorByName: Record<string, string> = {
+    Pluxy: '#f87171',
+    ViVi: '#34d399',
+    TrueClean: '#60a5fa',
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -261,17 +268,33 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
         ))}
       </section>
 
-      <section className="manager-filter-bar backlog-filter-bar" aria-label="Development filters">
+      <section className="manager-filter-bar" aria-label="Development filters">
         <div className="manager-filter-cluster">
           <span className="filter-group-label">Brand</span>
-          <div className="backlog-brand-pills">
+          <div className="manager-filter-group">
+            <button
+              type="button"
+              className={`filter-pill ${allBrandsSelected ? 'is-active is-all' : ''}`}
+              onClick={() => setBrandFilter([])}
+            >
+              All
+            </button>
             {brandOptions.map((brandName) => {
-              const active = brandFilter.includes(brandName)
+              const active = allBrandsSelected || brandFilter.includes(brandName)
               return (
                 <button
                   key={brandName}
                   type="button"
-                  className={`backlog-filter-pill ${active ? 'is-active' : ''}`}
+                  className={`filter-pill ${active ? 'is-active' : ''}`}
+                  style={
+                    active
+                      ? {
+                          background: brandColorByName[brandName] ?? '#64748b',
+                          borderColor: brandColorByName[brandName] ?? '#64748b',
+                          color: '#fff',
+                        }
+                      : undefined
+                  }
                   onClick={() => toggleBrandFilter(brandName)}
                 >
                   {brandName}
@@ -281,23 +304,33 @@ export function DevBoardPage({ board, showToast, headerUtilityContent, actorName
           </div>
         </div>
 
+        <span className="filter-group-divider" aria-hidden="true" />
         <div className="manager-filter-cluster">
-          <span className="filter-group-label">Developer</span>
-          <select value={developerFilter} onChange={(event) => setDeveloperFilter(event.target.value as typeof developerFilter)}>
-            <option value="all">All</option>
-            <option value="Daniel J">Daniel J</option>
-            <option value="Kevin Ma">Kevin Ma</option>
-          </select>
+          <span className="filter-group-label">Teammate</span>
+          <div className="manager-editor-pills">
+            {(['Daniel J', 'Kevin Ma'] as const).map((developer) => (
+              <button
+                key={developer}
+                type="button"
+                className={`editor-pill ${developerFilter === developer ? 'is-active' : ''}`}
+                onClick={() =>
+                  setDeveloperFilter((current) => (current === developer ? 'all' : developer))
+                }
+              >
+                {developer}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <label className="show-archived-toggle">
+        <label className="archive-toggle">
           <input type="checkbox" checked={showCompleted} onChange={(event) => setShowCompleted(event.target.checked)} />
-          Show completed
+          <span>Show completed</span>
         </label>
       </section>
 
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="backlog-board" role="list" aria-label="Development board columns">
+        <div className="board-grid" role="list" aria-label="Development board columns">
           {DEV_BOARD_COLUMNS.map((column) => (
             <DevColumn
               key={column.id}
