@@ -26,7 +26,7 @@ export const STAGES = [
 
 export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
 export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
-export const APP_PAGES = ['board', 'analytics', 'workload', 'settings'] as const
+export const APP_PAGES = ['board', 'dev', 'analytics', 'workload', 'settings'] as const
 export const ROLE_MODES = ['owner', 'manager', 'contributor', 'viewer'] as const
 export const ACCESS_SCOPE_MODES = [
   'all-portfolios',
@@ -69,6 +69,26 @@ export const SETTING_TABS = [
   'people',
   'workflow',
 ] as const
+export const DEV_BOARD_COLUMNS = [
+  { id: 'to-brief', label: 'To Brief' },
+  { id: 'up-next', label: 'Up Next' },
+  { id: 'for-review', label: 'For Review' },
+  { id: 'qa-testing', label: 'QA/Testing' },
+  { id: 'live', label: 'Live' },
+] as const
+export const DEV_CHANGE_REQUEST_TYPES = [
+  'Bug Fix',
+  'New Feature',
+  'CRO Test',
+  'Landing Page Update',
+  'Design Change',
+  'Content Update',
+  'New Advertorial',
+  'New Listicle',
+  'New LP',
+  'New Product Page',
+] as const
+export const DEV_BLOCKER_PRESETS = ['waiting-for-images-videos', 'custom'] as const
 
 export type StageId = (typeof STAGES)[number]
 export type GroupedStageId = (typeof GROUPED_STAGES)[number]
@@ -84,6 +104,9 @@ export type DesignType = (typeof DESIGN_TYPES)[number]
 export type CardFieldKey = (typeof CARD_FIELDS)[number]
 export type TaskTypeCategory = (typeof TASK_TYPE_CATEGORIES)[number]
 export type SettingTab = (typeof SETTING_TABS)[number]
+export type DevBoardColumnId = (typeof DEV_BOARD_COLUMNS)[number]['id']
+export type DevChangeRequestType = (typeof DEV_CHANGE_REQUEST_TYPES)[number]
+export type DevBlockerPreset = (typeof DEV_BLOCKER_PRESETS)[number]
 export type AgeTone = 'fresh' | 'aging' | 'stuck'
 export type UtilizationTone = 'green' | 'yellow' | 'red'
 
@@ -312,12 +335,39 @@ export interface PortfolioAccessScope {
 
 export interface AppState {
   portfolios: Portfolio[]
+  devBoardsByPortfolioId: Record<string, DevBoardState>
   settings: GlobalSettings
   activePortfolioId: string
   activeRole: ActiveRole
   activePage: AppPage
   notifications: AppNotification[]
   version: number
+}
+
+export interface DevCardBlocker {
+  preset: DevBlockerPreset
+  details: string
+}
+
+export interface DevCard {
+  id: string
+  title: string
+  brand: string
+  sourceBacklogCardId: string | null
+  column: DevBoardColumnId
+  taskDescription: string
+  loomVideoUrl: string
+  newUrlToUse: string
+  assignee: string
+  dueDate: string
+  changeRequestType: DevChangeRequestType
+  blocker: DevCardBlocker | null
+  dateCreated: string
+}
+
+export interface DevBoardState {
+  cards: DevCard[]
+  lastCardNumber: number
 }
 
 export interface ViewerContext {
@@ -1940,6 +1990,19 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
   return [brandLab]
 }
 
+function createEmptyDevBoardState(): DevBoardState {
+  return {
+    cards: [],
+    lastCardNumber: 0,
+  }
+}
+
+function createSeedDevBoardsByPortfolioId(portfolios: Portfolio[]) {
+  return Object.fromEntries(
+    portfolios.map((portfolio) => [portfolio.id, createEmptyDevBoardState()]),
+  ) as Record<string, DevBoardState>
+}
+
 export function createSeedState(): AppState {
   const taskLibrary = createSeedTaskLibrary()
   const revisionReasons = createSeedRevisionReasons()
@@ -1947,6 +2010,7 @@ export function createSeedState(): AppState {
 
   return {
     portfolios,
+    devBoardsByPortfolioId: createSeedDevBoardsByPortfolioId(portfolios),
     settings: {
       general: {
         appName: 'Creative Board',
@@ -2012,6 +2076,75 @@ function normalizeAdNamingTemplates(raw: Partial<AdNamingTemplateMap> | undefine
       return [platform, typeof candidate === 'string' && candidate.trim() ? candidate.trim() : defaults[platform]]
     }),
   ) as AdNamingTemplateMap
+}
+
+function normalizeDevBoard(raw: unknown): DevBoardState {
+  const emptyState = createEmptyDevBoardState()
+  if (!raw || typeof raw !== 'object') {
+    return emptyState
+  }
+
+  const source = raw as Partial<DevBoardState>
+  const cards = Array.isArray(source.cards)
+    ? source.cards
+        .map((card) => {
+          if (!card || typeof card !== 'object') {
+            return null
+          }
+
+          const candidate = card as Partial<DevCard>
+          const column = DEV_BOARD_COLUMNS.some((item) => item.id === candidate.column)
+            ? (candidate.column as DevBoardColumnId)
+            : 'to-brief'
+          const changeRequestType = DEV_CHANGE_REQUEST_TYPES.includes(candidate.changeRequestType as DevChangeRequestType)
+            ? (candidate.changeRequestType as DevChangeRequestType)
+            : 'Bug Fix'
+          const blocker =
+            candidate.blocker &&
+            typeof candidate.blocker === 'object' &&
+            DEV_BLOCKER_PRESETS.includes((candidate.blocker as DevCardBlocker).preset)
+              ? {
+                  preset: (candidate.blocker as DevCardBlocker).preset,
+                  details: typeof (candidate.blocker as DevCardBlocker).details === 'string'
+                    ? (candidate.blocker as DevCardBlocker).details
+                    : '',
+                }
+              : null
+
+          if (typeof candidate.id !== 'string' || typeof candidate.title !== 'string' || typeof candidate.brand !== 'string') {
+            return null
+          }
+
+          return {
+            id: candidate.id,
+            title: candidate.title,
+            brand: candidate.brand,
+            sourceBacklogCardId: typeof candidate.sourceBacklogCardId === 'string' ? candidate.sourceBacklogCardId : null,
+            column,
+            taskDescription: typeof candidate.taskDescription === 'string' ? candidate.taskDescription : '',
+            loomVideoUrl: typeof candidate.loomVideoUrl === 'string' ? candidate.loomVideoUrl : '',
+            newUrlToUse: typeof candidate.newUrlToUse === 'string' ? candidate.newUrlToUse : '',
+            assignee: typeof candidate.assignee === 'string' ? candidate.assignee : '',
+            dueDate: typeof candidate.dueDate === 'string' ? candidate.dueDate : '',
+            changeRequestType,
+            blocker,
+            dateCreated: typeof candidate.dateCreated === 'string' ? candidate.dateCreated : new Date().toISOString(),
+          } satisfies DevCard
+        })
+        .filter((card): card is DevCard => card !== null)
+    : []
+  const derivedLastCardNumber = cards.reduce((highest, card) => {
+    const parsed = Number(card.id.replace('DEV', ''))
+    return Number.isFinite(parsed) ? Math.max(highest, parsed) : highest
+  }, 0)
+
+  return {
+    cards,
+    lastCardNumber:
+      typeof source.lastCardNumber === 'number' && Number.isFinite(source.lastCardNumber)
+        ? Math.max(source.lastCardNumber, derivedLastCardNumber)
+        : derivedLastCardNumber,
+  }
 }
 
 function normalizeTeamMemberAccessEmail(value: unknown) {
@@ -2292,6 +2425,12 @@ export function coerceAppState(raw: unknown): AppState {
 
   return {
     portfolios,
+    devBoardsByPortfolioId: Object.fromEntries(
+      portfolios.map((portfolio) => [
+        portfolio.id,
+        normalizeDevBoard(candidate.devBoardsByPortfolioId?.[portfolio.id]),
+      ]),
+    ) as Record<string, DevBoardState>,
     settings,
     activePortfolioId:
       typeof candidate.activePortfolioId === 'string'
@@ -2446,6 +2585,7 @@ export function createFreshStartState(state: AppState): AppState {
   return {
     ...state,
     portfolios,
+    devBoardsByPortfolioId: createSeedDevBoardsByPortfolioId(portfolios),
     activePortfolioId: nextActivePortfolioId,
     notifications: [],
     settings: {
@@ -2456,6 +2596,86 @@ export function createFreshStartState(state: AppState): AppState {
       },
     },
   }
+}
+
+export function getDevBoardByPortfolioId(state: AppState, portfolioId: string): DevBoardState {
+  return state.devBoardsByPortfolioId[portfolioId] ?? createEmptyDevBoardState()
+}
+
+export function addDevCard(
+  board: DevBoardState,
+  input: {
+    title: string
+    brand: string
+    sourceBacklogCardId?: string | null
+    taskDescription?: string
+    newUrlToUse?: string
+    changeRequestType?: DevChangeRequestType
+  },
+): DevBoardState {
+  const nextCardNumber = board.lastCardNumber + 1
+  const createdAt = new Date().toISOString()
+  const nextCard: DevCard = {
+    id: `DEV${String(nextCardNumber).padStart(4, '0')}`,
+    title: input.title.trim(),
+    brand: input.brand,
+    sourceBacklogCardId: input.sourceBacklogCardId ?? null,
+    column: 'to-brief',
+    taskDescription: input.taskDescription?.trim() ?? '',
+    loomVideoUrl: '',
+    newUrlToUse: input.newUrlToUse?.trim() ?? '',
+    assignee: '',
+    dueDate: '',
+    changeRequestType: input.changeRequestType ?? 'Bug Fix',
+    blocker: null,
+    dateCreated: createdAt,
+  }
+
+  return {
+    cards: [...board.cards, nextCard],
+    lastCardNumber: nextCardNumber,
+  }
+}
+
+export function moveDevCard(
+  board: DevBoardState,
+  cardId: string,
+  destinationColumn: DevBoardColumnId,
+): DevBoardState {
+  let changed = false
+  const cards = board.cards.map((card) => {
+    if (card.id !== cardId || card.column === destinationColumn) {
+      return card
+    }
+    changed = true
+    return {
+      ...card,
+      column: destinationColumn,
+    }
+  })
+
+  return changed ? { ...board, cards } : board
+}
+
+export function updateDevCard(
+  board: DevBoardState,
+  cardId: string,
+  updates: Partial<DevCard>,
+): DevBoardState {
+  let changed = false
+  const cards = board.cards.map((card) => {
+    if (card.id !== cardId) {
+      return card
+    }
+
+    changed = true
+    return {
+      ...card,
+      ...updates,
+    }
+  })
+
+  return changed ? { ...board, cards } : board
 }
 
 export function renameBrandInPortfolio(

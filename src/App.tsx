@@ -38,6 +38,7 @@ import { BackwardMoveModal } from './components/BackwardMoveModal'
 import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { DevBoardPage } from './components/DevBoardPage'
 import { DeleteCardModal } from './components/DeleteCardModal'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
@@ -64,6 +65,7 @@ import {
 import {
   GROUPED_STAGES,
   STAGES,
+  addDevCard,
   addCardToPortfolio,
   applyCardUpdates,
   createCardFromQuickInput,
@@ -74,6 +76,7 @@ import {
   getBoardStats,
   getCardMoveValidationMessage,
   getDefaultBoardFilters,
+  getDevBoardByPortfolioId,
   getEditorOptions,
   getEditorSummary,
   getNextProductionCardPriority,
@@ -89,8 +92,10 @@ import {
   loadAppState,
   loadSyncMetadata,
   moveCardInPortfolio,
+  moveDevCard,
   removeCardFromPortfolio,
   setInProductionCardPriority,
+  updateDevCard,
   type ActiveRole,
   type AppNotification,
   type AppPage,
@@ -103,6 +108,7 @@ import {
   type SettingTab,
   type StageId,
   type Timeframe,
+  type DevBoardColumnId,
   type ViewerContext,
 } from './board'
 
@@ -153,6 +159,8 @@ function getPathForPage(page: ExtendedPage) {
       return '/backlog'
     case 'analytics':
       return '/analytics'
+    case 'dev':
+      return '/dev'
     case 'workload':
       return '/workload'
     case 'settings':
@@ -169,6 +177,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
       return 'backlog'
     case '/analytics':
       return 'analytics'
+    case '/dev':
+      return 'dev'
     case '/workload':
       return 'workload'
     case '/settings':
@@ -320,6 +330,8 @@ function App() {
     null
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
+  const activeDevBoard =
+    activePortfolioView ? getDevBoardByPortfolioId(state, activePortfolioView.id) : null
   const productionPage = getCurrentPage(state)
   const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
@@ -1243,6 +1255,28 @@ function App() {
       return nextFilters
     })
 
+    if (card.taskType === 'dev-cro') {
+      updateState((current) => {
+        const currentBoard = getDevBoardByPortfolioId(current, createdPortfolioId!)
+        const nextBoard = addDevCard(currentBoard, {
+          title: card.name,
+          brand: card.brand,
+          sourceBacklogCardId: card.id,
+          taskDescription: card.taskDescription ?? '',
+          newUrlToUse: card.linkForChanges ?? '',
+          changeRequestType: 'CRO Test',
+        })
+
+        return {
+          ...current,
+          devBoardsByPortfolioId: {
+            ...current.devBoardsByPortfolioId,
+            [createdPortfolioId!]: nextBoard,
+          },
+        }
+      })
+    }
+
     const resolvedWebhookUrl =
       portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim() || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
 
@@ -1342,6 +1376,52 @@ function App() {
       setIsClosingCardPanel(false)
       cardPanelCloseTimerRef.current = null
     }, CARD_PANEL_CLOSE_DELAY_MS)
+  }
+
+  function handleMoveDevCard(cardId: string, columnId: DevBoardColumnId): { ok: true } | { ok: false; message: string } {
+    if (!activePortfolioView) {
+      return { ok: false, message: 'Select a portfolio first.' }
+    }
+
+    const currentBoard = getDevBoardByPortfolioId(state, activePortfolioView.id)
+    const card = currentBoard.cards.find((existingCard) => existingCard.id === cardId)
+    if (!card) {
+      return { ok: false, message: 'Card not found.' }
+    }
+
+    if (card.column === 'to-brief' && columnId !== 'to-brief' && !card.taskDescription.trim()) {
+      return { ok: false, message: 'Task Description is required before moving this card out of To Brief.' }
+    }
+
+    updateState((current) => {
+      const board = getDevBoardByPortfolioId(current, activePortfolioView.id)
+      return {
+        ...current,
+        devBoardsByPortfolioId: {
+          ...current.devBoardsByPortfolioId,
+          [activePortfolioView.id]: moveDevCard(board, cardId, columnId),
+        },
+      }
+    })
+
+    return { ok: true }
+  }
+
+  function handleUpdateDevCard(cardId: string, updates: Parameters<typeof updateDevCard>[2]) {
+    if (!activePortfolioView) {
+      return
+    }
+
+    updateState((current) => {
+      const board = getDevBoardByPortfolioId(current, activePortfolioView.id)
+      return {
+        ...current,
+        devBoardsByPortfolioId: {
+          ...current.devBoardsByPortfolioId,
+          [activePortfolioView.id]: updateDevCard(board, cardId, updates),
+        },
+      }
+    })
   }
 
   function saveOpenCard(updates: Partial<Card>) {
@@ -2144,6 +2224,17 @@ function App() {
             headerUtilityContent={headerUtilityContent}
             onChange={setBacklogState}
             onMoveToProduction={handleBacklogToProduction}
+          />
+        ) : null}
+
+        {currentPage === 'dev' && activePortfolioView && activeDevBoard ? (
+          <DevBoardPage
+            board={activeDevBoard}
+            canEdit={state.activeRole.mode !== 'viewer'}
+            teamMemberNames={getEditorOptions(activePortfolioView).map((member) => member.name)}
+            showToast={showToast}
+            onMoveCard={handleMoveDevCard}
+            onUpdateCard={handleUpdateDevCard}
           />
         ) : null}
 

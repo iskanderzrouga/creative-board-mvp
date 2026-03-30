@@ -52,6 +52,27 @@ function BacklogIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function DevBoardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <rect x="4.5" y="4.5" width="15" height="15" rx="2.5" />
+      <path d="M12 4.5v15" />
+      <path d="M4.5 12h15" />
+    </svg>
+  )
+}
+
 function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
@@ -60,6 +81,8 @@ function getPageLabel(page: ExtendedPage) {
   switch (page) {
     case 'board':
       return 'Board'
+    case 'dev':
+      return 'Development'
     case 'analytics':
       return 'Analytics'
     case 'workload':
@@ -77,6 +100,8 @@ function getPageIcon(page: ExtendedPage): PageIcon {
   switch (page) {
     case 'board':
       return BoardIcon
+    case 'dev':
+      return DevBoardIcon
     case 'analytics':
       return AnalyticsIcon
     case 'workload':
@@ -124,6 +149,7 @@ function SidebarComponent({
   }> = [
     ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
     { page: 'board', disabled: false },
+    { page: 'dev', disabled: false },
     ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
     ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
     ...(canAccessAllPages ? [{ page: 'settings' as const, disabled: false }] : []),

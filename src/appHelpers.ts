@@ -147,10 +147,10 @@ export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode | 'edito
   }
 
   if (roleMode === 'contributor' || roleMode === 'editor') {
-    return page === 'board' || page === 'workload' ? page : ('board' as AppPage)
+    return page === 'board' || page === 'dev' || page === 'workload' ? page : ('board' as AppPage)
   }
 
-  return 'board' as AppPage
+  return page === 'dev' ? ('dev' as AppPage) : ('board' as AppPage)
 }
 
 export function getRoleFromWorkspaceAccess(
