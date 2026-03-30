@@ -47,6 +47,7 @@ import { QuickCreateModal } from './components/QuickCreateModal'
 import { RemoteLoadingShell } from './components/RemoteLoadingShell'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
+import { ScriptWorkshopPage } from './components/ScriptWorkshopPage'
 import { SyncStatusPill } from './components/SyncStatusPill'
 import { ToastStack } from './components/ToastStack'
 import { DevBoardPage } from './components/DevBoardPage'
@@ -84,8 +85,12 @@ import {
   getTeamMemberById,
   getVisibleCards,
   getVisibleColumns,
+  getLatestScriptReview,
   isLaunchOpsRole,
+  SCRIPT_REVIEWERS,
   createNotification,
+  type ScriptConfidenceLevel,
+  type ScriptReviewerId,
   markNotificationRead,
   markAllNotificationsRead,
   dismissNotification,
@@ -170,6 +175,8 @@ function getPathForPage(page: ExtendedPage) {
       return '/analytics'
     case 'workload':
       return '/workload'
+    case 'scripts':
+      return '/scripts'
     case 'settings':
       return '/settings'
     case 'board':
@@ -188,6 +195,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
       return 'analytics'
     case '/workload':
       return 'workload'
+    case '/scripts':
+      return 'scripts'
     case '/settings':
       return 'settings'
     case '/board':
@@ -340,7 +349,7 @@ function App() {
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const productionPage = getCurrentPage(state)
   const currentPage: ExtendedPage =
-    routePage === 'backlog' || routePage === 'dev' ? routePage : productionPage
+    routePage === 'backlog' || routePage === 'dev' || routePage === 'scripts' ? routePage : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -501,6 +510,60 @@ function App() {
     })
     return styles
   }, [scopedPortfolios])
+  const scriptWorkshopBrandOptions = useMemo(
+    () => activePortfolioView?.brands.map((brand) => brand.name) ?? [],
+    [activePortfolioView?.brands],
+  )
+  const scriptWorkshopBrandStyles = useMemo(() => {
+    const styles: Record<string, { background: string; color: string }> = {}
+    activePortfolioView?.brands.forEach((brand) => {
+      styles[brand.name] = {
+        background: brand.surfaceColor,
+        color: brand.textColor,
+      }
+    })
+    return styles
+  }, [activePortfolioView?.brands])
+  const canManageScripts = state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'
+  const currentReviewerId = useMemo<ScriptReviewerId | null>(() => {
+    const sessionEmail =
+      authSession?.email?.trim().toLowerCase() ??
+      workspaceAccess?.email?.trim().toLowerCase() ??
+      null
+
+    if (sessionEmail) {
+      const byEmail = SCRIPT_REVIEWERS.find((reviewer) => reviewer.email.toLowerCase() === sessionEmail)
+      if (byEmail) {
+        return byEmail.id
+      }
+    }
+
+    if (!authEnabled) {
+      if (state.activeRole.mode === 'manager') {
+        return 'naomi'
+      }
+      if (state.activeRole.mode === 'owner') {
+        return 'iskander'
+      }
+      if (state.activeRole.mode === 'contributor' && activePortfolioSource) {
+        const contributorName = getTeamMemberById(activePortfolioSource, state.activeRole.editorId)?.name ?? null
+        const byName = SCRIPT_REVIEWERS.find((reviewer) => reviewer.name === contributorName)
+        return byName?.id ?? null
+      }
+    }
+
+    return null
+  }, [
+    activePortfolioSource,
+    authEnabled,
+    authSession?.email,
+    state.activeRole.editorId,
+    state.activeRole.mode,
+    workspaceAccess?.email,
+  ])
+  const scriptAuthorName =
+    (currentReviewerId ? SCRIPT_REVIEWERS.find((reviewer) => reviewer.id === currentReviewerId)?.name : null) ??
+    userDisplayName
   const creativeProductionTaskTypeOptions = useMemo(
     () =>
       state.settings.taskLibrary
@@ -774,6 +837,20 @@ function App() {
         return
       }
 
+      if (nextPage === 'scripts') {
+        if (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager') {
+          setRoutePage('scripts')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
+        return
+      }
+
       const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
       setRoutePage(allowedPage)
       setState((current) =>
@@ -802,6 +879,12 @@ function App() {
 
   useEffect(() => {
     if (routePage === 'dev' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
+      setRoutePage(productionPage)
+    }
+  }, [productionPage, routePage, state.activeRole.mode])
+
+  useEffect(() => {
+    if (routePage === 'scripts' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
       setRoutePage(productionPage)
     }
   }, [productionPage, routePage, state.activeRole.mode])
@@ -1016,6 +1099,16 @@ function App() {
       return
     }
 
+    if (page === 'scripts') {
+      if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+        return
+      }
+      setRoutePage('scripts')
+      setSelectedCard(null)
+      setSelectedDevCard(null)
+      return
+    }
+
     if (getAllowedPageForRole(page, state.activeRole.mode) !== page) {
       return
     }
@@ -1052,6 +1145,152 @@ function App() {
     if (page === 'board') {
       focusBoardAttention()
     }
+  }
+
+  function handleAddScript(input: { title: string; brand: string; googleDocUrl: string }) {
+    if (!canManageScripts) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const scriptId = `script-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    updateState((current) => ({
+      ...current,
+      scriptWorkshop: {
+        scripts: [
+          ...current.scriptWorkshop.scripts,
+          {
+            id: scriptId,
+            title: input.title,
+            brand: input.brand,
+            googleDocUrl: input.googleDocUrl,
+            reviews: {
+              naomi: [],
+              iskander: [],
+              nicolas: [],
+            },
+            comments: [],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        ],
+      },
+    }))
+    showToast('Script added to active workshop.', 'green')
+  }
+
+  function handleUpdateScript(scriptId: string, updates: { title?: string; brand?: string; googleDocUrl?: string }) {
+    if (!canManageScripts) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    updateState((current) => ({
+      ...current,
+      scriptWorkshop: {
+        scripts: current.scriptWorkshop.scripts.map((script) =>
+          script.id === scriptId
+            ? {
+                ...script,
+                title: updates.title ?? script.title,
+                brand: updates.brand ?? script.brand,
+                googleDocUrl: updates.googleDocUrl ?? script.googleDocUrl,
+                updatedAt: timestamp,
+              }
+            : script,
+        ),
+      },
+    }))
+  }
+
+  function handleSubmitScriptReview(
+    scriptId: string,
+    reviewerId: ScriptReviewerId,
+    confidence: ScriptConfidenceLevel,
+    comment: string,
+  ) {
+    if (currentReviewerId !== reviewerId || !comment.trim()) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const reviewId = `review-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    updateState((current) => ({
+      ...current,
+      scriptWorkshop: {
+        scripts: current.scriptWorkshop.scripts.map((script) => {
+          if (script.id !== scriptId) {
+            return script
+          }
+
+          const nextHistory = [
+            ...(script.reviews[reviewerId] ?? []),
+            {
+              id: reviewId,
+              reviewerId,
+              confidence,
+              comment: comment.trim(),
+              timestamp,
+            },
+          ]
+
+          return {
+            ...script,
+            reviews: {
+              ...script.reviews,
+              [reviewerId]: nextHistory,
+            },
+            updatedAt: timestamp,
+          }
+        }),
+      },
+    }))
+
+    const script = state.scriptWorkshop.scripts.find((item) => item.id === scriptId)
+    const readyAfterSubmit = script
+      ? SCRIPT_REVIEWERS.every((reviewer) => {
+          if (reviewer.id === reviewerId) {
+            return confidence === 'high'
+          }
+          return getLatestScriptReview(script, reviewer.id)?.confidence === 'high'
+        })
+      : false
+
+    showToast(readyAfterSubmit ? 'Script is ready to launch.' : 'Review submitted.', 'green')
+  }
+
+  function handleAddScriptComment(scriptId: string, text: string) {
+    if (!text.trim()) {
+      return
+    }
+
+    const timestamp = new Date().toISOString()
+    const commentId = `script-comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    updateState((current) => ({
+      ...current,
+      scriptWorkshop: {
+        scripts: current.scriptWorkshop.scripts.map((script) =>
+          script.id === scriptId
+            ? {
+                ...script,
+                comments: [
+                  ...script.comments,
+                  {
+                    id: commentId,
+                    author: scriptAuthorName,
+                    text: text.trim(),
+                    timestamp,
+                  },
+                ],
+                updatedAt: timestamp,
+              }
+            : script,
+        ),
+      },
+    }))
   }
 
   function getActorName(portfolio: Portfolio | null) {
@@ -2293,6 +2532,22 @@ function App() {
             onAddCard={handleAddDevCard}
             onMoveCard={handleMoveDevCard}
             onOpenCard={(cardId) => setSelectedDevCard({ cardId })}
+          />
+        ) : null}
+
+        {currentPage === 'scripts' && activePortfolioView ? (
+          <ScriptWorkshopPage
+            scripts={state.scriptWorkshop.scripts}
+            brandOptions={scriptWorkshopBrandOptions}
+            brandStyles={scriptWorkshopBrandStyles}
+            canManageScripts={canManageScripts}
+            currentReviewerId={currentReviewerId}
+            currentAuthorName={scriptAuthorName}
+            headerUtilityContent={headerUtilityContent}
+            onAddScript={handleAddScript}
+            onUpdateScript={handleUpdateScript}
+            onSubmitReview={handleSubmitScriptReview}
+            onAddComment={handleAddScriptComment}
           />
         ) : null}
 
