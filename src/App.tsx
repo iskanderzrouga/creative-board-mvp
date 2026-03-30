@@ -49,6 +49,8 @@ import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { SyncStatusPill } from './components/SyncStatusPill'
 import { ToastStack } from './components/ToastStack'
+import { DevBoardPage } from './components/DevBoardPage'
+import { DevCardDetailPanel } from './components/DevCardDetailPanel'
 import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
@@ -64,6 +66,7 @@ import {
 import {
   GROUPED_STAGES,
   STAGES,
+  addDevCard,
   addCardToPortfolio,
   applyCardUpdates,
   createCardFromQuickInput,
@@ -86,17 +89,23 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   dismissNotification,
+  deleteDevCard,
+  getDevCardMoveValidationMessage,
+  moveDevCard,
   loadAppState,
   loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
   setInProductionCardPriority,
+  updateDevCard,
   type ActiveRole,
   type AppNotification,
   type AppPage,
   type AppState,
   type BoardFilters,
   type Card,
+  type DevBoardColumnId,
+  type DevCard,
   type LaneModel,
   type Portfolio,
   type QuickCreateInput,
@@ -115,7 +124,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
-type ExtendedPage = AppPage | 'backlog'
+type ExtendedPage = AppPage | 'backlog' | 'dev'
 
 interface CopyState {
   key: string
@@ -123,6 +132,10 @@ interface CopyState {
 
 interface SelectedCardState {
   portfolioId: string
+  cardId: string
+}
+
+interface SelectedDevCardState {
   cardId: string
 }
 
@@ -151,6 +164,8 @@ function getPathForPage(page: ExtendedPage) {
   switch (page) {
     case 'backlog':
       return '/backlog'
+    case 'dev':
+      return '/dev'
     case 'analytics':
       return '/analytics'
     case 'workload':
@@ -167,6 +182,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
   switch (pathname) {
     case '/backlog':
       return 'backlog'
+    case '/dev':
+      return 'dev'
     case '/analytics':
       return 'analytics'
     case '/workload':
@@ -198,6 +215,7 @@ function App() {
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
   const [selectedCard, setSelectedCard] = useState<SelectedCardState | null>(null)
+  const [selectedDevCard, setSelectedDevCard] = useState<SelectedDevCardState | null>(null)
   const [toasts, setToasts] = useState<ToastState[]>([])
   const [copyState, setCopyState] = useState<CopyState | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -321,7 +339,8 @@ function App() {
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const productionPage = getCurrentPage(state)
-  const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
+  const currentPage: ExtendedPage =
+    routePage === 'backlog' || routePage === 'dev' ? routePage : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -420,6 +439,9 @@ function App() {
     : null
   const selectedCardData = selectedCard
     ? activeSelectedPortfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
+    : null
+  const selectedDevCardData = selectedDevCard
+    ? state.devBoard.cards.find((card) => card.id === selectedDevCard.cardId) ?? null
     : null
   const pendingBackwardCard = pendingBackwardMove
     ? state.portfolios
@@ -706,7 +728,7 @@ function App() {
       return
     }
 
-    if (routePage !== 'backlog' && routePage !== productionPage) {
+    if (routePage !== 'backlog' && routePage !== 'dev' && routePage !== productionPage) {
       return
     }
 
@@ -727,6 +749,20 @@ function App() {
       if (nextPage === 'backlog') {
         if (canAccessBacklog && (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
           setRoutePage('backlog')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
+        return
+      }
+
+      if (nextPage === 'dev') {
+        if (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager') {
+          setRoutePage('dev')
         } else {
           const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
           setRoutePage(fallbackPage)
@@ -763,6 +799,12 @@ function App() {
       setRoutePage(productionPage)
     }
   }, [canAccessBacklog, productionPage, routePage])
+
+  useEffect(() => {
+    if (routePage === 'dev' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
+      setRoutePage(productionPage)
+    }
+  }, [productionPage, routePage, state.activeRole.mode])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -961,6 +1003,16 @@ function App() {
 
       setRoutePage('backlog')
       setSelectedCard(null)
+      setSelectedDevCard(null)
+      return
+    }
+
+    if (page === 'dev') {
+      if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+        return
+      }
+      setRoutePage('dev')
+      setSelectedCard(null)
       return
     }
 
@@ -974,6 +1026,7 @@ function App() {
       activePage: page,
     }))
     setSelectedCard(null)
+    setSelectedDevCard(null)
   }
 
   function focusBoardAttention() {
@@ -1080,7 +1133,98 @@ function App() {
     })
   }
 
+  function handleAddDevCard() {
+    if (!activePortfolioView) {
+      return
+    }
+
+    let nextCardId: string | null = null
+    updateState((current) => {
+      const nextDevBoard = addDevCard(current.devBoard, {
+        title: 'New development task',
+        brand: activePortfolioView.brands[0]?.name ?? 'Unknown',
+      })
+      nextCardId = nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null
+      return {
+        ...current,
+        devBoard: nextDevBoard,
+      }
+    })
+
+    if (nextCardId) {
+      setSelectedDevCard({ cardId: nextCardId })
+      showToast(`${nextCardId} created`, 'green')
+    }
+  }
+
+  function handleSaveDevCard(cardId: string, updates: Partial<DevCard>) {
+    updateState((current) => ({
+      ...current,
+      devBoard: updateDevCard(current.devBoard, cardId, updates),
+    }))
+  }
+
+  function handleDeleteDevCard(cardId: string) {
+    updateState((current) => ({
+      ...current,
+      devBoard: deleteDevCard(current.devBoard, cardId),
+    }))
+    if (selectedDevCard?.cardId === cardId) {
+      setSelectedDevCard(null)
+    }
+    showToast('Dev card deleted.', 'blue')
+  }
+
+  function handleMoveDevCard(cardId: string, destinationColumn: DevBoardColumnId): { ok: boolean; message?: string } {
+    const card = state.devBoard.cards.find((item) => item.id === cardId)
+    if (!card) {
+      return { ok: false, message: 'Card could not be found.' }
+    }
+    const validationMessage = getDevCardMoveValidationMessage(card, destinationColumn)
+    if (validationMessage) {
+      return { ok: false, message: validationMessage }
+    }
+    updateState((current) => ({
+      ...current,
+      devBoard: moveDevCard(current.devBoard, cardId, destinationColumn),
+    }))
+    return { ok: true }
+  }
+
+  function handleBacklogToDev(card: BacklogCard): { ok: true; cardId: string } | { ok: false } {
+    let createdCardId: string | null = null
+    updateState((current) => {
+      const nextDevBoard = addDevCard(current.devBoard, {
+        title: card.name,
+        brand: card.brand,
+        sourceBacklogCardId: card.id,
+        taskDescription: card.taskDescription ?? '',
+        newUrlToUse: card.linkForChanges ?? '',
+        loomVideoUrl: card.linkForTest ?? '',
+      })
+      createdCardId = nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null
+      return {
+        ...current,
+        devBoard: nextDevBoard,
+      }
+    })
+
+    return createdCardId ? { ok: true, cardId: createdCardId } : { ok: false }
+  }
+
   function handleBacklogToProduction(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+    if (card.taskType === 'dev-cro') {
+      const devResult = handleBacklogToDev(card)
+      if (!devResult.ok) {
+        return { ok: false }
+      }
+      return {
+        ok: true,
+        cardId: devResult.cardId,
+        portfolioId: state.activePortfolioId,
+      }
+    }
+
     console.log('[Backlog→Production] handleBacklogToProduction called', {
       backlogCardId: card.id,
       backlogCardName: card.name,
@@ -1158,15 +1302,7 @@ function App() {
       return { ok: false }
     }
 
-    const referenceLinks =
-      card.taskType === 'dev-cro'
-        ? [
-            card.linkForTest?.trim() ? `Test Link: ${card.linkForTest.trim()}` : '',
-            card.linkForChanges?.trim() ? `Changes Link: ${card.linkForChanges.trim()}` : '',
-          ]
-            .filter(Boolean)
-            .join('\n')
-        : card.referenceLinks ?? ''
+    const referenceLinks = card.referenceLinks ?? ''
 
     productionCard = {
       ...productionCard,
@@ -2147,6 +2283,19 @@ function App() {
           />
         ) : null}
 
+        {currentPage === 'dev' ? (
+          <DevBoardPage
+            devBoard={state.devBoard}
+            teamMembers={activePortfolioView?.team ?? []}
+            canEdit={state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'}
+            showToast={showToast}
+            headerUtilityContent={headerUtilityContent}
+            onAddCard={handleAddDevCard}
+            onMoveCard={handleMoveDevCard}
+            onOpenCard={(cardId) => setSelectedDevCard({ cardId })}
+          />
+        ) : null}
+
         {currentPage === 'analytics' ? (
           <AnalyticsPage
             state={scopedState}
@@ -2286,6 +2435,18 @@ function App() {
           onAddComment={addCommentToCard}
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}
+        />
+      ) : null}
+
+      {selectedDevCardData ? (
+        <DevCardDetailPanel
+          key={selectedDevCardData.id}
+          card={selectedDevCardData}
+          teamMembers={activePortfolioView?.team ?? []}
+          isOpen={!isClosingCardPanel}
+          onClose={() => setSelectedDevCard(null)}
+          onSave={handleSaveDevCard}
+          onDelete={handleDeleteDevCard}
         />
       ) : null}
 

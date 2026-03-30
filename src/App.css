@@ -533,6 +533,77 @@ button {
   align-items: start;
 }
 
+.board-column {
+  display: flex;
+  flex-direction: column;
+  width: 272px;
+  height: min(76vh, calc(100vh - 190px));
+  border-radius: 8px;
+  background: var(--column);
+  border: 1px solid var(--line-shell-soft);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.board-column-header {
+  padding: 8px 8px 4px;
+}
+
+.board-column-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.board-column-header span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.board-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 4px 8px 8px;
+  overflow-y: auto;
+}
+
+.board-lane.is-highlighted {
+  background: var(--surface-subtle);
+}
+
+.board-card-list {
+  display: grid;
+  gap: 8px;
+}
+
+.board-lane-empty {
+  margin: 0;
+  min-height: 40px;
+  border: 1px dashed var(--line-control);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.dev-board-subtitle {
+  margin-bottom: 10px;
+}
+
+.dev-board-subtitle p {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .stage-column {
   display: flex;
   flex-direction: column;
@@ -1145,6 +1216,48 @@ button {
   gap: 12px;
   padding: 12px 20px 20px;
   scroll-margin-top: 84px;
+}
+
+.slide-panel-content {
+  display: grid;
+}
+
+.slide-panel-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px 20px;
+}
+
+.panel-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel-field {
+  display: grid;
+  gap: 6px;
+}
+
+.panel-field span {
+  font-size: 12px;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.panel-input,
+.panel-textarea {
+  width: 100%;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .panel-section-title {

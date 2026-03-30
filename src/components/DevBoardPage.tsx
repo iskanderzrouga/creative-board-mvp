@@ -1,0 +1,266 @@
+import { useMemo, useState, type ReactNode } from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCorners,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
+import { PageHeader } from './PageHeader'
+import { BlockedIcon } from './icons/AppIcons'
+import {
+  DEV_BOARD_COLUMNS,
+  getDevBoardStats,
+  getDevCardBlockerReason,
+  hasActiveDevBlocker,
+  type DevBoardColumnId,
+  type DevBoardState,
+  type DevCard,
+  type TeamMember,
+} from '../board'
+
+interface DevBoardPageProps {
+  devBoard: DevBoardState
+  teamMembers: TeamMember[]
+  canEdit: boolean
+  showToast: (message: string, tone: 'green' | 'amber' | 'red' | 'blue') => void
+  headerUtilityContent?: ReactNode
+  onAddCard: () => void
+  onMoveCard: (cardId: string, destinationColumn: DevBoardColumnId) => { ok: boolean; message?: string }
+  onOpenCard: (cardId: string) => void
+}
+
+function getDropColumnId(value: string | null): DevBoardColumnId | null {
+  if (!value) {
+    return null
+  }
+  if (value.startsWith('dev-column:')) {
+    return value.replace('dev-column:', '') as DevBoardColumnId
+  }
+  return null
+}
+
+function DevCardItem({
+  card,
+  onOpen,
+  canDrag,
+  teamMembers,
+}: {
+  card: DevCard
+  onOpen: () => void
+  canDrag: boolean
+  teamMembers: TeamMember[]
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: card.id,
+    disabled: !canDrag,
+  })
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      className={`board-card cursor-${canDrag ? 'drag' : 'pointer'} ${isDragging ? 'is-dragging' : ''} ${
+        hasActiveDevBlocker(card) ? 'is-flagged' : ''
+      }`}
+      style={{
+        transform: CSS.Translate.toString(transform),
+      }}
+      onClick={onOpen}
+      {...attributes}
+      {...listeners}
+    >
+      <div className="board-card-top">
+        <div className="board-card-indicators">
+          {hasActiveDevBlocker(card) ? (
+            <span className="board-card-flag" aria-hidden="true" title={getDevCardBlockerReason(card) ?? undefined}>
+              <BlockedIcon />
+            </span>
+          ) : null}
+        </div>
+        <span className="board-card-id">{card.id}</span>
+      </div>
+      <p className="board-card-title">{card.title}</p>
+      <div className="board-card-tags">
+        <span className="brand-pill">{card.brand}</span>
+        <span className="task-type-pill">{card.changeRequestType}</span>
+      </div>
+      <div className="board-card-footer">
+        <span className="card-owner">{card.assigneeId ? teamMemberNameById(card.assigneeId, teamMembers) : 'Unassigned'}</span>
+        <span className="card-age">{card.dueDate ?? 'No due date'}</span>
+      </div>
+    </button>
+  )
+}
+
+function teamMemberNameById(teamMemberId: string, teamMembers: TeamMember[]) {
+  return teamMembers.find((member) => member.id === teamMemberId)?.name ?? 'Unassigned'
+}
+
+function DevDropColumn({
+  column,
+  cards,
+  canEdit,
+  teamMembers,
+  onOpenCard,
+}: {
+  column: DevBoardColumnId
+  cards: DevCard[]
+  canEdit: boolean
+  teamMembers: TeamMember[]
+  onOpenCard: (cardId: string) => void
+}) {
+  const dropId = `dev-column:${column}`
+  const { setNodeRef, isOver } = useDroppable({
+    id: dropId,
+  })
+
+  return (
+    <article className="board-column">
+      <header className="board-column-header">
+        <div>
+          <h2>{column}</h2>
+          <span>{cards.length} cards</span>
+        </div>
+      </header>
+      <div ref={setNodeRef} className={`board-lane ${isOver ? 'is-highlighted' : ''}`}>
+        {cards.length === 0 ? <p className="board-lane-empty">No cards in this column yet.</p> : null}
+        <div className="board-card-list">
+          {cards.map((card) => (
+            <DevCardItem
+              key={card.id}
+              card={card}
+              onOpen={() => onOpenCard(card.id)}
+              canDrag={canEdit}
+              teamMembers={teamMembers}
+            />
+          ))}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+export function DevBoardPage({
+  devBoard,
+  teamMembers,
+  canEdit,
+  showToast,
+  headerUtilityContent,
+  onAddCard,
+  onMoveCard,
+  onOpenCard,
+}: DevBoardPageProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  )
+  const [activeDragCardId, setActiveDragCardId] = useState<string | null>(null)
+
+  const groupedCards = useMemo(() => {
+    return DEV_BOARD_COLUMNS.reduce<Record<DevBoardColumnId, DevCard[]>>((accumulator, column) => {
+      accumulator[column] = devBoard.cards.filter((card) => card.column === column)
+      return accumulator
+    }, {} as Record<DevBoardColumnId, DevCard[]>)
+  }, [devBoard.cards])
+
+  const stats = useMemo(() => getDevBoardStats(devBoard), [devBoard])
+  const activeDragCard = activeDragCardId
+    ? devBoard.cards.find((card) => card.id === activeDragCardId) ?? null
+    : null
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveDragCardId(String(event.active.id))
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveDragCardId(null)
+    if (!canEdit) {
+      return
+    }
+
+    const cardId = String(event.active.id)
+    const destination = getDropColumnId(event.over ? String(event.over.id) : null)
+    if (!destination) {
+      return
+    }
+
+    const result = onMoveCard(cardId, destination)
+    if (!result.ok && result.message) {
+      showToast(result.message, 'red')
+    }
+  }
+
+  return (
+    <div className="page-shell">
+      <PageHeader
+        title="Development Board"
+        rightContent={
+          <>
+            {canEdit ? (
+              <button type="button" className="primary-button" onClick={onAddCard}>
+                + Add card
+              </button>
+            ) : null}
+            {headerUtilityContent}
+          </>
+        }
+      />
+
+      <section className="dev-board-subtitle" aria-label="Development board context">
+        <p>
+          Track development tasks from briefing through QA to launch. Dev/CRO cards from the Backlog board land here
+          automatically.
+        </p>
+      </section>
+
+      <section className="stats-bar" aria-label="Development board statistics">
+        <div className="stat-inline-item">
+          <span className="stat-inline-label">Total</span>
+          <strong>{stats.total}</strong>
+          <span className="stat-divider">·</span>
+        </div>
+        {DEV_BOARD_COLUMNS.map((column) => (
+          <div key={column} className="stat-inline-item">
+            <span className="stat-inline-label">{column}</span>
+            <strong>{stats.byColumn[column]}</strong>
+            <span className="stat-divider">·</span>
+          </div>
+        ))}
+      </section>
+
+      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="board-grid" role="list" aria-label="Development board columns">
+          {DEV_BOARD_COLUMNS.map((column) => (
+            <DevDropColumn
+              key={column}
+              column={column}
+              cards={groupedCards[column]}
+              canEdit={canEdit}
+              teamMembers={teamMembers}
+              onOpenCard={onOpenCard}
+            />
+          ))}
+        </div>
+
+        <DragOverlay>
+          {activeDragCard ? (
+            <div className="board-card is-overlay">
+              <div className="board-card-top">
+                <span className="board-card-id">{activeDragCard.id}</span>
+              </div>
+              <p className="board-card-title">{activeDragCard.title}</p>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  )
+}

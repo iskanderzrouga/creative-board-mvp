@@ -27,6 +27,29 @@ export const STAGES = [
 export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
 export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
 export const APP_PAGES = ['board', 'analytics', 'workload', 'settings'] as const
+export const DEV_BOARD_COLUMNS = [
+  'To Brief',
+  'Up Next',
+  'For Review',
+  'QA/Testing',
+  'Live',
+] as const
+export const DEV_CHANGE_REQUEST_TYPES = [
+  'Bug Fix',
+  'New Feature',
+  'CRO Test',
+  'Landing Page Update',
+  'Design Change',
+  'Content Update',
+  'New Advertorial',
+  'New Listicle',
+  'New LP',
+  'New Product Page',
+] as const
+export const DEV_BLOCKER_OPTIONS = [
+  'Waiting for images/videos',
+  'Custom…',
+] as const
 export const ROLE_MODES = ['owner', 'manager', 'contributor', 'viewer'] as const
 export const ACCESS_SCOPE_MODES = [
   'all-portfolios',
@@ -74,6 +97,9 @@ export type StageId = (typeof STAGES)[number]
 export type GroupedStageId = (typeof GROUPED_STAGES)[number]
 export type BoardColumnId = (typeof BOARD_COLUMN_IDS)[number]
 export type AppPage = (typeof APP_PAGES)[number]
+export type DevBoardColumnId = (typeof DEV_BOARD_COLUMNS)[number]
+export type DevChangeRequestType = (typeof DEV_CHANGE_REQUEST_TYPES)[number]
+export type DevBlockerOption = (typeof DEV_BLOCKER_OPTIONS)[number]
 export type RoleMode = (typeof ROLE_MODES)[number]
 export type AccessScopeMode = (typeof ACCESS_SCOPE_MODES)[number]
 export type Timeframe = (typeof TIMEFRAMES)[number]
@@ -305,6 +331,28 @@ export interface AppNotification {
   read: boolean
 }
 
+export interface DevCard {
+  id: string
+  title: string
+  sourceBacklogCardId: string | null
+  brand: string
+  taskDescription: string
+  loomVideoUrl: string
+  newUrlToUse: string
+  assigneeId: string | null
+  dueDate: string | null
+  changeRequestType: DevChangeRequestType
+  blockerOption: DevBlockerOption | null
+  customBlocker: string
+  column: DevBoardColumnId
+  dateCreated: string
+}
+
+export interface DevBoardState {
+  cards: DevCard[]
+  lastCardNumber: number
+}
+
 export interface PortfolioAccessScope {
   portfolioId: string
   brandNames: string[]
@@ -312,6 +360,7 @@ export interface PortfolioAccessScope {
 
 export interface AppState {
   portfolios: Portfolio[]
+  devBoard: DevBoardState
   settings: GlobalSettings
   activePortfolioId: string
   activeRole: ActiveRole
@@ -371,6 +420,11 @@ export interface BoardStats {
   byStage: Record<StageId, number>
   stuck: number
   overdue: number
+}
+
+export interface DevBoardStats {
+  total: number
+  byColumn: Record<DevBoardColumnId, number>
 }
 
 export interface UtilizationSummary {
@@ -1940,6 +1994,13 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
   return [brandLab]
 }
 
+function createSeedDevBoardState(): DevBoardState {
+  return {
+    cards: [],
+    lastCardNumber: 0,
+  }
+}
+
 export function createSeedState(): AppState {
   const taskLibrary = createSeedTaskLibrary()
   const revisionReasons = createSeedRevisionReasons()
@@ -1947,6 +2008,7 @@ export function createSeedState(): AppState {
 
   return {
     portfolios,
+    devBoard: createSeedDevBoardState(),
     settings: {
       general: {
         appName: 'Creative Board',
@@ -2290,8 +2352,68 @@ export function coerceAppState(raw: unknown): AppState {
             : null
       : null
 
+  const candidateDevBoard =
+    candidate.devBoard && typeof candidate.devBoard === 'object'
+      ? (candidate.devBoard as { cards?: unknown; lastCardNumber?: unknown })
+      : null
+  const devCards = Array.isArray(candidateDevBoard?.cards)
+    ? candidateDevBoard.cards
+        .map((item) => {
+          if (!item || typeof item !== 'object') {
+            return null
+          }
+          const card = item as Partial<DevCard>
+          if (
+            typeof card.id !== 'string' ||
+            typeof card.title !== 'string' ||
+            typeof card.brand !== 'string' ||
+            typeof card.column !== 'string' ||
+            !DEV_BOARD_COLUMNS.includes(card.column as DevBoardColumnId)
+          ) {
+            return null
+          }
+          return {
+            id: card.id,
+            title: card.title,
+            sourceBacklogCardId: typeof card.sourceBacklogCardId === 'string' ? card.sourceBacklogCardId : null,
+            brand: card.brand,
+            taskDescription: typeof card.taskDescription === 'string' ? card.taskDescription : '',
+            loomVideoUrl: typeof card.loomVideoUrl === 'string' ? card.loomVideoUrl : '',
+            newUrlToUse: typeof card.newUrlToUse === 'string' ? card.newUrlToUse : '',
+            assigneeId: typeof card.assigneeId === 'string' ? card.assigneeId : null,
+            dueDate: typeof card.dueDate === 'string' ? card.dueDate : null,
+            changeRequestType:
+              typeof card.changeRequestType === 'string' &&
+              DEV_CHANGE_REQUEST_TYPES.includes(card.changeRequestType as DevChangeRequestType)
+                ? (card.changeRequestType as DevChangeRequestType)
+                : 'Bug Fix',
+            blockerOption:
+              typeof card.blockerOption === 'string' &&
+              DEV_BLOCKER_OPTIONS.includes(card.blockerOption as DevBlockerOption)
+                ? (card.blockerOption as DevBlockerOption)
+                : null,
+            customBlocker: typeof card.customBlocker === 'string' ? card.customBlocker : '',
+            column: card.column as DevBoardColumnId,
+            dateCreated: typeof card.dateCreated === 'string' ? card.dateCreated : new Date().toISOString(),
+          } satisfies DevCard
+        })
+        .filter((card): card is DevCard => card !== null)
+    : []
+  const highestDevCardNumber = devCards.reduce((highest, card) => {
+    const numericPart = Number(card.id.replace('DV', ''))
+    return Number.isFinite(numericPart) ? Math.max(highest, numericPart) : highest
+  }, 0)
+  const devBoard: DevBoardState = {
+    cards: devCards,
+    lastCardNumber:
+      typeof candidateDevBoard?.lastCardNumber === 'number' && Number.isFinite(candidateDevBoard.lastCardNumber)
+        ? Math.max(candidateDevBoard.lastCardNumber, highestDevCardNumber)
+        : highestDevCardNumber,
+  }
+
   return {
     portfolios,
+    devBoard,
     settings,
     activePortfolioId:
       typeof candidate.activePortfolioId === 'string'
@@ -2446,6 +2568,7 @@ export function createFreshStartState(state: AppState): AppState {
   return {
     ...state,
     portfolios,
+    devBoard: createSeedDevBoardState(),
     activePortfolioId: nextActivePortfolioId,
     notifications: [],
     settings: {
@@ -2455,6 +2578,116 @@ export function createFreshStartState(state: AppState): AppState {
         defaultPortfolioId: nextDefaultPortfolioId,
       },
     },
+  }
+}
+
+export function getDevCardBlockerReason(card: DevCard) {
+  if (card.blockerOption === 'Waiting for images/videos') {
+    return 'Waiting for images/videos'
+  }
+  if (card.blockerOption === 'Custom…' && card.customBlocker.trim()) {
+    return card.customBlocker.trim()
+  }
+  return null
+}
+
+export function hasActiveDevBlocker(card: DevCard) {
+  return Boolean(getDevCardBlockerReason(card))
+}
+
+export function createDevCardId(state: DevBoardState) {
+  return `DV${String(state.lastCardNumber + 1).padStart(4, '0')}`
+}
+
+interface CreateDevCardInput {
+  title: string
+  brand: string
+  sourceBacklogCardId?: string | null
+  taskDescription?: string
+  loomVideoUrl?: string
+  newUrlToUse?: string
+  assigneeId?: string | null
+  dueDate?: string | null
+  changeRequestType?: DevChangeRequestType
+  blockerOption?: DevBlockerOption | null
+  customBlocker?: string
+}
+
+export function addDevCard(state: DevBoardState, input: CreateDevCardInput): DevBoardState {
+  const nextCard: DevCard = {
+    id: createDevCardId(state),
+    title: input.title.trim() || 'Untitled Dev Task',
+    sourceBacklogCardId: input.sourceBacklogCardId ?? null,
+    brand: input.brand.trim() || 'Unknown',
+    taskDescription: input.taskDescription?.trim() ?? '',
+    loomVideoUrl: input.loomVideoUrl?.trim() ?? '',
+    newUrlToUse: input.newUrlToUse?.trim() ?? '',
+    assigneeId: input.assigneeId ?? null,
+    dueDate: input.dueDate ?? null,
+    changeRequestType: input.changeRequestType ?? 'Bug Fix',
+    blockerOption: input.blockerOption ?? null,
+    customBlocker: input.customBlocker?.trim() ?? '',
+    column: 'To Brief',
+    dateCreated: new Date().toISOString(),
+  }
+
+  return {
+    cards: [...state.cards, nextCard],
+    lastCardNumber: state.lastCardNumber + 1,
+  }
+}
+
+export function updateDevCard(state: DevBoardState, cardId: string, updates: Partial<DevCard>): DevBoardState {
+  let changed = false
+  const cards = state.cards.map((card) => {
+    if (card.id !== cardId) {
+      return card
+    }
+    changed = true
+    return {
+      ...card,
+      ...updates,
+    }
+  })
+  return changed ? { ...state, cards } : state
+}
+
+export function deleteDevCard(state: DevBoardState, cardId: string): DevBoardState {
+  const cards = state.cards.filter((card) => card.id !== cardId)
+  return cards.length === state.cards.length ? state : { ...state, cards }
+}
+
+export function getDevCardMoveValidationMessage(card: DevCard, destinationColumn: DevBoardColumnId) {
+  if (card.column === 'To Brief' && destinationColumn !== 'To Brief' && !card.taskDescription.trim()) {
+    return 'Task description is required before moving this card.'
+  }
+  return null
+}
+
+export function moveDevCard(state: DevBoardState, cardId: string, destinationColumn: DevBoardColumnId): DevBoardState {
+  const card = state.cards.find((item) => item.id === cardId)
+  if (!card || card.column === destinationColumn) {
+    return state
+  }
+  return {
+    ...state,
+    cards: state.cards.map((item) => (item.id === cardId ? { ...item, column: destinationColumn } : item)),
+  }
+}
+
+export function getDevBoardStats(state: DevBoardState): DevBoardStats {
+  const byColumn = DEV_BOARD_COLUMNS.reduce<Record<DevBoardColumnId, number>>((accumulator, column) => {
+    accumulator[column] = 0
+    return accumulator
+  }, {} as Record<DevBoardColumnId, number>)
+
+  state.cards.forEach((card) => {
+    byColumn[card.column] += 1
+  })
+
+  return {
+    total: state.cards.length,
+    byColumn,
   }
 }
 
