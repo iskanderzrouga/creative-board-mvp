@@ -26,7 +26,7 @@ export const STAGES = [
 
 export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
 export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
-export const APP_PAGES = ['board', 'analytics', 'workload', 'settings'] as const
+export const APP_PAGES = ['board', 'analytics', 'workload', 'settings', 'scripts'] as const
 export const DEV_BOARD_COLUMNS = [
   'To Brief',
   'Up Next',
@@ -353,6 +353,60 @@ export interface DevBoardState {
   lastCardNumber: number
 }
 
+export const SCRIPT_REVIEWERS = [
+  {
+    id: 'naomi',
+    name: 'Naomi',
+    email: 'naomi@bluebrands.co',
+    roleMode: 'manager' as const,
+  },
+  {
+    id: 'iskander',
+    name: 'Iskander',
+    email: 'iskander@bluebrands.co',
+    roleMode: 'owner' as const,
+  },
+  {
+    id: 'nicolas',
+    name: 'Nicolas',
+    email: 'nicolas@bluebrands.co',
+    roleMode: 'owner' as const,
+  },
+] as const
+
+export type ScriptReviewerId = (typeof SCRIPT_REVIEWERS)[number]['id']
+export type ScriptConfidenceLevel = 'low' | 'medium' | 'high'
+
+export interface ScriptReviewEntry {
+  id: string
+  reviewerId: ScriptReviewerId
+  confidence: ScriptConfidenceLevel
+  comment: string
+  timestamp: string
+}
+
+export interface ScriptThreadComment {
+  id: string
+  author: string
+  text: string
+  timestamp: string
+}
+
+export interface ScriptWorkshopItem {
+  id: string
+  title: string
+  brand: string
+  googleDocUrl: string
+  reviews: Record<ScriptReviewerId, ScriptReviewEntry[]>
+  comments: ScriptThreadComment[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ScriptWorkshopState {
+  scripts: ScriptWorkshopItem[]
+}
+
 export interface PortfolioAccessScope {
   portfolioId: string
   brandNames: string[]
@@ -361,6 +415,7 @@ export interface PortfolioAccessScope {
 export interface AppState {
   portfolios: Portfolio[]
   devBoard: DevBoardState
+  scriptWorkshop: ScriptWorkshopState
   settings: GlobalSettings
   activePortfolioId: string
   activeRole: ActiveRole
@@ -2001,6 +2056,12 @@ function createSeedDevBoardState(): DevBoardState {
   }
 }
 
+function createSeedScriptWorkshopState(): ScriptWorkshopState {
+  return {
+    scripts: [],
+  }
+}
+
 export function createSeedState(): AppState {
   const taskLibrary = createSeedTaskLibrary()
   const revisionReasons = createSeedRevisionReasons()
@@ -2009,6 +2070,7 @@ export function createSeedState(): AppState {
   return {
     portfolios,
     devBoard: createSeedDevBoardState(),
+    scriptWorkshop: createSeedScriptWorkshopState(),
     settings: {
       general: {
         appName: 'Creative Board',
@@ -2411,9 +2473,113 @@ export function coerceAppState(raw: unknown): AppState {
         : highestDevCardNumber,
   }
 
+  const candidateScriptWorkshop =
+    candidate.scriptWorkshop && typeof candidate.scriptWorkshop === 'object'
+      ? (candidate.scriptWorkshop as { scripts?: unknown })
+      : null
+  const scriptWorkshopScripts = Array.isArray(candidateScriptWorkshop?.scripts)
+    ? candidateScriptWorkshop.scripts
+        .map((item) => {
+          if (!item || typeof item !== 'object') {
+            return null
+          }
+
+          const script = item as Partial<ScriptWorkshopItem>
+          if (
+            typeof script.id !== 'string' ||
+            typeof script.title !== 'string' ||
+            typeof script.brand !== 'string' ||
+            typeof script.googleDocUrl !== 'string'
+          ) {
+            return null
+          }
+
+          const rawReviews = script.reviews && typeof script.reviews === 'object'
+            ? (script.reviews as Partial<Record<ScriptReviewerId, unknown>>)
+            : {}
+
+          const reviews = Object.fromEntries(
+            SCRIPT_REVIEWERS.map((reviewer) => {
+              const history = Array.isArray(rawReviews[reviewer.id]) ? (rawReviews[reviewer.id] as unknown[]) : []
+              const normalizedHistory = history
+                .map((review) => {
+                  if (!review || typeof review !== 'object') {
+                    return null
+                  }
+                  const candidateReview = review as Partial<ScriptReviewEntry>
+                  if (
+                    typeof candidateReview.id !== 'string' ||
+                    typeof candidateReview.comment !== 'string' ||
+                    typeof candidateReview.timestamp !== 'string' ||
+                    candidateReview.reviewerId !== reviewer.id ||
+                    (candidateReview.confidence !== 'low' &&
+                      candidateReview.confidence !== 'medium' &&
+                      candidateReview.confidence !== 'high')
+                  ) {
+                    return null
+                  }
+                  return {
+                    id: candidateReview.id,
+                    reviewerId: reviewer.id,
+                    confidence: candidateReview.confidence,
+                    comment: candidateReview.comment,
+                    timestamp: candidateReview.timestamp,
+                  } satisfies ScriptReviewEntry
+                })
+                .filter((review): review is ScriptReviewEntry => review !== null)
+                .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+
+              return [reviewer.id, normalizedHistory]
+            }),
+          ) as Record<ScriptReviewerId, ScriptReviewEntry[]>
+
+          const comments = Array.isArray(script.comments)
+            ? script.comments
+                .map((comment) => {
+                  if (!comment || typeof comment !== 'object') {
+                    return null
+                  }
+                  const candidateComment = comment as Partial<ScriptThreadComment>
+                  if (
+                    typeof candidateComment.id !== 'string' ||
+                    typeof candidateComment.author !== 'string' ||
+                    typeof candidateComment.text !== 'string' ||
+                    typeof candidateComment.timestamp !== 'string'
+                  ) {
+                    return null
+                  }
+                  return {
+                    id: candidateComment.id,
+                    author: candidateComment.author,
+                    text: candidateComment.text,
+                    timestamp: candidateComment.timestamp,
+                  } satisfies ScriptThreadComment
+                })
+                .filter((comment): comment is ScriptThreadComment => comment !== null)
+                .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+            : []
+
+          return {
+            id: script.id,
+            title: script.title,
+            brand: script.brand,
+            googleDocUrl: script.googleDocUrl,
+            reviews,
+            comments,
+            createdAt: typeof script.createdAt === 'string' ? script.createdAt : new Date().toISOString(),
+            updatedAt: typeof script.updatedAt === 'string' ? script.updatedAt : new Date().toISOString(),
+          } satisfies ScriptWorkshopItem
+        })
+        .filter((script): script is ScriptWorkshopItem => script !== null)
+    : []
+  const scriptWorkshop: ScriptWorkshopState = {
+    scripts: scriptWorkshopScripts,
+  }
+
   return {
     portfolios,
     devBoard,
+    scriptWorkshop,
     settings,
     activePortfolioId:
       typeof candidate.activePortfolioId === 'string'
@@ -2438,6 +2604,18 @@ export function coerceAppState(raw: unknown): AppState {
       : [],
     version: STATE_VERSION,
   }
+}
+
+export function getLatestScriptReview(
+  script: ScriptWorkshopItem,
+  reviewerId: ScriptReviewerId,
+): ScriptReviewEntry | null {
+  const history = script.reviews[reviewerId] ?? []
+  return history[history.length - 1] ?? null
+}
+
+export function isScriptReadyToLaunch(script: ScriptWorkshopItem) {
+  return SCRIPT_REVIEWERS.every((reviewer) => getLatestScriptReview(script, reviewer.id)?.confidence === 'high')
 }
 
 export function loadAppState() {

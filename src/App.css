@@ -5863,3 +5863,465 @@ button {
   color: #dc2626;
   font-style: normal;
 }
+
+.script-workshop-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.script-workshop-header {
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.script-workshop-header p {
+  margin: 0;
+}
+
+.script-workshop-counts {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.script-workshop-section {
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  padding: 1rem;
+}
+
+.script-workshop-section.is-approved {
+  background: var(--surface-subtle);
+}
+
+.script-workshop-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.script-workshop-section-title h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.script-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.8rem;
+}
+
+.script-card {
+  border: 1px solid var(--line-shell);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 0.9rem;
+  text-align: left;
+  display: grid;
+  gap: 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.script-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.script-card.is-approved {
+  border-color: var(--success-text);
+  background: var(--success-surface);
+}
+
+.script-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.script-card-top h3 {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.script-card-top p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+}
+
+.script-doc-link {
+  font-size: 1.1rem;
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.script-confidence-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.script-confidence-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.script-confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  border: 1px solid transparent;
+}
+
+.script-confidence-badge.is-low {
+  background: var(--danger-surface);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+}
+
+.script-confidence-badge.is-medium {
+  background: var(--warning-surface);
+  color: var(--warning-text);
+}
+
+.script-confidence-badge.is-high {
+  background: var(--success-surface);
+  color: var(--success-text);
+}
+
+.script-confidence-badge.is-pending {
+  background: var(--surface-tint);
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.script-ready-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--success-text);
+  background: var(--success-surface);
+}
+
+.script-workshop-panel .slide-panel-content {
+  gap: 1rem;
+}
+
+.script-reviewers-stack {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.script-reviewer-card {
+  border: 1px solid var(--line-shell);
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.script-reviewer-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.script-review-latest,
+.script-review-history li {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.script-review-latest p,
+.script-review-history p {
+  margin: 0;
+}
+
+.script-review-latest time,
+.script-review-history time,
+.script-thread-list time {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.script-review-history {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.script-review-submit {
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.8rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.script-review-submit h4 {
+  margin: 0;
+}
+
+.script-doc-link-inline {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.script-thread-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.script-thread-list li {
+  border: 1px solid var(--line-shell);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface-subtle);
+}
+
+.script-thread-list li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.script-thread-list p {
+  margin: 0.3rem 0 0;
+}
+
+.script-add-modal {
+  width: min(520px, calc(100vw - 2rem));
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  padding: 1rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.script-add-modal h3 {
+  margin: 0;
+}
+
+.script-add-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.form-error-text {
+  margin: -0.2rem 0 0;
+  color: var(--danger-text);
+  font-size: 0.8rem;
+}
+
+/* Script Workshop readability + design refresh */
+.script-workshop-shell,
+.script-workshop-shell h1,
+.script-workshop-shell h2,
+.script-workshop-shell h3,
+.script-workshop-shell h4,
+.script-workshop-shell p,
+.script-workshop-shell span,
+.script-workshop-shell label,
+.script-workshop-shell strong,
+.script-workshop-shell time,
+.script-workshop-shell li,
+.script-workshop-shell a,
+.script-workshop-panel,
+.script-workshop-panel h2,
+.script-workshop-panel h3,
+.script-workshop-panel h4,
+.script-workshop-panel p,
+.script-workshop-panel span,
+.script-workshop-panel label,
+.script-workshop-panel strong,
+.script-workshop-panel time,
+.script-workshop-panel li,
+.script-workshop-panel a {
+  color: var(--text-strong);
+}
+
+.script-workshop-subtitle,
+.script-panel-meta,
+.script-workshop-section-note,
+.script-workshop-empty-text {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.script-card {
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  background: var(--surface);
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.script-card.is-approved {
+  border-color: var(--success-text);
+  background: var(--surface-subtle);
+}
+
+.script-card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.script-round-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  color: var(--text-strong);
+}
+
+.script-doc-button {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 0.32rem 0.65rem;
+  font-size: 0.77rem;
+  font-weight: 700;
+  background: var(--surface-subtle);
+  color: var(--text-strong);
+}
+
+.script-card-title {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.25;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.script-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.24rem 0.68rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--line-shell-soft);
+}
+
+.script-confidence-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.script-confidence-column {
+  border: 1px solid var(--line-shell);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 0.5rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+}
+
+.script-reviewer-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.script-confidence-badge {
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.script-workshop-section-title h2,
+.script-workshop-header p,
+.script-add-modal h3,
+.script-reviewer-header strong,
+.script-round-history-card strong,
+.script-round-reviewer-name {
+  color: var(--text-strong);
+}
+
+.script-reviewer-header span,
+.script-round-history-card time,
+.script-review-latest time,
+.script-thread-list time {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.script-round-history-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.script-round-history-card {
+  border: 1px solid var(--line-shell);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.script-round-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.script-round-review-cell {
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.script-round-review-cell p {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.script-reviewer-card,
+.script-thread-list li,
+.script-add-modal {
+  background: var(--surface);
+}
+
+.script-workshop-section-note {
+  font-size: 0.84rem;
+}
