@@ -7,7 +7,7 @@ import {
   WorkloadIcon,
 } from './icons/AppIcons'
 
-type ExtendedPage = AppPage | 'backlog'
+type ExtendedPage = AppPage | 'backlog' | 'dev'
 
 interface SidebarProps {
   expanded: boolean
@@ -52,9 +52,32 @@ function BacklogIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function DevIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7L12 2.5Z" />
+      <path d="M8.5 10.5 11 13l4.5-4.5" />
+    </svg>
+  )
+}
+
 function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
+  }
+  if (page === 'dev') {
+    return 'Dev Board'
   }
 
   switch (page) {
@@ -72,6 +95,9 @@ function getPageLabel(page: ExtendedPage) {
 function getPageIcon(page: ExtendedPage): PageIcon {
   if (page === 'backlog') {
     return BacklogIcon
+  }
+  if (page === 'dev') {
+    return DevIcon
   }
 
   switch (page) {
@@ -123,6 +149,7 @@ function SidebarComponent({
     tooltip?: string
   }> = [
     ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
+    ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
     { page: 'board', disabled: false },
     ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
     ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
