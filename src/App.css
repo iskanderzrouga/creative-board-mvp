@@ -2408,6 +2408,18 @@ button {
   line-height: 1.5;
 }
 
+.dev-board-subtitle .onboarding-copy {
+  max-width: 100%;
+}
+
+.dev-board-subtitle .onboarding-copy p {
+  color: var(--text);
+}
+
+.dev-board-grid {
+  grid-template-columns: repeat(5, 272px);
+}
+
 .onboarding-actions {
   display: flex;
   align-items: center;

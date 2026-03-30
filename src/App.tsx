@@ -39,6 +39,7 @@ import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
+import { DevBoardPage, type DevBoardCard } from './components/DevBoardPage'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { PageHeader } from './components/PageHeader'
@@ -115,7 +116,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
-type ExtendedPage = AppPage | 'backlog'
+type ExtendedPage = AppPage | 'backlog' | 'dev'
 
 interface CopyState {
   key: string
@@ -151,6 +152,8 @@ function getPathForPage(page: ExtendedPage) {
   switch (page) {
     case 'backlog':
       return '/backlog'
+    case 'dev':
+      return '/dev'
     case 'analytics':
       return '/analytics'
     case 'workload':
@@ -163,10 +166,12 @@ function getPathForPage(page: ExtendedPage) {
   }
 }
 
-function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage {
+function getPageFromPathname(pathname: string, fallback: ExtendedPage): ExtendedPage {
   switch (pathname) {
     case '/backlog':
       return 'backlog'
+    case '/dev':
+      return 'dev'
     case '/analytics':
       return 'analytics'
     case '/workload':
@@ -321,7 +326,8 @@ function App() {
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const productionPage = getCurrentPage(state)
-  const currentPage: ExtendedPage = routePage === 'backlog' ? 'backlog' : productionPage
+  const currentPage: ExtendedPage =
+    routePage === 'backlog' || routePage === 'dev' ? routePage : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -492,6 +498,17 @@ function App() {
         .filter((taskType) => taskType.category === 'Dev')
         .map((taskType) => ({ id: taskType.id, name: taskType.name })),
     [state.settings.taskLibrary],
+  )
+  const devBoardCards = useMemo<DevBoardCard[]>(
+    () =>
+      backlogState.cards
+        .filter((card) => card.taskType === 'dev-cro' && card.column === 'moved-to-production')
+        .map((card) => ({
+          id: card.id,
+          title: card.name,
+          columnId: 'to-brief',
+        })),
+    [backlogState.cards],
   )
   const localModeBanner = !authEnabled ? (
     <section className="local-mode-banner" role="status" aria-live="polite">
@@ -706,7 +723,7 @@ function App() {
       return
     }
 
-    if (routePage !== 'backlog' && routePage !== productionPage) {
+    if (routePage !== 'backlog' && routePage !== 'dev' && routePage !== productionPage) {
       return
     }
 
@@ -735,6 +752,11 @@ function App() {
             activePage: fallbackPage,
           }))
         }
+        return
+      }
+
+      if (nextPage === 'dev') {
+        setRoutePage('dev')
         return
       }
 
@@ -960,6 +982,12 @@ function App() {
       }
 
       setRoutePage('backlog')
+      setSelectedCard(null)
+      return
+    }
+
+    if (page === 'dev') {
+      setRoutePage('dev')
       setSelectedCard(null)
       return
     }
@@ -2144,6 +2172,22 @@ function App() {
             headerUtilityContent={headerUtilityContent}
             onChange={setBacklogState}
             onMoveToProduction={handleBacklogToProduction}
+          />
+        ) : null}
+
+        {currentPage === 'dev' ? (
+          <DevBoardPage
+            cards={devBoardCards}
+            headerUtilityContent={headerUtilityContent}
+            onAddCard={() => {
+              if (!activePortfolioView) {
+                return
+              }
+
+              setPage('board')
+              setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
+              setQuickCreateOpen(true)
+            }}
           />
         ) : null}
 
