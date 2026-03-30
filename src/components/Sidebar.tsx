@@ -7,7 +7,7 @@ import {
   WorkloadIcon,
 } from './icons/AppIcons'
 
-type ExtendedPage = AppPage | 'backlog' | 'dev'
+type ExtendedPage = AppPage | 'backlog'
 
 interface SidebarProps {
   expanded: boolean
@@ -56,9 +56,6 @@ function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
   }
-  if (page === 'dev') {
-    return 'Dev board'
-  }
 
   switch (page) {
     case 'board':
@@ -75,9 +72,6 @@ function getPageLabel(page: ExtendedPage) {
 function getPageIcon(page: ExtendedPage): PageIcon {
   if (page === 'backlog') {
     return BacklogIcon
-  }
-  if (page === 'dev') {
-    return BoardIcon
   }
 
   switch (page) {
@@ -129,7 +123,6 @@ function SidebarComponent({
     tooltip?: string
   }> = [
     ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
-    ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
     { page: 'board', disabled: false },
     ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
     ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
