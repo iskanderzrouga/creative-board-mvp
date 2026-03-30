@@ -514,6 +514,16 @@ function App() {
     () => activePortfolioView?.brands.map((brand) => brand.name) ?? [],
     [activePortfolioView?.brands],
   )
+  const scriptWorkshopBrandStyles = useMemo(() => {
+    const styles: Record<string, { background: string; color: string }> = {}
+    activePortfolioView?.brands.forEach((brand) => {
+      styles[brand.name] = {
+        background: brand.surfaceColor,
+        color: brand.textColor,
+      }
+    })
+    return styles
+  }, [activePortfolioView?.brands])
   const canManageScripts = state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'
   const currentReviewerId = useMemo<ScriptReviewerId | null>(() => {
     const sessionEmail =
@@ -2529,6 +2539,7 @@ function App() {
           <ScriptWorkshopPage
             scripts={state.scriptWorkshop.scripts}
             brandOptions={scriptWorkshopBrandOptions}
+            brandStyles={scriptWorkshopBrandStyles}
             canManageScripts={canManageScripts}
             currentReviewerId={currentReviewerId}
             currentAuthorName={scriptAuthorName}

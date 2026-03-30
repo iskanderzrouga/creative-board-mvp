@@ -6139,3 +6139,189 @@ button {
   color: var(--danger-text);
   font-size: 0.8rem;
 }
+
+/* Script Workshop readability + design refresh */
+.script-workshop-shell,
+.script-workshop-shell h1,
+.script-workshop-shell h2,
+.script-workshop-shell h3,
+.script-workshop-shell h4,
+.script-workshop-shell p,
+.script-workshop-shell span,
+.script-workshop-shell label,
+.script-workshop-shell strong,
+.script-workshop-shell time,
+.script-workshop-shell li,
+.script-workshop-shell a,
+.script-workshop-panel,
+.script-workshop-panel h2,
+.script-workshop-panel h3,
+.script-workshop-panel h4,
+.script-workshop-panel p,
+.script-workshop-panel span,
+.script-workshop-panel label,
+.script-workshop-panel strong,
+.script-workshop-panel time,
+.script-workshop-panel li,
+.script-workshop-panel a {
+  color: var(--text-strong);
+}
+
+.script-workshop-subtitle,
+.script-panel-meta,
+.script-workshop-section-note,
+.script-workshop-empty-text {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.script-card {
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  background: var(--surface);
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.script-card.is-approved {
+  border-color: var(--success-text);
+  background: var(--surface-subtle);
+}
+
+.script-card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.script-round-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  color: var(--text-strong);
+}
+
+.script-doc-button {
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 0.32rem 0.65rem;
+  font-size: 0.77rem;
+  font-weight: 700;
+  background: var(--surface-subtle);
+  color: var(--text-strong);
+}
+
+.script-card-title {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.25;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.script-brand-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.24rem 0.68rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--line-shell-soft);
+}
+
+.script-confidence-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.script-confidence-column {
+  border: 1px solid var(--line-shell);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 0.5rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+}
+
+.script-reviewer-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.script-confidence-badge {
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.script-workshop-section-title h2,
+.script-workshop-header p,
+.script-add-modal h3,
+.script-reviewer-header strong,
+.script-round-history-card strong,
+.script-round-reviewer-name {
+  color: var(--text-strong);
+}
+
+.script-reviewer-header span,
+.script-round-history-card time,
+.script-review-latest time,
+.script-thread-list time {
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+.script-round-history-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.script-round-history-card {
+  border: 1px solid var(--line-shell);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.script-round-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.script-round-review-cell {
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.script-round-review-cell p {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.script-reviewer-card,
+.script-thread-list li,
+.script-add-modal {
+  background: var(--surface);
+}
+
+.script-workshop-section-note {
+  font-size: 0.84rem;
+}

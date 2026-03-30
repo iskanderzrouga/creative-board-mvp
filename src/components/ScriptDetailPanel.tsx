@@ -5,6 +5,7 @@ import {
   getLatestScriptReview,
   type ScriptConfidenceLevel,
   type ScriptReviewerId,
+  type ScriptReviewEntry,
   type ScriptWorkshopItem,
 } from '../board'
 
@@ -30,6 +31,20 @@ const CONFIDENCE_OPTIONS: Array<{ value: ScriptConfidenceLevel; label: string }>
 function formatTimestamp(timestamp: string) {
   const date = new Date(timestamp)
   return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
+}
+
+function getCurrentRound(script: ScriptWorkshopItem) {
+  const counts = SCRIPT_REVIEWERS.map((reviewer) => script.reviews[reviewer.id]?.length ?? 0)
+  const completedRounds = Math.min(...counts)
+  const hasInProgressRound = counts.some((count) => count > completedRounds)
+  return Math.max(1, completedRounds + (hasInProgressRound ? 1 : 0))
+}
+
+function getReviewForRound(
+  history: ScriptReviewEntry[],
+  round: number,
+): ScriptReviewEntry | null {
+  return history[round - 1] ?? null
 }
 
 export function ScriptDetailPanel({
@@ -64,6 +79,15 @@ export function ScriptDetailPanel({
   const reviewValidationMessage = reviewAttempted && !reviewComment.trim()
     ? 'Comment is required with your confidence score'
     : null
+  const currentRound = useMemo(() => getCurrentRound(script), [script])
+  const maxRoundCount = useMemo(
+    () => Math.max(1, ...SCRIPT_REVIEWERS.map((reviewer) => script.reviews[reviewer.id]?.length ?? 0)),
+    [script],
+  )
+  const rounds = useMemo(
+    () => Array.from({ length: maxRoundCount }, (_, index) => index + 1),
+    [maxRoundCount],
+  )
 
   function handleReviewSubmit() {
     setReviewAttempted(true)
@@ -91,7 +115,7 @@ export function ScriptDetailPanel({
           <div className="slide-panel-header-main">
             <div className="panel-card-id">Script</div>
             <h2 id={titleId} className="panel-title">{script.title}</h2>
-            <p className="muted-copy">Brand: {script.brand}</p>
+            <p className="script-panel-meta">Brand: {script.brand} · Current round: Round {currentRound}</p>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Close script details">
             ×
@@ -148,20 +172,16 @@ export function ScriptDetailPanel({
           </section>
 
           <section className="panel-section">
-            <h3 className="panel-section-title">Reviews</h3>
+            <h3 className="panel-section-title">Latest Confidence by Reviewer</h3>
             <div className="script-reviewers-stack">
               {SCRIPT_REVIEWERS.map((reviewer) => {
-                const history = script.reviews[reviewer.id] ?? []
                 const latest = getLatestScriptReview(script, reviewer.id)
-                const olderEntries = history.slice(0, -1)
-
                 return (
                   <article key={reviewer.id} className="script-reviewer-card">
                     <header className="script-reviewer-header">
                       <strong>{reviewer.name}</strong>
-                      <span className="muted-copy">{reviewer.email}</span>
+                      <span>{reviewer.email}</span>
                     </header>
-
                     {latest ? (
                       <div className="script-review-latest">
                         <span className={`script-confidence-badge is-${latest.confidence}`}>{latest.confidence}</span>
@@ -169,31 +189,55 @@ export function ScriptDetailPanel({
                         <time dateTime={latest.timestamp}>{formatTimestamp(latest.timestamp)}</time>
                       </div>
                     ) : (
-                      <p className="muted-copy">No confidence score submitted yet.</p>
+                      <p className="script-workshop-empty-text">No confidence score submitted yet.</p>
                     )}
-
-                    {olderEntries.length > 0 ? (
-                      <ol className="script-review-history">
-                        {olderEntries.map((entry) => (
-                          <li key={entry.id}>
-                            <span className={`script-confidence-badge is-${entry.confidence}`}>{entry.confidence}</span>
-                            <p>{entry.comment}</p>
-                            <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : null}
                   </article>
                 )
               })}
             </div>
+          </section>
 
+          <section className="panel-section">
+            <h3 className="panel-section-title">Score History by Round</h3>
+            <div className="script-round-history-stack">
+              {rounds.map((round) => (
+                <article key={round} className="script-round-history-card">
+                  <header>
+                    <strong>Round {round}</strong>
+                  </header>
+                  <div className="script-round-history-grid">
+                    {SCRIPT_REVIEWERS.map((reviewer) => {
+                      const history = script.reviews[reviewer.id] ?? []
+                      const review = getReviewForRound(history, round)
+
+                      return (
+                        <div key={reviewer.id} className="script-round-review-cell">
+                          <p className="script-round-reviewer-name">{reviewer.name}</p>
+                          {review ? (
+                            <>
+                              <span className={`script-confidence-badge is-${review.confidence}`}>{review.confidence}</span>
+                              <p>{review.comment}</p>
+                              <time dateTime={review.timestamp}>{formatTimestamp(review.timestamp)}</time>
+                            </>
+                          ) : (
+                            <span className="script-confidence-badge is-pending">Pending</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel-section">
             <div className="script-review-submit">
               <h4>Submit Review</h4>
               {selectedReviewer ? (
-                <p className="muted-copy">Submitting as {selectedReviewer.name}.</p>
+                <p className="script-panel-meta">Submitting as {selectedReviewer.name}.</p>
               ) : (
-                <p className="muted-copy">Only Naomi, Iskander, or Nicolas can submit confidence scores.</p>
+                <p className="script-panel-meta">Only Naomi, Iskander, or Nicolas can submit confidence scores.</p>
               )}
               <label className="panel-field">
                 <span>Confidence</span>
@@ -246,7 +290,7 @@ export function ScriptDetailPanel({
                   <p>{comment.text}</p>
                 </li>
               ))}
-              {script.comments.length === 0 ? <li className="muted-copy">No comments yet.</li> : null}
+              {script.comments.length === 0 ? <li className="script-workshop-empty-text">No comments yet.</li> : null}
             </ul>
             <label className="panel-field">
               <span>Add Comment</span>
