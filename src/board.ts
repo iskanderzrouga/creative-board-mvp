@@ -162,6 +162,18 @@ export interface BlockedState {
   at: string
 }
 
+export interface EditorTimerData {
+  startedAt: string
+  stoppedAt: string | null
+  elapsedMs: number | null
+}
+
+export interface ColumnMoveEntry {
+  from: StageId
+  to: StageId
+  timestamp: string
+}
+
 export interface Card {
   id: string
   title: string
@@ -184,6 +196,8 @@ export interface Card {
   stage: StageId
   stageEnteredAt: string
   stageHistory: StageHistoryEntry[]
+  editorTimer: EditorTimerData | null
+  columnMovementHistory: ColumnMoveEntry[]
   brief: string
   keyMessage: string
   visualDirection: string
@@ -602,6 +616,37 @@ export interface EditorRevisionStat {
   avgRevisionsPerCard: number
 }
 
+export interface EditorCycleTimeRow {
+  editorName: string
+  avgCycleTimeHours: number | null
+  completedCards: number
+}
+
+export interface EditorThroughputRow {
+  editorName: string
+  cardsCompleted: number
+}
+
+export interface StageBottleneckRow {
+  stage: 'Briefed' | 'In Production' | 'Review' | 'Ready'
+  avgDurationHours: number | null
+  sampleSize: number
+}
+
+export interface EditorComparisonRow {
+  editorName: string
+  avgCycleTimeHours: number | null
+  throughput: number
+  activeCards: number
+}
+
+export interface EditorPerformanceData {
+  cycleTimeByEditor: EditorCycleTimeRow[]
+  throughputByEditor: EditorThroughputRow[]
+  stageBottlenecks: StageBottleneckRow[]
+  editorComparison: EditorComparisonRow[]
+}
+
 export interface DashboardData {
   overviewCards: PortfolioOverviewCard[]
   funnel: FunnelStageBucket[]
@@ -611,6 +656,7 @@ export interface DashboardData {
   brandHealth: BrandHealthRow[]
   revisionReasons: RevisionReasonStat[]
   editorRevisionRates: EditorRevisionStat[]
+  editorPerformance: EditorPerformanceData
 }
 
 export interface WorkloadBreakdownItem {
@@ -1818,6 +1864,8 @@ function inflateSeedCard(
     stage: seed.stage,
     stageEnteredAt,
     stageHistory,
+    editorTimer: null,
+    columnMovementHistory: [],
     brief: seed.brief ?? '',
     keyMessage: seed.keyMessage ?? '',
     visualDirection: seed.visualDirection ?? '',
@@ -2324,8 +2372,48 @@ function normalizePortfolio(
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
         activityLog,
-        stageEnteredAt:
+    stageEnteredAt:
           rawCard.stageHistory[rawCard.stageHistory.length - 1]?.enteredAt ?? rawCard.stageEnteredAt,
+        editorTimer:
+          raw.editorTimer &&
+          typeof raw.editorTimer.startedAt === 'string' &&
+          (raw.editorTimer.stoppedAt === null || typeof raw.editorTimer.stoppedAt === 'string') &&
+          (raw.editorTimer.elapsedMs === null || typeof raw.editorTimer.elapsedMs === 'number')
+            ? {
+                startedAt: raw.editorTimer.startedAt,
+                stoppedAt: raw.editorTimer.stoppedAt,
+                elapsedMs: raw.editorTimer.elapsedMs,
+              }
+            : null,
+        columnMovementHistory: Array.isArray(raw.columnMovementHistory)
+          ? raw.columnMovementHistory
+              .map((entry: unknown) => {
+                if (!entry || typeof entry !== 'object') {
+                  return null
+                }
+                const candidate = entry as Partial<ColumnMoveEntry>
+                const isValidStage = (value: unknown): value is StageId =>
+                  value === 'Backlog' ||
+                  value === 'Briefed' ||
+                  value === 'In Production' ||
+                  value === 'Review' ||
+                  value === 'Ready' ||
+                  value === 'Live'
+                if (
+                  !isValidStage(candidate.from) ||
+                  !isValidStage(candidate.to) ||
+                  typeof candidate.timestamp !== 'string'
+                ) {
+                  return null
+                }
+                return {
+                  from: candidate.from,
+                  to: candidate.to,
+                  timestamp: candidate.timestamp,
+                } satisfies ColumnMoveEntry
+              })
+              .filter((entry: ColumnMoveEntry | null): entry is ColumnMoveEntry => entry !== null)
+          : [],
         legacyNaming: typeof raw.legacyNaming === 'boolean' ? raw.legacyNaming : false,
       }, { adNamingTemplates: settings.adNamingTemplates })
     }),
@@ -3250,6 +3338,8 @@ export function createCardFromQuickInput(
         durationDays: null,
       },
     ],
+    editorTimer: null,
+    columnMovementHistory: [],
     brief: '',
     keyMessage: '',
     visualDirection: '',
@@ -4323,6 +4413,55 @@ function closeCurrentStageEntry(entries: StageHistoryEntry[], movedAt: string) {
   return nextEntries
 }
 
+function stopEditorTimerIfNeeded(card: Card, stoppedAt: string): EditorTimerData | null {
+  if (!card.editorTimer || card.editorTimer.stoppedAt !== null) {
+    return card.editorTimer
+  }
+
+  const startedAtMs = new Date(card.editorTimer.startedAt).getTime()
+  const stoppedAtMs = new Date(stoppedAt).getTime()
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(stoppedAtMs) || stoppedAtMs < startedAtMs) {
+    return {
+      ...card.editorTimer,
+      stoppedAt,
+      elapsedMs: null,
+    }
+  }
+
+  return {
+    ...card.editorTimer,
+    stoppedAt,
+    elapsedMs: stoppedAtMs - startedAtMs,
+  }
+}
+
+export function startEditorTimerForCard(
+  portfolio: Portfolio,
+  cardId: string,
+  startedAt: string,
+): Portfolio {
+  const targetCard = portfolio.cards.find((card) => card.id === cardId)
+  if (!targetCard || targetCard.stage !== 'In Production' || targetCard.editorTimer) {
+    return portfolio
+  }
+
+  return {
+    ...portfolio,
+    cards: portfolio.cards.map((card) =>
+      card.id === cardId
+        ? {
+            ...card,
+            editorTimer: {
+              startedAt,
+              stoppedAt: null,
+              elapsedMs: null,
+            },
+          }
+        : card,
+    ),
+  }
+}
+
 export function moveCardInPortfolio(
   portfolio: Portfolio,
   cardId: string,
@@ -4441,6 +4580,20 @@ export function moveCardInPortfolio(
     priority: nextPriority,
     p1AssignedAt: existingCard.p1AssignedAt,
     p1Deadline: existingCard.p1Deadline,
+    editorTimer:
+      existingCard.stage === 'In Production' && destinationStage === 'Review'
+        ? stopEditorTimerIfNeeded(existingCard, movedAt)
+        : existingCard.editorTimer,
+    columnMovementHistory: stageChanged
+      ? [
+          ...existingCard.columnMovementHistory,
+          {
+            from: existingCard.stage,
+            to: destinationStage,
+            timestamp: movedAt,
+          },
+        ]
+      : existingCard.columnMovementHistory,
   }
 
   if (ownerChanged && nextOwner) {
@@ -5026,6 +5179,152 @@ function buildRevisionPatterns(portfolios: Portfolio[], thirtyDaysAgo: number) {
   }
 }
 
+function getDurationWithinRangeMs(
+  intervalStartMs: number,
+  intervalEndMs: number,
+  rangeStartMs: number,
+  rangeEndMs: number,
+) {
+  const start = Math.max(intervalStartMs, rangeStartMs)
+  const end = Math.min(intervalEndMs, rangeEndMs)
+  return end > start ? end - start : 0
+}
+
+export function buildEditorPerformanceData(
+  portfolios: Portfolio[],
+  rangeStartMs: number,
+  rangeEndMs: number,
+  nowMs = Date.now(),
+): EditorPerformanceData {
+  const cycleAccumulator = new Map<string, number[]>()
+  const throughputAccumulator = new Map<string, Set<string>>()
+  const stageAccumulator = new Map<'Briefed' | 'In Production' | 'Review' | 'Ready', number[]>()
+  const activeAccumulator = new Map<string, number>()
+  const trackedStages: Array<'Briefed' | 'In Production' | 'Review' | 'Ready'> = [
+    'Briefed',
+    'In Production',
+    'Review',
+    'Ready',
+  ]
+
+  trackedStages.forEach((stage) => stageAccumulator.set(stage, []))
+
+  portfolios.forEach((portfolio) => {
+    portfolio.cards.forEach((card) => {
+      if (isArchivedCard(card)) {
+        return
+      }
+
+      const editorName = card.owner
+      if (editorName && (card.stage === 'Briefed' || card.stage === 'In Production' || card.stage === 'Review' || card.stage === 'Ready')) {
+        activeAccumulator.set(editorName, (activeAccumulator.get(editorName) ?? 0) + 1)
+      }
+
+      const timer = card.editorTimer
+      if (editorName && timer && timer.elapsedMs !== null && timer.stoppedAt) {
+        const stoppedAtMs = new Date(timer.stoppedAt).getTime()
+        if (Number.isFinite(stoppedAtMs) && stoppedAtMs >= rangeStartMs && stoppedAtMs <= rangeEndMs) {
+          const values = cycleAccumulator.get(editorName) ?? []
+          values.push(timer.elapsedMs)
+          cycleAccumulator.set(editorName, values)
+          const inProductionValues = stageAccumulator.get('In Production') ?? []
+          inProductionValues.push(timer.elapsedMs)
+          stageAccumulator.set('In Production', inProductionValues)
+        }
+      }
+
+      if (editorName) {
+        const reviewOrBeyondEntry = card.columnMovementHistory.find(
+          (entry) =>
+            (entry.to === 'Review' || entry.to === 'Ready' || entry.to === 'Live') &&
+            (() => {
+              const ts = new Date(entry.timestamp).getTime()
+              return Number.isFinite(ts) && ts >= rangeStartMs && ts <= rangeEndMs
+            })(),
+        )
+        if (reviewOrBeyondEntry) {
+          const values = throughputAccumulator.get(editorName) ?? new Set<string>()
+          values.add(card.id)
+          throughputAccumulator.set(editorName, values)
+        }
+      }
+
+      card.stageHistory.forEach((entry) => {
+        if (entry.stage !== 'Briefed' && entry.stage !== 'Review' && entry.stage !== 'Ready') {
+          return
+        }
+        const startMs = new Date(entry.enteredAt).getTime()
+        const endMs = new Date(entry.exitedAt ?? new Date(nowMs).toISOString()).getTime()
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+          return
+        }
+        const overlapMs = getDurationWithinRangeMs(startMs, endMs, rangeStartMs, rangeEndMs)
+        if (overlapMs <= 0) {
+          return
+        }
+        const values = stageAccumulator.get(entry.stage) ?? []
+        values.push(overlapMs)
+        stageAccumulator.set(entry.stage, values)
+      })
+    })
+  })
+
+  const allEditors = new Set<string>([
+    ...cycleAccumulator.keys(),
+    ...throughputAccumulator.keys(),
+    ...activeAccumulator.keys(),
+  ])
+
+  const cycleTimeByEditor = Array.from(allEditors)
+    .map((editorName) => {
+      const values = cycleAccumulator.get(editorName) ?? []
+      const avgMs =
+        values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+      return {
+        editorName,
+        avgCycleTimeHours: avgMs === null ? null : roundToTenths(avgMs / HOUR_MS),
+        completedCards: values.length,
+      } satisfies EditorCycleTimeRow
+    })
+    .sort((left, right) => left.editorName.localeCompare(right.editorName))
+
+  const throughputByEditor = Array.from(allEditors)
+    .map((editorName) => ({
+      editorName,
+      cardsCompleted: throughputAccumulator.get(editorName)?.size ?? 0,
+    }))
+    .sort((left, right) => right.cardsCompleted - left.cardsCompleted || left.editorName.localeCompare(right.editorName))
+
+  const stageBottlenecks = trackedStages.map((stage) => {
+    const values = stageAccumulator.get(stage) ?? []
+    const avgMs = values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null
+    return {
+      stage,
+      avgDurationHours: avgMs === null ? null : roundToTenths(avgMs / HOUR_MS),
+      sampleSize: values.length,
+    } satisfies StageBottleneckRow
+  })
+
+  const editorComparison = Array.from(allEditors)
+    .map((editorName) => {
+      const cycleRow = cycleTimeByEditor.find((row) => row.editorName === editorName)
+      return {
+        editorName,
+        avgCycleTimeHours: cycleRow?.avgCycleTimeHours ?? null,
+        throughput: throughputAccumulator.get(editorName)?.size ?? 0,
+        activeCards: activeAccumulator.get(editorName) ?? 0,
+      } satisfies EditorComparisonRow
+    })
+    .sort((left, right) => left.editorName.localeCompare(right.editorName))
+
+  return {
+    cycleTimeByEditor,
+    throughputByEditor,
+    stageBottlenecks,
+    editorComparison,
+  }
+}
+
 export function buildDashboardData(
   portfolios: Portfolio[],
   settings: GlobalSettings,
@@ -5043,6 +5342,7 @@ export function buildDashboardData(
     brandHealth: buildBrandHealthSummary(portfolios, settings, nowMs, thirtyDaysAgo),
     revisionReasons: revisionPatterns.revisionReasons,
     editorRevisionRates: revisionPatterns.editorRevisionRates,
+    editorPerformance: buildEditorPerformanceData(portfolios, thirtyDaysAgo, nowMs, nowMs),
   } satisfies DashboardData
 }
 

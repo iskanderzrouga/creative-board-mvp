@@ -101,6 +101,7 @@ import {
   loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
+  startEditorTimerForCard,
   setInProductionCardPriority,
   updateDevCard,
   type ActiveRole,
@@ -2068,6 +2069,30 @@ function App() {
     handleSetProductionPriority(portfolioId, cardId, getNextProductionCardPriority(card.priority))
   }
 
+  function handleStartEditorTimer(portfolioId: string, cardId: string) {
+    if (state.activeRole.mode !== 'contributor' || !viewerContext.editorName) {
+      return
+    }
+
+    const portfolio = state.portfolios.find((item) => item.id === portfolioId)
+    const card = portfolio?.cards.find((item) => item.id === cardId)
+    if (
+      !portfolio ||
+      !card ||
+      card.stage !== 'In Production' ||
+      card.owner !== viewerContext.editorName ||
+      card.editorTimer !== null
+    ) {
+      return
+    }
+
+    const startedAt = new Date().toISOString()
+    updatePortfolio(portfolioId, (currentPortfolio) =>
+      startEditorTimerForCard(currentPortfolio, cardId, startedAt),
+    )
+    showToast(`${card.id} is now in progress`, 'blue')
+  }
+
   function handleSetProductionPriority(
     portfolioId: string,
     cardId: string,
@@ -2476,6 +2501,7 @@ function App() {
             searchRef={searchRef}
             headerUtilityContent={headerUtilityContent}
             activeRoleMode={state.activeRole.mode}
+            activeViewerName={viewerContext.editorName}
             dragCardId={dragCardId}
             dragOverLaneId={dragOverLaneId}
             blockedLaneId={blockedLaneId}
@@ -2503,6 +2529,7 @@ function App() {
             onDragOver={handleBoardDragOver}
             onDragCancel={clearBoardDragState}
             onDragEnd={handleBoardDragEnd}
+            onStartEditorTimer={handleStartEditorTimer}
           />
         ) : null}
 
@@ -2555,6 +2582,7 @@ function App() {
           <AnalyticsPage
             state={scopedState}
             nowMs={nowMs}
+            activeRoleMode={state.activeRole.mode}
             headerUtilityContent={headerUtilityContent}
             onOpenCard={(portfolioId, cardId) => openCard(portfolioId, cardId)}
             onOpenPortfolioBoard={(portfolioId) => {
@@ -2690,6 +2718,23 @@ function App() {
           onAddComment={addCommentToCard}
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}
+          showEditorStartButton={
+            selectedCardData.stage === 'In Production' &&
+            selectedCardData.editorTimer === null
+          }
+          canStartEditorTimer={
+            state.activeRole.mode === 'contributor' &&
+            viewerContext.editorName === selectedCardData.owner &&
+            selectedCardData.stage === 'In Production' &&
+            selectedCardData.editorTimer === null
+          }
+          isEditorTimerInProgress={
+            selectedCardData.stage === 'In Production' &&
+            Boolean(selectedCardData.editorTimer?.startedAt) &&
+            selectedCardData.editorTimer?.stoppedAt === null
+          }
+          canViewPerformanceData={state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'}
+          onStartEditorTimer={() => handleStartEditorTimer(activeSelectedPortfolio.id, selectedCardData.id)}
         />
       ) : null}
 

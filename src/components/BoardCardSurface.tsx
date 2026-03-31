@@ -31,6 +31,10 @@ interface BoardCardSurfaceProps {
   attributes?: DraggableAttributes
   listeners?: DraggableSyntheticListeners
   onCyclePriority?: () => void
+  showEditorStartButton?: boolean
+  showEditorInProgress?: boolean
+  canStartEditorTimer?: boolean
+  onStartEditorTimer?: () => void
 }
 
 function getPriorityBadgeTone(priority: CardPriority) {
@@ -56,6 +60,10 @@ function BoardCardSurfaceComponent({
   attributes,
   listeners,
   onCyclePriority,
+  showEditorStartButton = false,
+  showEditorInProgress = false,
+  canStartEditorTimer = false,
+  onStartEditorTimer,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
@@ -113,6 +121,36 @@ function BoardCardSurfaceComponent({
             P{priorityLabel}
           </span>
         ) : null}
+        {showEditorStartButton ? (
+          <span
+            className={`card-progress-chip as-button ${canStartEditorTimer ? '' : 'is-disabled'}`}
+            role={canStartEditorTimer ? 'button' : undefined}
+            tabIndex={canStartEditorTimer ? 0 : undefined}
+            aria-disabled={!canStartEditorTimer}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              if (canStartEditorTimer) {
+                onStartEditorTimer?.()
+              }
+            }}
+            onKeyDown={(event) => {
+              if (!canStartEditorTimer) {
+                return
+              }
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onStartEditorTimer?.()
+              }
+            }}
+            aria-label={`Start in-production tracking for ${card.id}`}
+          >
+            Start
+          </span>
+        ) : null}
+        {showEditorInProgress ? <span className="card-progress-chip">In Progress</span> : null}
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 

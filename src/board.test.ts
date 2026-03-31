@@ -5,6 +5,7 @@ import {
   applyCardUpdates,
   archiveEligibleCards,
   buildDashboardData,
+  buildEditorPerformanceData,
   coerceAppState,
   createCardFromQuickInput,
   createEmptyPortfolio,
@@ -26,6 +27,7 @@ import {
   removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
+  startEditorTimerForCard,
   type ViewerContext,
 } from './board'
 
@@ -288,6 +290,8 @@ describe('board integrity helpers', () => {
   it('clears the revision estimate once the card moves forward again', () => {
     const portfolio = createSeedState().portfolios[0]
     const sourceCard = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
+    const destinationOwner =
+      portfolio.team.find((member) => member.name !== sourceCard?.owner)?.name ?? sourceCard?.owner ?? null
     const reviewPortfolio = {
       ...portfolio,
       cards: portfolio.cards.map((card) =>
@@ -296,6 +300,7 @@ describe('board integrity helpers', () => {
           : {
               ...card,
               stage: 'Review' as const,
+              owner: destinationOwner,
               stageEnteredAt: '2026-03-12T10:00:00Z',
               stageHistory: [
                 ...card.stageHistory,
@@ -316,7 +321,7 @@ describe('board integrity helpers', () => {
       reviewPortfolio,
       sourceCard!.id,
       'In Production',
-      sourceCard!.owner,
+      destinationOwner,
       0,
       '2026-03-12T10:30:00Z',
       'Naomi',
@@ -328,7 +333,7 @@ describe('board integrity helpers', () => {
       movedBack,
       sourceCard!.id,
       'Review',
-      sourceCard!.owner,
+      destinationOwner,
       0,
       '2026-03-12T11:00:00Z',
       'Naomi',
@@ -976,6 +981,112 @@ describe('board integrity helpers', () => {
     expect(
       Object.values(boardStats.byStage).reduce((sum, value) => sum + value, 0),
     ).toBe(boardStats.total)
+  })
+
+  it('records movement history and auto-stops editor timer when moving to review', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const sourceCard = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
+
+    expect(sourceCard).toBeTruthy()
+
+    const startedPortfolio = startEditorTimerForCard(
+      portfolio,
+      sourceCard!.id,
+      '2026-03-15T09:00:00Z',
+    )
+    const movedPortfolio = moveCardInPortfolio(
+      startedPortfolio,
+      sourceCard!.id,
+      'Review',
+      sourceCard!.owner,
+      0,
+      '2026-03-15T11:30:00Z',
+      'Naomi',
+      MANAGER_VIEWER,
+    )
+    const updatedCard = movedPortfolio.cards.find((card) => card.id === sourceCard!.id)
+
+    expect(updatedCard?.columnMovementHistory.at(-1)).toMatchObject({
+      from: 'In Production',
+      to: 'Review',
+    })
+    expect(updatedCard?.editorTimer?.startedAt).toBe('2026-03-15T09:00:00Z')
+    expect(updatedCard?.editorTimer?.stoppedAt).toBe('2026-03-15T11:30:00Z')
+    expect(updatedCard?.editorTimer?.elapsedMs).toBe(2.5 * 60 * 60 * 1000)
+  })
+
+  it('keeps timer data null when start was never used', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const sourceCard = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
+
+    expect(sourceCard).toBeTruthy()
+
+    const movedPortfolio = moveCardInPortfolio(
+      portfolio,
+      sourceCard!.id,
+      'Review',
+      sourceCard!.owner,
+      0,
+      '2026-03-16T10:00:00Z',
+      'Naomi',
+      MANAGER_VIEWER,
+    )
+    const updatedCard = movedPortfolio.cards.find((card) => card.id === sourceCard!.id)
+    expect(updatedCard?.editorTimer).toBeNull()
+  })
+
+  it('builds editor performance metrics from timer and movement history', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const firstInProduction = portfolio.cards.find((card) => card.stage === 'In Production' && card.owner)
+    expect(firstInProduction).toBeTruthy()
+
+    const trackedCard = {
+      ...firstInProduction!,
+      owner: 'Fatima',
+      editorTimer: {
+        startedAt: '2026-03-20T08:00:00Z',
+        stoppedAt: '2026-03-20T10:00:00Z',
+        elapsedMs: 2 * 60 * 60 * 1000,
+      },
+      columnMovementHistory: [
+        { from: 'Briefed' as const, to: 'In Production' as const, timestamp: '2026-03-19T09:00:00Z' },
+        { from: 'In Production' as const, to: 'Review' as const, timestamp: '2026-03-20T10:00:00Z' },
+        { from: 'Review' as const, to: 'Ready' as const, timestamp: '2026-03-20T13:00:00Z' },
+      ],
+      stageHistory: [
+        { stage: 'Backlog' as const, enteredAt: '2026-03-18T08:00:00Z', exitedAt: '2026-03-18T10:00:00Z', durationDays: 0.1 },
+        { stage: 'Briefed' as const, enteredAt: '2026-03-18T10:00:00Z', exitedAt: '2026-03-19T09:00:00Z', durationDays: 1 },
+        { stage: 'In Production' as const, enteredAt: '2026-03-19T09:00:00Z', exitedAt: '2026-03-20T10:00:00Z', durationDays: 1 },
+        { stage: 'Review' as const, enteredAt: '2026-03-20T10:00:00Z', exitedAt: '2026-03-20T13:00:00Z', durationDays: 0.1 },
+        { stage: 'Ready' as const, enteredAt: '2026-03-20T13:00:00Z', exitedAt: null, durationDays: null },
+      ],
+      stage: 'Ready' as const,
+    }
+    const portfolioWithTracking = {
+      ...portfolio,
+      cards: portfolio.cards.map((card) => (card.id === trackedCard.id ? trackedCard : card)),
+    }
+
+    const metrics = buildEditorPerformanceData(
+      [portfolioWithTracking],
+      new Date('2026-03-19T00:00:00Z').getTime(),
+      new Date('2026-03-21T00:00:00Z').getTime(),
+      new Date('2026-03-21T00:00:00Z').getTime(),
+    )
+
+    const fatimaCycle = metrics.cycleTimeByEditor.find((row) => row.editorName === 'Fatima')
+    const fatimaThroughput = metrics.throughputByEditor.find((row) => row.editorName === 'Fatima')
+    const inProductionStage = metrics.stageBottlenecks.find((row) => row.stage === 'In Production')
+    const fatimaComparison = metrics.editorComparison.find((row) => row.editorName === 'Fatima')
+
+    expect(fatimaCycle?.avgCycleTimeHours).toBe(2)
+    expect(fatimaThroughput?.cardsCompleted).toBe(1)
+    expect(inProductionStage?.avgDurationHours).toBe(2)
+    expect(fatimaComparison?.throughput).toBe(1)
+    expect(fatimaComparison?.activeCards).toBeGreaterThanOrEqual(1)
   })
 
   it('coerces null, malformed, and already-valid app states safely', () => {
