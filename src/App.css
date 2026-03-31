@@ -6344,6 +6344,11 @@ button {
   color: var(--text-strong);
 }
 
+.card-progress-chip.as-button.is-disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
 .editor-progress-inline {
   display: inline-flex;
   align-items: center;

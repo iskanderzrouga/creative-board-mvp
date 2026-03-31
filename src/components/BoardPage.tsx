@@ -457,12 +457,11 @@ export function BoardPage({
                                   activeViewerName !== null &&
                                   activeViewerName === card.owner
                                 const canStartEditorTimer =
-                                  card.stage === 'In Production' &&
-                                  isAssignedEditor &&
-                                  card.editorTimer === null
+                                  card.stage === 'In Production' && isAssignedEditor && card.editorTimer === null
+                                const showEditorStartButton =
+                                  card.stage === 'In Production' && card.editorTimer === null
                                 const isEditorTimerInProgress =
                                   card.stage === 'In Production' &&
-                                  isAssignedEditor &&
                                   Boolean(card.editorTimer?.startedAt) &&
                                   card.editorTimer?.stoppedAt === null
 
@@ -478,8 +477,9 @@ export function BoardPage({
                                     isInvalid={isBlocked}
                                     onOpen={() => onOpenCard(portfolio.id, card.id)}
                                     onCyclePriority={() => onCycleProductionPriority(portfolio.id, card.id)}
-                                    showEditorStartButton={canStartEditorTimer}
+                                    showEditorStartButton={showEditorStartButton}
                                     showEditorInProgress={isEditorTimerInProgress}
+                                    canStartEditorTimer={canStartEditorTimer}
                                     onStartEditorTimer={() => onStartEditorTimer(portfolio.id, card.id)}
                                   />
                                 )

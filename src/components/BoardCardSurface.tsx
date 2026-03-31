@@ -33,6 +33,7 @@ interface BoardCardSurfaceProps {
   onCyclePriority?: () => void
   showEditorStartButton?: boolean
   showEditorInProgress?: boolean
+  canStartEditorTimer?: boolean
   onStartEditorTimer?: () => void
 }
 
@@ -61,6 +62,7 @@ function BoardCardSurfaceComponent({
   onCyclePriority,
   showEditorStartButton = false,
   showEditorInProgress = false,
+  canStartEditorTimer = false,
   onStartEditorTimer,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
@@ -121,16 +123,22 @@ function BoardCardSurfaceComponent({
         ) : null}
         {showEditorStartButton ? (
           <span
-            className="card-progress-chip as-button"
-            role="button"
-            tabIndex={0}
+            className={`card-progress-chip as-button ${canStartEditorTimer ? '' : 'is-disabled'}`}
+            role={canStartEditorTimer ? 'button' : undefined}
+            tabIndex={canStartEditorTimer ? 0 : undefined}
+            aria-disabled={!canStartEditorTimer}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation()
               event.preventDefault()
-              onStartEditorTimer?.()
+              if (canStartEditorTimer) {
+                onStartEditorTimer?.()
+              }
             }}
             onKeyDown={(event) => {
+              if (!canStartEditorTimer) {
+                return
+              }
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
                 event.stopPropagation()

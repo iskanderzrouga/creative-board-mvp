@@ -2718,6 +2718,10 @@ function App() {
           onAddComment={addCommentToCard}
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}
+          showEditorStartButton={
+            selectedCardData.stage === 'In Production' &&
+            selectedCardData.editorTimer === null
+          }
           canStartEditorTimer={
             state.activeRole.mode === 'contributor' &&
             viewerContext.editorName === selectedCardData.owner &&
@@ -2725,8 +2729,6 @@ function App() {
             selectedCardData.editorTimer === null
           }
           isEditorTimerInProgress={
-            state.activeRole.mode === 'contributor' &&
-            viewerContext.editorName === selectedCardData.owner &&
             selectedCardData.stage === 'In Production' &&
             Boolean(selectedCardData.editorTimer?.startedAt) &&
             selectedCardData.editorTimer?.stoppedAt === null

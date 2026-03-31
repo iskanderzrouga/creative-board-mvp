@@ -61,6 +61,7 @@ interface CardDetailPanelProps {
   onAddComment: (text: string, imageDataUrl?: string) => void
   onCreateDriveFolder: () => void
   onRequestDelete: () => void
+  showEditorStartButton: boolean
   canStartEditorTimer: boolean
   isEditorTimerInProgress: boolean
   canViewPerformanceData: boolean
@@ -107,6 +108,7 @@ export function CardDetailPanel({
   onAddComment,
   onCreateDriveFolder,
   onRequestDelete,
+  showEditorStartButton,
   canStartEditorTimer,
   isEditorTimerInProgress,
   canViewPerformanceData,
@@ -574,10 +576,15 @@ export function CardDetailPanel({
                   )
                 })}
               </div>
-              {card.stage === 'In Production' && (canStartEditorTimer || isEditorTimerInProgress) ? (
+              {card.stage === 'In Production' && (showEditorStartButton || isEditorTimerInProgress) ? (
                 <div className="editor-progress-inline">
-                  {canStartEditorTimer ? (
-                    <button type="button" className="ghost-button" onClick={onStartEditorTimer}>
+                  {showEditorStartButton ? (
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={canStartEditorTimer ? onStartEditorTimer : undefined}
+                      disabled={!canStartEditorTimer}
+                    >
                       Start
                     </button>
                   ) : null}
