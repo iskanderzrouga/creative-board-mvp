@@ -1,9 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
+  buildEditorPerformanceData,
   buildDashboardData,
   formatDateShort,
   formatHours,
   type AppState,
+  type RoleMode,
   type StageId,
 } from '../board'
 import { PageHeader } from './PageHeader'
@@ -12,6 +14,7 @@ import { BlockedIcon } from './icons/AppIcons'
 interface AnalyticsPageProps {
   state: AppState
   nowMs: number
+  activeRoleMode: RoleMode
   headerUtilityContent?: ReactNode
   onOpenCard: (portfolioId: string, cardId: string) => void
   onOpenPortfolioBoard: (portfolioId: string) => void
@@ -67,6 +70,7 @@ function BrandLegend({ items }: { items: Array<{ name: string; color: string }> 
 export function AnalyticsPage({
   state,
   nowMs,
+  activeRoleMode,
   headerUtilityContent,
   onOpenCard,
   onOpenPortfolioBoard,
@@ -79,6 +83,20 @@ export function AnalyticsPage({
   const [expandedStage, setExpandedStage] = useState<StageId | null>(null)
   const maxThroughput = Math.max(...dashboard.throughput.map((week) => week.total), 0)
   const brandLegendItems = useMemo(() => getBrandLegendItems(state), [state])
+  const [rangeStart, setRangeStart] = useState(() => {
+    const start = new Date(nowMs - 30 * 24 * 60 * 60 * 1000)
+    return start.toISOString().slice(0, 10)
+  })
+  const [rangeEnd, setRangeEnd] = useState(() => new Date(nowMs).toISOString().slice(0, 10))
+  const canViewEditorPerformance = activeRoleMode === 'owner' || activeRoleMode === 'manager'
+  const editorPerformance = useMemo(() => {
+    const startMs = new Date(`${rangeStart}T00:00:00Z`).getTime()
+    const endMs = new Date(`${rangeEnd}T23:59:59.999Z`).getTime()
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) {
+      return null
+    }
+    return buildEditorPerformanceData(state.portfolios, startMs, endMs, nowMs)
+  }, [nowMs, rangeEnd, rangeStart, state.portfolios])
 
   return (
     <div className="page-shell analytics-page">
@@ -373,6 +391,80 @@ export function AnalyticsPage({
           </div>
         )}
       </section>
+
+      {canViewEditorPerformance ? (
+        <section>
+          <h2 className="dashboard-section-title">Editor Performance</h2>
+          <div className="editor-performance-range">
+            <label>
+              <span>From</span>
+              <input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
+            </label>
+            <label>
+              <span>To</span>
+              <input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} />
+            </label>
+          </div>
+          {!editorPerformance ? (
+            <div className="dashboard-placeholder">Select a valid date range.</div>
+          ) : (
+            <div className="editor-performance-grid">
+              <div className="revision-card">
+                <strong>Cycle Time per Editor</strong>
+                <div className="revision-list">
+                  {editorPerformance.cycleTimeByEditor.length === 0 ? (
+                    <span className="muted-copy">No timer-based cycle data in range.</span>
+                  ) : (
+                    editorPerformance.cycleTimeByEditor.map((row) => (
+                      <span key={row.editorName}>
+                        {row.editorName} — {row.avgCycleTimeHours !== null ? `${row.avgCycleTimeHours}h avg` : '—'} ({row.completedCards} cards)
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="revision-card">
+                <strong>Throughput per Editor</strong>
+                <div className="revision-list">
+                  {editorPerformance.throughputByEditor.length === 0 ? (
+                    <span className="muted-copy">No cards moved to Review+ in range.</span>
+                  ) : (
+                    editorPerformance.throughputByEditor.map((row) => (
+                      <span key={row.editorName}>
+                        {row.editorName} — {row.cardsCompleted} cards
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="revision-card">
+                <strong>Stage Bottleneck View</strong>
+                <div className="revision-list">
+                  {editorPerformance.stageBottlenecks.map((row) => (
+                    <span key={row.stage}>
+                      {row.stage} — {row.avgDurationHours !== null ? `${row.avgDurationHours}h avg` : '—'} ({row.sampleSize} samples)
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="revision-card">
+                <strong>Editor Comparison</strong>
+                <div className="revision-list">
+                  {editorPerformance.editorComparison.length === 0 ? (
+                    <span className="muted-copy">No editor performance data in range.</span>
+                  ) : (
+                    editorPerformance.editorComparison.map((row) => (
+                      <span key={row.editorName}>
+                        {row.editorName} — Cycle: {row.avgCycleTimeHours !== null ? `${row.avgCycleTimeHours}h` : '—'} · Throughput: {row.throughput} · Active: {row.activeCards}
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   )
 }

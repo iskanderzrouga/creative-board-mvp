@@ -61,6 +61,10 @@ interface CardDetailPanelProps {
   onAddComment: (text: string, imageDataUrl?: string) => void
   onCreateDriveFolder: () => void
   onRequestDelete: () => void
+  canStartEditorTimer: boolean
+  isEditorTimerInProgress: boolean
+  canViewPerformanceData: boolean
+  onStartEditorTimer: () => void
 }
 
 const COMMENT_PREVIEW_COUNT = 10
@@ -103,6 +107,10 @@ export function CardDetailPanel({
   onAddComment,
   onCreateDriveFolder,
   onRequestDelete,
+  canStartEditorTimer,
+  isEditorTimerInProgress,
+  canViewPerformanceData,
+  onStartEditorTimer,
 }: CardDetailPanelProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLElement | null>(null)
@@ -566,6 +574,18 @@ export function CardDetailPanel({
                   )
                 })}
               </div>
+              {card.stage === 'In Production' && (canStartEditorTimer || isEditorTimerInProgress) ? (
+                <div className="editor-progress-inline">
+                  {canStartEditorTimer ? (
+                    <button type="button" className="ghost-button" onClick={onStartEditorTimer}>
+                      Start
+                    </button>
+                  ) : null}
+                  {isEditorTimerInProgress ? (
+                    <span className="card-progress-chip">In Progress</span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {creativeTask ? (
@@ -1265,8 +1285,48 @@ export function CardDetailPanel({
                       <strong>{card.actualHoursLogged > 0 ? formatHours(card.actualHoursLogged) : '—'}</strong>
                     )}
                   </label>
+                  {canViewPerformanceData ? (
+                    <>
+                      <label>
+                        <span>Production Started</span>
+                        <strong>
+                          {card.editorTimer?.startedAt ? formatDateTime(card.editorTimer.startedAt) : '—'}
+                        </strong>
+                      </label>
+                      <label>
+                        <span>Production Stopped</span>
+                        <strong>
+                          {card.editorTimer?.stoppedAt ? formatDateTime(card.editorTimer.stoppedAt) : '—'}
+                        </strong>
+                      </label>
+                      <label>
+                        <span>Production Elapsed</span>
+                        <strong>
+                          {card.editorTimer?.elapsedMs !== null && card.editorTimer?.elapsedMs !== undefined
+                            ? formatDurationShort(card.editorTimer.elapsedMs)
+                            : '—'}
+                        </strong>
+                      </label>
+                    </>
+                  ) : null}
                 </div>
               </div>
+              {canViewPerformanceData ? (
+                <div className="metadata-group">
+                  <h4 className="metadata-group-title">Column Movements</h4>
+                  {card.columnMovementHistory.length === 0 ? (
+                    <p className="muted-copy">No column movements recorded yet.</p>
+                  ) : (
+                    <div className="tracking-list">
+                      {card.columnMovementHistory.map((entry) => (
+                        <span key={`${entry.from}-${entry.to}-${entry.timestamp}`}>
+                          {entry.from} → {entry.to} · {formatDateTime(entry.timestamp)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </section>

@@ -55,6 +55,7 @@ interface BoardPageProps {
   searchRef: RefObject<HTMLInputElement | null>
   headerUtilityContent?: ReactNode
   activeRoleMode: 'owner' | 'manager' | 'contributor' | 'viewer'
+  activeViewerName: string | null
   dragCardId: string | null
   dragOverLaneId: string | null
   blockedLaneId: string | null
@@ -72,6 +73,7 @@ interface BoardPageProps {
   onDragOver: (event: DragOverEvent) => void
   onDragCancel: () => void
   onDragEnd: (event: DragEndEvent) => void
+  onStartEditorTimer: (portfolioId: string, cardId: string) => void
 }
 
 export function BoardPage({
@@ -91,6 +93,7 @@ export function BoardPage({
   searchRef,
   headerUtilityContent,
   activeRoleMode,
+  activeViewerName,
   dragCardId,
   dragOverLaneId,
   blockedLaneId,
@@ -108,6 +111,7 @@ export function BoardPage({
   onDragOver,
   onDragCancel,
   onDragEnd,
+  onStartEditorTimer,
 }: BoardPageProps) {
   const allBrandsSelected = boardFilters.brandNames.length === portfolio.brands.length
   const hasVisibleCards = columns.some((column) => column.count > 0)
@@ -447,20 +451,39 @@ export function BoardPage({
                               items={lane.cards.map((card) => card.id)}
                               strategy={verticalListSortingStrategy}
                             >
-                              {lane.cards.map((card) => (
-                                <SortableBoardCard
-                                  key={card.id}
-                                  card={card}
-                                  portfolio={portfolio}
-                                  settings={settings}
-                                  nowMs={nowMs}
-                                  canDrag={canDragCard(card)}
-                                  cursorMode={canDragCard(card) ? 'drag' : 'pointer'}
-                                  isInvalid={isBlocked}
-                                  onOpen={() => onOpenCard(portfolio.id, card.id)}
-                                  onCyclePriority={() => onCycleProductionPriority(portfolio.id, card.id)}
-                                />
-                              ))}
+                              {lane.cards.map((card) => {
+                                const isAssignedEditor =
+                                  activeRoleMode === 'contributor' &&
+                                  activeViewerName !== null &&
+                                  activeViewerName === card.owner
+                                const canStartEditorTimer =
+                                  card.stage === 'In Production' &&
+                                  isAssignedEditor &&
+                                  card.editorTimer === null
+                                const isEditorTimerInProgress =
+                                  card.stage === 'In Production' &&
+                                  isAssignedEditor &&
+                                  Boolean(card.editorTimer?.startedAt) &&
+                                  card.editorTimer?.stoppedAt === null
+
+                                return (
+                                  <SortableBoardCard
+                                    key={card.id}
+                                    card={card}
+                                    portfolio={portfolio}
+                                    settings={settings}
+                                    nowMs={nowMs}
+                                    canDrag={canDragCard(card)}
+                                    cursorMode={canDragCard(card) ? 'drag' : 'pointer'}
+                                    isInvalid={isBlocked}
+                                    onOpen={() => onOpenCard(portfolio.id, card.id)}
+                                    onCyclePriority={() => onCycleProductionPriority(portfolio.id, card.id)}
+                                    showEditorStartButton={canStartEditorTimer}
+                                    showEditorInProgress={isEditorTimerInProgress}
+                                    onStartEditorTimer={() => onStartEditorTimer(portfolio.id, card.id)}
+                                  />
+                                )
+                              })}
                             </SortableContext>
                           </LaneDropZone>
                         </div>

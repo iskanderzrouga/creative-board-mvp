@@ -14,6 +14,9 @@ interface SortableBoardCardProps {
   isInvalid: boolean
   onOpen: () => void
   onCyclePriority?: () => void
+  showEditorStartButton?: boolean
+  showEditorInProgress?: boolean
+  onStartEditorTimer?: () => void
 }
 
 function SortableBoardCardComponent({
@@ -26,6 +29,9 @@ function SortableBoardCardComponent({
   isInvalid,
   onOpen,
   onCyclePriority,
+  showEditorStartButton,
+  showEditorInProgress,
+  onStartEditorTimer,
 }: SortableBoardCardProps) {
   const {
     attributes,
@@ -65,6 +71,9 @@ function SortableBoardCardComponent({
             }
           }}
           onCyclePriority={onCyclePriority}
+          showEditorStartButton={showEditorStartButton}
+          showEditorInProgress={showEditorInProgress}
+          onStartEditorTimer={onStartEditorTimer}
           cursorMode={cursorMode}
           isDragging={isDragging}
           isInvalid={isInvalid && isDragging}

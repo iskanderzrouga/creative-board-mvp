@@ -31,6 +31,9 @@ interface BoardCardSurfaceProps {
   attributes?: DraggableAttributes
   listeners?: DraggableSyntheticListeners
   onCyclePriority?: () => void
+  showEditorStartButton?: boolean
+  showEditorInProgress?: boolean
+  onStartEditorTimer?: () => void
 }
 
 function getPriorityBadgeTone(priority: CardPriority) {
@@ -56,6 +59,9 @@ function BoardCardSurfaceComponent({
   attributes,
   listeners,
   onCyclePriority,
+  showEditorStartButton = false,
+  showEditorInProgress = false,
+  onStartEditorTimer,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
@@ -113,6 +119,30 @@ function BoardCardSurfaceComponent({
             P{priorityLabel}
           </span>
         ) : null}
+        {showEditorStartButton ? (
+          <span
+            className="card-progress-chip as-button"
+            role="button"
+            tabIndex={0}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              onStartEditorTimer?.()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                event.stopPropagation()
+                onStartEditorTimer?.()
+              }
+            }}
+            aria-label={`Start in-production tracking for ${card.id}`}
+          >
+            Start
+          </span>
+        ) : null}
+        {showEditorInProgress ? <span className="card-progress-chip">In Progress</span> : null}
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 
