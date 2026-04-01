@@ -36,12 +36,14 @@ interface LoadRemoteBacklogOptions {
 export class RemoteBacklogConflictError extends Error {
   latestState: BacklogState
   latestUpdatedAt: string
+  latestRemoteSignature: string
 
-  constructor(state: BacklogState, updatedAt: string) {
+  constructor(state: BacklogState, updatedAt: string, remoteSignature: string) {
     super('Remote backlog changed before this save completed.')
     this.name = 'RemoteBacklogConflictError'
     this.latestState = state
     this.latestUpdatedAt = updatedAt
+    this.latestRemoteSignature = remoteSignature
   }
 }
 
@@ -64,7 +66,14 @@ export function mergeRemoteBacklogWithLocal(
 
   for (const card of localState.cards) {
     if (!remoteCardMap.has(card.id)) {
-      remoteCardMap.set(card.id, card)
+      // Only re-add a local card if it's genuinely NEW (created locally
+      // after the last sync).  A card whose numeric ID is ≤ the remote's
+      // lastCardNumber was previously synced and then deleted remotely —
+      // re-adding it would undo the delete.
+      const numericId = Number(card.id.replace('BL', ''))
+      if (Number.isFinite(numericId) && numericId > remoteState.lastCardNumber) {
+        remoteCardMap.set(card.id, card)
+      }
     }
   }
 
@@ -239,6 +248,7 @@ export async function saveRemoteBacklogState(
       throw new RemoteBacklogConflictError(
         mergeRemoteBacklogWithLocal(stored.state, state),
         stored.updatedAt,
+        getRemoteBacklogSignature(stored.state),
       )
     }
     setStoredE2ERemoteBacklog(state, updatedAt)
@@ -273,9 +283,11 @@ export async function saveRemoteBacklogState(
 
   const latest = await getRemoteBacklogRow()
   if (latest) {
+    const latestRemoteState = coerceBacklogState(latest.state)
     throw new RemoteBacklogConflictError(
-      mergeRemoteBacklogWithLocal(coerceBacklogState(latest.state), state),
+      mergeRemoteBacklogWithLocal(latestRemoteState, state),
       latest.updated_at,
+      getRemoteBacklogSignature(latestRemoteState),
     )
   }
 

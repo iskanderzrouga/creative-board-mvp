@@ -628,12 +628,15 @@ export function useAppEffects({
 
             if (error instanceof RemoteBacklogConflictError) {
               setBacklogState(error.latestState)
-              backlogLastRemoteSignatureRef.current = getRemoteBacklogSignature(error.latestState)
+              // Use the REMOTE-ONLY signature (not the merged state's).
+              // This ensures the save effect detects a difference between
+              // local (merged) and remote, and re-saves the merged result.
+              backlogLastRemoteSignatureRef.current = error.latestRemoteSignature
               backlogLastSyncedAtRef.current = error.latestUpdatedAt
               persistBacklogSyncMetadata({
                 lastSyncedAt: error.latestUpdatedAt,
-                pendingRemoteBaseUpdatedAt: null,
-                pendingRemoteSignature: null,
+                pendingRemoteBaseUpdatedAt: error.latestUpdatedAt,
+                pendingRemoteSignature: getRemoteBacklogSignature(error.latestState),
               })
               showToastRef.current(
                 'Another session saved newer backlog changes. The latest version has been loaded.',
