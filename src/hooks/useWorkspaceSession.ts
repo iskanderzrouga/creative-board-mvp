@@ -100,8 +100,30 @@ export function useWorkspaceSession({
 }: UseWorkspaceSessionOptions) {
   const [authStatus, setAuthStatus] = useState<AuthStatus>(authEnabled ? 'checking' : 'disabled')
   const [authSession, setAuthSession] = useState<AuthSessionState | null>(null)
-  const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccessState | null>(null)
-  const [accessStatus, setAccessStatus] = useState<AccessStatus>(authEnabled ? 'checking' : 'disabled')
+  const [workspaceAccess, setWorkspaceAccess] = useState<WorkspaceAccessState | null>(() => {
+    if (!authEnabled) return null
+    try {
+      const raw = sessionStorage.getItem(ACCESS_CACHE_KEY)
+      if (!raw) return null
+      const cached = JSON.parse(raw) as WorkspaceAccessState
+      if (cached.roleMode === 'contributor' && !cached.editorName) return null
+      return cached
+    } catch {
+      return null
+    }
+  })
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>(() => {
+    if (!authEnabled) return 'disabled'
+    try {
+      const raw = sessionStorage.getItem(ACCESS_CACHE_KEY)
+      if (!raw) return 'checking'
+      const cached = JSON.parse(raw) as WorkspaceAccessState
+      if (cached.roleMode === 'contributor' && !cached.editorName) return 'checking'
+      return 'granted'
+    } catch {
+      return 'checking'
+    }
+  })
   const [accessErrorMessage, setAccessErrorMessage] = useState<string | null>(null)
   const [accessCheckTimedOut, setAccessCheckTimedOut] = useState(false)
   const [workspaceAccessEntries, setWorkspaceAccessEntries] = useState<WorkspaceAccessEntry[]>([])
