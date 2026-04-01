@@ -331,7 +331,7 @@ export function BacklogCardDetailPanel({
                     value={drafts.description}
                     onChange={(event) => updateDraftField('description', event.target.value)}
                     onBlur={() => flushDrafts(drafts)}
-                    rows={4}
+                    rows={7}
                   />
                 </label>
                 <label className="backlog-panel-field backlog-panel-field-full">
@@ -342,7 +342,7 @@ export function BacklogCardDetailPanel({
                     value={drafts.hypothesis}
                     onChange={(event) => updateDraftField('hypothesis', event.target.value)}
                     onBlur={() => flushDrafts(drafts)}
-                    rows={4}
+                    rows={7}
                   />
                 </label>
                 <label className="backlog-panel-field">
