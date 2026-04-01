@@ -35,11 +35,40 @@ import {
 } from '../board'
 
 const EMAIL_RATE_LIMIT_COOLDOWN_MS = 60_000
+const ACCESS_CACHE_KEY = 'eb_workspace_access_cache'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
 type AccessStatus = 'disabled' | 'checking' | 'granted' | 'denied' | 'error'
 type WorkspaceDirectoryStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+function getCachedAccess(email: string): WorkspaceAccessState | null {
+  try {
+    const raw = sessionStorage.getItem(ACCESS_CACHE_KEY)
+    if (!raw) return null
+    const cached = JSON.parse(raw) as WorkspaceAccessState
+    if (cached.email === email.trim().toLowerCase()) return cached
+    return null
+  } catch {
+    return null
+  }
+}
+
+function setCachedAccess(access: WorkspaceAccessState) {
+  try {
+    sessionStorage.setItem(ACCESS_CACHE_KEY, JSON.stringify(access))
+  } catch {
+    // Silently ignore storage errors
+  }
+}
+
+function clearCachedAccess() {
+  try {
+    sessionStorage.removeItem(ACCESS_CACHE_KEY)
+  } catch {
+    // Silently ignore storage errors
+  }
+}
 
 interface UseWorkspaceSessionOptions {
   authEnabled: boolean
@@ -114,10 +143,19 @@ export function useWorkspaceSession({
     }
 
     let cancelled = false
+    const isRecoveryFlow = isPasswordRecoveryFlowPending()
 
     void getAuthSession()
       .then((session) => {
         if (cancelled) {
+          return
+        }
+
+        // During password recovery, do NOT use the cached session — it may
+        // belong to a different user (e.g. Nicolas) who was previously signed
+        // in on this browser.  Wait for the PASSWORD_RECOVERY event from
+        // onAuthStateChange which carries the correct recovery session.
+        if (isRecoveryFlow) {
           return
         }
 
@@ -213,7 +251,15 @@ export function useWorkspaceSession({
     let cancelled = false
     let timedOut = false
     const accessCheckTimeoutMs = getWorkspaceAccessCheckTimeoutMs()
-    setAccessStatus('checking')
+
+    // Use cached access to avoid the "Checking access" flash on reload
+    const cached = getCachedAccess(authSession.email)
+    if (cached && !(cached.roleMode === 'contributor' && !cached.editorName)) {
+      setWorkspaceAccess(cached)
+      setAccessStatus('granted')
+    } else {
+      setAccessStatus('checking')
+    }
     setAccessErrorMessage(null)
     setAccessCheckTimedOut(false)
 
@@ -243,6 +289,7 @@ export function useWorkspaceSession({
 
         if (!access) {
           setAccessStatus('denied')
+          clearCachedAccess()
           setAccessErrorMessage(
             'This email is not on the approved access list. Contact your workspace owner.',
           )
@@ -258,6 +305,7 @@ export function useWorkspaceSession({
         }
 
         setAccessStatus('granted')
+        setCachedAccess(access)
       })
       .catch(() => {
         if (cancelled || timedOut) {
@@ -268,6 +316,7 @@ export function useWorkspaceSession({
         setWorkspaceAccess(null)
         setAccessCheckTimedOut(false)
         setAccessStatus('error')
+        clearCachedAccess()
         setAccessErrorMessage(
           'Workspace access could not be verified right now. Retry, try a different email, or contact your workspace owner.',
         )
@@ -706,6 +755,7 @@ export function useWorkspaceSession({
 
   function resetSignedOutUi(nextLoginInfoMessage: string | null = null) {
     clearStoredAuthSession()
+    clearCachedAccess()
     setAuthSession(null)
     setAuthStatus('signed-out')
     setPasswordRecoveryActive(false)
