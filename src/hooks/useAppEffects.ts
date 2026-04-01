@@ -24,11 +24,23 @@ import {
   type StageId,
 } from '../board'
 import {
+  loadBacklogSyncMetadata,
+  persistBacklogState,
+  persistBacklogSyncMetadata,
+  type BacklogState,
+} from '../backlog'
+import {
   getRemoteStateSignature,
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
   saveRemoteAppState,
 } from '../remoteAppState'
+import {
+  getRemoteBacklogSignature,
+  loadOrCreateRemoteBacklogState,
+  RemoteBacklogConflictError,
+  saveRemoteBacklogState,
+} from '../remoteBacklogState'
 
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
 type AccessStatus = 'disabled' | 'checking' | 'granted' | 'denied' | 'error'
@@ -66,6 +78,10 @@ interface PendingDeleteCard {
 interface UseAppEffectsOptions {
   state: AppState
   setState: Dispatch<SetStateAction<AppState>>
+  backlogState: BacklogState
+  setBacklogState: Dispatch<SetStateAction<BacklogState>>
+  backlogRemoteHydratedRef: MutableRefObject<boolean>
+  backlogRemoteSaveTimerRef: MutableRefObject<number | null>
   authEnabled: boolean
   authStatus: AuthStatus
   accessStatus: AccessStatus
@@ -108,6 +124,10 @@ interface UseAppEffectsOptions {
 export function useAppEffects({
   state,
   setState,
+  backlogState,
+  setBacklogState,
+  backlogRemoteHydratedRef,
+  backlogRemoteSaveTimerRef,
   authEnabled,
   authStatus,
   accessStatus,
@@ -151,6 +171,10 @@ export function useAppEffects({
   const lastSyncedAtRef = useRef(lastSyncedAt)
   const lastRemoteStateSignatureRef = useRef<string | null>(null)
   const localPersistTimerRef = useRef<number | null>(null)
+  const backlogLastSyncedAtRef = useRef<string | null>(null)
+  const backlogLastRemoteSignatureRef = useRef<string | null>(null)
+  const backlogLocalPersistTimerRef = useRef<number | null>(null)
+  const backlogStateRef = useRef(backlogState)
 
   useEffect(() => {
     replaceStateRef.current = replaceState
@@ -202,6 +226,27 @@ export function useAppEffects({
         pendingRemoteBaseUpdatedAt: hasPendingRemoteChanges ? lastSyncedAtRef.current : null,
         pendingRemoteSignature: hasPendingRemoteChanges ? currentRemoteStateSignature : null,
       })
+
+      // Flush pending backlog state
+      const currentBacklogSignature = getRemoteBacklogSignature(backlogStateRef.current)
+      const hasPendingBacklogChanges =
+        authEnabled &&
+        authStatus === 'signed-in' &&
+        accessStatus === 'granted' &&
+        backlogRemoteHydratedRef.current &&
+        currentBacklogSignature !== backlogLastRemoteSignatureRef.current
+
+      if (backlogLocalPersistTimerRef.current !== null) {
+        window.clearTimeout(backlogLocalPersistTimerRef.current)
+        backlogLocalPersistTimerRef.current = null
+        persistBacklogState(backlogStateRef.current)
+      }
+
+      persistBacklogSyncMetadata({
+        lastSyncedAt: backlogLastSyncedAtRef.current,
+        pendingRemoteBaseUpdatedAt: hasPendingBacklogChanges ? backlogLastSyncedAtRef.current : null,
+        pendingRemoteSignature: hasPendingBacklogChanges ? currentBacklogSignature : null,
+      })
     }
 
     window.addEventListener('pagehide', flushPendingLocalState)
@@ -211,7 +256,7 @@ export function useAppEffects({
       window.removeEventListener('pagehide', flushPendingLocalState)
       window.removeEventListener('beforeunload', flushPendingLocalState)
     }
-  }, [accessStatus, authEnabled, authStatus, localFallbackStateRef, remoteHydratedRef])
+  }, [accessStatus, authEnabled, authStatus, backlogRemoteHydratedRef, localFallbackStateRef, remoteHydratedRef])
 
   useLayoutEffect(() => {
     localFallbackStateRef.current = state
@@ -465,6 +510,225 @@ export function useAppEffects({
     setSyncStatus,
     syncStatus,
   ])
+
+  // --- Backlog sync effects ---
+
+  useLayoutEffect(() => {
+    backlogStateRef.current = backlogState
+  }, [backlogState])
+
+  useEffect(() => {
+    if (backlogLocalPersistTimerRef.current !== null) {
+      window.clearTimeout(backlogLocalPersistTimerRef.current)
+    }
+
+    backlogLocalPersistTimerRef.current = window.setTimeout(() => {
+      persistBacklogState(backlogState)
+      backlogLocalPersistTimerRef.current = null
+    }, 180)
+
+    return () => {
+      if (backlogLocalPersistTimerRef.current !== null) {
+        window.clearTimeout(backlogLocalPersistTimerRef.current)
+        backlogLocalPersistTimerRef.current = null
+      }
+    }
+  }, [backlogState])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted') {
+      return
+    }
+
+    let cancelled = false
+    const syncMetadata = loadBacklogSyncMetadata()
+
+    void loadOrCreateRemoteBacklogState(backlogStateRef.current, {
+      pendingRemoteBaseUpdatedAt: syncMetadata.pendingRemoteBaseUpdatedAt,
+      pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
+    })
+      .then((result) => {
+        if (cancelled) {
+          return
+        }
+
+        setBacklogState(result.state)
+        backlogRemoteHydratedRef.current = true
+        backlogLastSyncedAtRef.current = result.lastSyncedAt
+        backlogLastRemoteSignatureRef.current = result.remoteSignature
+        persistBacklogSyncMetadata({
+          lastSyncedAt: result.lastSyncedAt,
+          pendingRemoteBaseUpdatedAt: null,
+          pendingRemoteSignature: null,
+        })
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+
+        backlogRemoteHydratedRef.current = true
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    accessStatus,
+    authEnabled,
+    authStatus,
+    backlogRemoteHydratedRef,
+    setBacklogState,
+  ])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !backlogRemoteHydratedRef.current) {
+      return
+    }
+
+    let cancelled = false
+    let retryTimerId: number | null = null
+    const currentSignature = getRemoteBacklogSignature(backlogState)
+
+    if (backlogLastRemoteSignatureRef.current === currentSignature) {
+      return
+    }
+
+    if (backlogRemoteSaveTimerRef.current !== null) {
+      window.clearTimeout(backlogRemoteSaveTimerRef.current)
+    }
+
+    persistBacklogSyncMetadata({
+      lastSyncedAt: backlogLastSyncedAtRef.current,
+      pendingRemoteBaseUpdatedAt: backlogLastSyncedAtRef.current,
+      pendingRemoteSignature: currentSignature,
+    })
+    backlogRemoteSaveTimerRef.current = window.setTimeout(() => {
+      backlogRemoteSaveTimerRef.current = null
+
+      const attemptSave = (attemptIndex: number) => {
+        void saveRemoteBacklogState(backlogState, backlogLastSyncedAtRef.current)
+          .then((updatedAt) => {
+            if (cancelled) {
+              return
+            }
+
+            backlogLastRemoteSignatureRef.current = currentSignature
+            backlogLastSyncedAtRef.current = updatedAt
+            persistBacklogSyncMetadata({
+              lastSyncedAt: updatedAt,
+              pendingRemoteBaseUpdatedAt: null,
+              pendingRemoteSignature: null,
+            })
+          })
+          .catch((error) => {
+            if (cancelled) {
+              return
+            }
+
+            if (error instanceof RemoteBacklogConflictError) {
+              setBacklogState(error.latestState)
+              backlogLastRemoteSignatureRef.current = getRemoteBacklogSignature(error.latestState)
+              backlogLastSyncedAtRef.current = error.latestUpdatedAt
+              persistBacklogSyncMetadata({
+                lastSyncedAt: error.latestUpdatedAt,
+                pendingRemoteBaseUpdatedAt: null,
+                pendingRemoteSignature: null,
+              })
+              showToastRef.current(
+                'Another session saved newer backlog changes. The latest version has been loaded.',
+                'amber',
+              )
+              return
+            }
+
+            const nextDelay = REMOTE_SAVE_RETRY_DELAYS_MS[attemptIndex + 1]
+            if (nextDelay !== undefined) {
+              retryTimerId = window.setTimeout(() => {
+                attemptSave(attemptIndex + 1)
+              }, nextDelay)
+            }
+          })
+      }
+
+      attemptSave(0)
+    }, REMOTE_SAVE_DEBOUNCE_MS)
+
+    return () => {
+      cancelled = true
+      if (backlogRemoteSaveTimerRef.current !== null) {
+        window.clearTimeout(backlogRemoteSaveTimerRef.current)
+        backlogRemoteSaveTimerRef.current = null
+      }
+      if (retryTimerId !== null) {
+        window.clearTimeout(retryTimerId)
+      }
+    }
+  }, [
+    accessStatus,
+    authEnabled,
+    authStatus,
+    backlogRemoteHydratedRef,
+    backlogRemoteSaveTimerRef,
+    backlogState,
+    setBacklogState,
+  ])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !backlogRemoteHydratedRef.current) {
+      return
+    }
+
+    let cancelled = false
+
+    function handleBacklogVisibilityChange() {
+      if (
+        document.visibilityState !== 'visible' ||
+        backlogRemoteSaveTimerRef.current !== null
+      ) {
+        return
+      }
+
+      const syncMetadata = loadBacklogSyncMetadata()
+
+      void loadOrCreateRemoteBacklogState(backlogStateRef.current, {
+        pendingRemoteBaseUpdatedAt: syncMetadata.pendingRemoteBaseUpdatedAt,
+        pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
+      })
+        .then((result) => {
+          if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === backlogLastSyncedAtRef.current) {
+            return
+          }
+
+          setBacklogState(result.state)
+          backlogLastRemoteSignatureRef.current = result.remoteSignature
+          backlogLastSyncedAtRef.current = result.lastSyncedAt
+          persistBacklogSyncMetadata({
+            lastSyncedAt: result.lastSyncedAt,
+            pendingRemoteBaseUpdatedAt: null,
+            pendingRemoteSignature: null,
+          })
+        })
+        .catch(() => {
+          // Silently fail — backlog refresh is best-effort
+        })
+    }
+
+    document.addEventListener('visibilitychange', handleBacklogVisibilityChange)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', handleBacklogVisibilityChange)
+    }
+  }, [
+    accessStatus,
+    authEnabled,
+    authStatus,
+    backlogRemoteHydratedRef,
+    backlogRemoteSaveTimerRef,
+    setBacklogState,
+  ])
+
+  // --- End backlog sync effects ---
 
   useEffect(() => {
     if (!copyState) {

@@ -57,7 +57,6 @@ import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
 import {
   loadBacklogState,
-  persistBacklogState,
   type BacklogCard,
   type BacklogState,
 } from './backlog'
@@ -284,7 +283,8 @@ function App() {
   const cardPanelCloseTimerRef = useRef<number | null>(null)
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
-  const backlogPersistTimerRef = useRef<number | null>(null)
+  const backlogRemoteHydratedRef = useRef(!authEnabled)
+  const backlogRemoteSaveTimerRef = useRef<number | null>(null)
   const [routePage, setRoutePage] = useState<ExtendedPage>(() =>
     getPageFromPathname(
       typeof window !== 'undefined' ? window.location.pathname : '/board',
@@ -700,6 +700,10 @@ function App() {
   useAppEffects({
     state,
     setState,
+    backlogState: backlogState,
+    setBacklogState,
+    backlogRemoteHydratedRef,
+    backlogRemoteSaveTimerRef,
     authEnabled,
     authStatus,
     accessStatus,
@@ -890,26 +894,7 @@ function App() {
     }
   }, [productionPage, routePage, state.activeRole.mode])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    if (backlogPersistTimerRef.current !== null) {
-      window.clearTimeout(backlogPersistTimerRef.current)
-    }
-
-    backlogPersistTimerRef.current = window.setTimeout(() => {
-      persistBacklogState(backlogState)
-      backlogPersistTimerRef.current = null
-    }, 180)
-
-    return () => {
-      if (backlogPersistTimerRef.current !== null) {
-        window.clearTimeout(backlogPersistTimerRef.current)
-      }
-    }
-  }, [backlogState])
+  // Backlog localStorage persist + remote sync is now handled inside useAppEffects
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -953,9 +938,6 @@ function App() {
       toastTimerIdsRef.current = {}
       if (cardPanelCloseTimerRef.current !== null) {
         window.clearTimeout(cardPanelCloseTimerRef.current)
-      }
-      if (backlogPersistTimerRef.current !== null) {
-        window.clearTimeout(backlogPersistTimerRef.current)
       }
     }
   }, [])

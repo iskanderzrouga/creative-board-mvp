@@ -1,4 +1,11 @@
 export const BACKLOG_STORAGE_KEY = 'backlog-state'
+export const BACKLOG_SYNC_METADATA_KEY = 'backlog-sync-metadata'
+
+export interface BacklogSyncMetadata {
+  lastSyncedAt: string | null
+  pendingRemoteBaseUpdatedAt: string | null
+  pendingRemoteSignature: string | null
+}
 
 export const BACKLOG_TASK_TYPES = ['creative', 'dev-cro', 'operations'] as const
 export type BacklogTaskType = (typeof BACKLOG_TASK_TYPES)[number]
@@ -161,7 +168,7 @@ function coerceBacklogCard(candidate: unknown): BacklogCard | null {
   }
 }
 
-function coerceBacklogState(candidate: unknown): BacklogState {
+export function coerceBacklogState(candidate: unknown): BacklogState {
   if (!candidate || typeof candidate !== 'object') {
     return createBacklogSeedState()
   }
@@ -315,4 +322,42 @@ export function getBacklogMissingProductionFields(card: BacklogCard) {
   }
 
   return []
+}
+
+const EMPTY_BACKLOG_SYNC_METADATA: BacklogSyncMetadata = {
+  lastSyncedAt: null,
+  pendingRemoteBaseUpdatedAt: null,
+  pendingRemoteSignature: null,
+}
+
+export function loadBacklogSyncMetadata(): BacklogSyncMetadata {
+  if (!hasBrowser()) {
+    return EMPTY_BACKLOG_SYNC_METADATA
+  }
+
+  try {
+    const raw = window.localStorage.getItem(BACKLOG_SYNC_METADATA_KEY)
+    if (!raw) {
+      return EMPTY_BACKLOG_SYNC_METADATA
+    }
+
+    const parsed = JSON.parse(raw) as Partial<BacklogSyncMetadata>
+    return {
+      lastSyncedAt: typeof parsed.lastSyncedAt === 'string' ? parsed.lastSyncedAt : null,
+      pendingRemoteBaseUpdatedAt:
+        typeof parsed.pendingRemoteBaseUpdatedAt === 'string' ? parsed.pendingRemoteBaseUpdatedAt : null,
+      pendingRemoteSignature:
+        typeof parsed.pendingRemoteSignature === 'string' ? parsed.pendingRemoteSignature : null,
+    }
+  } catch {
+    return EMPTY_BACKLOG_SYNC_METADATA
+  }
+}
+
+export function persistBacklogSyncMetadata(metadata: BacklogSyncMetadata) {
+  if (!hasBrowser()) {
+    return
+  }
+
+  window.localStorage.setItem(BACKLOG_SYNC_METADATA_KEY, JSON.stringify(metadata))
 }
