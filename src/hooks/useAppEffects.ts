@@ -24,23 +24,28 @@ import {
   type StageId,
 } from '../board'
 import {
+  coerceBacklogState,
   loadBacklogSyncMetadata,
   persistBacklogState,
   persistBacklogSyncMetadata,
   type BacklogState,
 } from '../backlog'
 import {
+  fetchRemoteAppStateRow,
   getRemoteStateSignature,
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
   saveRemoteAppState,
 } from '../remoteAppState'
 import {
+  fetchRemoteBacklogStateRow,
   getRemoteBacklogSignature,
   loadOrCreateRemoteBacklogState,
   RemoteBacklogConflictError,
   saveRemoteBacklogState,
 } from '../remoteBacklogState'
+import { getSupabaseClient, REMOTE_WORKSPACE_ID } from '../supabase'
+import { mergeIncomingAppState, mergeIncomingBacklogState } from '../syncMerge'
 
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
 type AccessStatus = 'disabled' | 'checking' | 'granted' | 'denied' | 'error'
@@ -48,8 +53,9 @@ type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
 const LOCAL_PERSIST_DEBOUNCE_MS = 200
-const REMOTE_SAVE_DEBOUNCE_MS = 800
+const REMOTE_SAVE_DEBOUNCE_MS = 1500
 const REMOTE_SAVE_RETRY_DELAYS_MS = [0, 1200, 3000]
+const REMOTE_POLL_INTERVAL_MS = 30_000
 
 interface CopyState {
   key: string
@@ -381,20 +387,23 @@ export function useAppEffects({
             }
 
             if (error instanceof RemoteStateConflictError) {
-              replaceStateRef.current(error.latestState)
-              lastRemoteStateSignatureRef.current = getRemoteStateSignature(error.latestState)
+              const mergedState = mergeIncomingAppState(state, error.latestState)
+              const remoteSignature = getRemoteStateSignature(error.latestState)
+              const mergedSignature = getRemoteStateSignature(mergedState)
+              replaceStateRef.current(mergedState)
+              lastRemoteStateSignatureRef.current =
+                mergedSignature === remoteSignature ? mergedSignature : remoteSignature
               setLastSyncedAt(error.latestUpdatedAt)
               persistSyncMetadata({
                 lastSyncedAt: error.latestUpdatedAt,
-                pendingRemoteBaseUpdatedAt: null,
-                pendingRemoteSignature: null,
+                pendingRemoteBaseUpdatedAt:
+                  mergedSignature === remoteSignature ? null : error.latestUpdatedAt,
+                pendingRemoteSignature:
+                  mergedSignature === remoteSignature ? null : mergedSignature,
               })
               setSyncStatus('synced')
               setRemoteSyncErrorShown(false)
-              showToastRef.current(
-                'Another session saved newer workspace changes. The latest shared version has been loaded.',
-                'amber',
-              )
+              showToastRef.current('Board updated with latest changes', 'blue')
               return
             }
 
@@ -482,7 +491,7 @@ export function useAppEffects({
           })
           setSyncStatus('synced')
           setRemoteSyncErrorShown(false)
-          showToastRef.current('Shared workspace refreshed.', 'blue')
+          showToastRef.current('Board updated with latest changes', 'blue')
         })
         .catch(() => {
           if (cancelled) {
@@ -509,6 +518,94 @@ export function useAppEffects({
     setRemoteSyncErrorShown,
     setSyncStatus,
     syncStatus,
+  ])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !remoteHydratedRef.current) {
+      return
+    }
+
+    const supabase = getSupabaseClient()
+    let cancelled = false
+
+    const applyRemoteState = (remoteState: AppState, remoteUpdatedAt: string) => {
+      if (cancelled || !remoteUpdatedAt || remoteUpdatedAt === lastSyncedAtRef.current) {
+        return
+      }
+
+      const localState = localFallbackStateRef.current
+      const mergedState = mergeIncomingAppState(localState, remoteState)
+      const remoteSignature = getRemoteStateSignature(remoteState)
+      const mergedSignature = getRemoteStateSignature(mergedState)
+
+      replaceStateRef.current(mergedState)
+      lastRemoteStateSignatureRef.current =
+        mergedSignature === remoteSignature ? mergedSignature : remoteSignature
+      setLastSyncedAt(remoteUpdatedAt)
+      persistSyncMetadata({
+        lastSyncedAt: remoteUpdatedAt,
+        pendingRemoteBaseUpdatedAt: mergedSignature === remoteSignature ? null : remoteUpdatedAt,
+        pendingRemoteSignature: mergedSignature === remoteSignature ? null : mergedSignature,
+      })
+      setSyncStatus('synced')
+      setRemoteSyncErrorShown(false)
+      showToastRef.current('Board updated with latest changes', 'blue')
+    }
+
+    const pollTimer = window.setInterval(() => {
+      void fetchRemoteAppStateRow()
+        .then((result) => {
+          if (!result) {
+            return
+          }
+          applyRemoteState(result.state, result.updatedAt)
+        })
+        .catch(() => {
+          // Best-effort background polling
+        })
+    }, REMOTE_POLL_INTERVAL_MS)
+
+    if (!supabase) {
+      return () => {
+        cancelled = true
+        window.clearInterval(pollTimer)
+      }
+    }
+
+    const channel = supabase
+      .channel(`workspace-state-${REMOTE_WORKSPACE_ID}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workspace_state',
+          filter: `workspace_id=eq.${REMOTE_WORKSPACE_ID}`,
+        },
+        (payload) => {
+          const next = payload.new as { state?: unknown; updated_at?: string } | null
+          if (!next?.state || typeof next.updated_at !== 'string') {
+            return
+          }
+          applyRemoteState(coerceAppState(next.state), next.updated_at)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(pollTimer)
+      void supabase.removeChannel(channel)
+    }
+  }, [
+    accessStatus,
+    authEnabled,
+    authStatus,
+    localFallbackStateRef,
+    remoteHydratedRef,
+    setLastSyncedAt,
+    setRemoteSyncErrorShown,
+    setSyncStatus,
   ])
 
   // --- Backlog sync effects ---
@@ -627,21 +724,24 @@ export function useAppEffects({
             }
 
             if (error instanceof RemoteBacklogConflictError) {
-              setBacklogState(error.latestState)
+              const mergedState = mergeIncomingBacklogState(backlogState, error.latestState)
+              const remoteSignature = error.latestRemoteSignature
+              const mergedSignature = getRemoteBacklogSignature(mergedState)
+              setBacklogState(mergedState)
               // Use the REMOTE-ONLY signature (not the merged state's).
               // This ensures the save effect detects a difference between
               // local (merged) and remote, and re-saves the merged result.
-              backlogLastRemoteSignatureRef.current = error.latestRemoteSignature
+              backlogLastRemoteSignatureRef.current =
+                mergedSignature === remoteSignature ? mergedSignature : remoteSignature
               backlogLastSyncedAtRef.current = error.latestUpdatedAt
               persistBacklogSyncMetadata({
                 lastSyncedAt: error.latestUpdatedAt,
-                pendingRemoteBaseUpdatedAt: error.latestUpdatedAt,
-                pendingRemoteSignature: getRemoteBacklogSignature(error.latestState),
+                pendingRemoteBaseUpdatedAt:
+                  mergedSignature === remoteSignature ? null : error.latestUpdatedAt,
+                pendingRemoteSignature:
+                  mergedSignature === remoteSignature ? null : mergedSignature,
               })
-              showToastRef.current(
-                'Another session saved newer backlog changes. The latest version has been loaded.',
-                'amber',
-              )
+              showToastRef.current('Board updated with latest changes', 'blue')
               return
             }
 
@@ -728,6 +828,89 @@ export function useAppEffects({
     authStatus,
     backlogRemoteHydratedRef,
     backlogRemoteSaveTimerRef,
+    setBacklogState,
+  ])
+
+  useEffect(() => {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !backlogRemoteHydratedRef.current) {
+      return
+    }
+
+    const supabase = getSupabaseClient()
+    let cancelled = false
+
+    const applyRemoteBacklog = (remoteState: BacklogState, remoteUpdatedAt: string) => {
+      if (cancelled || !remoteUpdatedAt || remoteUpdatedAt === backlogLastSyncedAtRef.current) {
+        return
+      }
+
+      const localState = backlogStateRef.current
+      const mergedState = mergeIncomingBacklogState(localState, remoteState)
+      const remoteSignature = getRemoteBacklogSignature(remoteState)
+      const mergedSignature = getRemoteBacklogSignature(mergedState)
+
+      setBacklogState(mergedState)
+      backlogLastRemoteSignatureRef.current =
+        mergedSignature === remoteSignature ? mergedSignature : remoteSignature
+      backlogLastSyncedAtRef.current = remoteUpdatedAt
+      persistBacklogSyncMetadata({
+        lastSyncedAt: remoteUpdatedAt,
+        pendingRemoteBaseUpdatedAt: mergedSignature === remoteSignature ? null : remoteUpdatedAt,
+        pendingRemoteSignature: mergedSignature === remoteSignature ? null : mergedSignature,
+      })
+      showToastRef.current('Board updated with latest changes', 'blue')
+    }
+
+    const pollTimer = window.setInterval(() => {
+      void fetchRemoteBacklogStateRow()
+        .then((result) => {
+          if (!result) {
+            return
+          }
+          applyRemoteBacklog(result.state, result.updatedAt)
+        })
+        .catch(() => {
+          // Best-effort background polling
+        })
+    }, REMOTE_POLL_INTERVAL_MS)
+
+    if (!supabase) {
+      return () => {
+        cancelled = true
+        window.clearInterval(pollTimer)
+      }
+    }
+
+    const channel = supabase
+      .channel(`workspace-backlog-${REMOTE_WORKSPACE_ID}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workspace_backlog',
+          filter: `workspace_id=eq.${REMOTE_WORKSPACE_ID}`,
+        },
+        (payload) => {
+          const next = payload.new as { state?: unknown; updated_at?: string } | null
+          if (!next?.state || typeof next.updated_at !== 'string') {
+            return
+          }
+          applyRemoteBacklog(coerceBacklogState(next.state), next.updated_at)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(pollTimer)
+      void supabase.removeChannel(channel)
+    }
+  }, [
+    accessStatus,
+    authEnabled,
+    authStatus,
+    backlogRemoteHydratedRef,
     setBacklogState,
   ])
 

@@ -52,6 +52,7 @@ export interface BacklogCard {
   taskDescription?: string
   linkForTest?: string
   linkForChanges?: string
+  updatedAt: string
 }
 
 export interface BacklogState {
@@ -165,6 +166,7 @@ function coerceBacklogCard(candidate: unknown): BacklogCard | null {
     taskDescription: normalizeOptionalString(record.taskDescription),
     linkForTest: normalizeOptionalString(record.linkForTest),
     linkForChanges: normalizeOptionalString(record.linkForChanges),
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : new Date().toISOString(),
   }
 }
 
@@ -237,6 +239,7 @@ export function addBacklogCard(state: BacklogState, input: AddBacklogCardInput):
     dateAdded: createdAt,
     column: 'new-idea',
     productionTaskType: undefined,
+    updatedAt: createdAt,
   }
 
   return {
@@ -262,6 +265,7 @@ export function moveBacklogCard(
     ...card,
     column,
     opsSubStage: column === 'ops-priority' ? opsSubStage ?? card.opsSubStage ?? 'todo' : undefined,
+    updatedAt: new Date().toISOString(),
   }
 
   return {
@@ -272,6 +276,7 @@ export function moveBacklogCard(
 
 export function updateBacklogCard(state: BacklogState, cardId: string, updates: Partial<BacklogCard>) {
   let changed = false
+  const updatedAt = new Date().toISOString()
 
   const cards = state.cards.map((card) => {
     if (card.id !== cardId) {
@@ -283,6 +288,7 @@ export function updateBacklogCard(state: BacklogState, cardId: string, updates: 
     return {
       ...card,
       ...updates,
+      updatedAt,
       opsSubStage:
         nextColumn === 'ops-priority'
           ? updates.opsSubStage ?? card.opsSubStage ?? 'todo'
