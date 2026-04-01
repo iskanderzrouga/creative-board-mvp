@@ -1,8 +1,8 @@
 import {
   coerceBacklogState,
-  type BacklogCard,
   type BacklogState,
 } from './backlog'
+import { mergeIncomingBacklogState } from './syncMerge'
 import {
   getSupabaseClient,
   REMOTE_WORKSPACE_ID,
@@ -59,31 +59,7 @@ export function mergeRemoteBacklogWithLocal(
   remoteState: BacklogState,
   localState: BacklogState,
 ): BacklogState {
-  const remoteCardMap = new Map<string, BacklogCard>()
-  for (const card of remoteState.cards) {
-    remoteCardMap.set(card.id, card)
-  }
-
-  for (const card of localState.cards) {
-    if (!remoteCardMap.has(card.id)) {
-      // Only re-add a local card if it's genuinely NEW (created locally
-      // after the last sync).  A card whose numeric ID is ≤ the remote's
-      // lastCardNumber was previously synced and then deleted remotely —
-      // re-adding it would undo the delete.
-      const numericId = Number(card.id.replace('BL', ''))
-      if (Number.isFinite(numericId) && numericId > remoteState.lastCardNumber) {
-        remoteCardMap.set(card.id, card)
-      }
-    }
-  }
-
-  const mergedCards = Array.from(remoteCardMap.values())
-  const lastCardNumber = Math.max(remoteState.lastCardNumber, localState.lastCardNumber)
-
-  return {
-    cards: mergedCards,
-    lastCardNumber,
-  }
+  return mergeIncomingBacklogState(localState, remoteState)
 }
 
 function isE2ERemoteMode() {
@@ -137,6 +113,18 @@ async function getRemoteBacklogRow() {
   }
 
   return data
+}
+
+export async function fetchRemoteBacklogStateRow() {
+  const data = await getRemoteBacklogRow()
+  if (!data) {
+    return null
+  }
+
+  return {
+    state: coerceBacklogState(data.state),
+    updatedAt: data.updated_at,
+  }
 }
 
 export async function loadOrCreateRemoteBacklogState(

@@ -1,4 +1,5 @@
 import { coerceAppState, type AppState } from './board'
+import { mergeIncomingAppState } from './syncMerge'
 import {
   E2E_REMOTE_STATE_KEY,
   getSupabaseClient,
@@ -154,6 +155,18 @@ async function getRemoteWorkspaceStateRow() {
   return data
 }
 
+export async function fetchRemoteAppStateRow() {
+  const data = await getRemoteWorkspaceStateRow()
+  if (!data) {
+    return null
+  }
+
+  return {
+    state: coerceAppState(data.state),
+    updatedAt: data.updated_at,
+  }
+}
+
 function isE2ERemoteMode() {
   return hasBrowser() && window.localStorage.getItem('editors-board-e2e-auth-mode') === 'enabled'
 }
@@ -194,7 +207,10 @@ export async function loadOrCreateRemoteAppState(
       return {
         state: shouldKeepLocalChanges
           ? fallbackState
-          : mergeRemoteAppStateWithLocalState(stored.state, fallbackState),
+          : mergeRemoteAppStateWithLocalState(
+              mergeIncomingAppState(fallbackState, stored.state),
+              fallbackState,
+            ),
         lastSyncedAt: stored.updatedAt,
         remoteSignature,
         keptLocalChanges: shouldKeepLocalChanges,
@@ -236,7 +252,10 @@ export async function loadOrCreateRemoteAppState(
     return {
       state: shouldKeepLocalChanges
         ? fallbackState
-        : mergeRemoteAppStateWithLocalState(remoteState, fallbackState),
+        : mergeRemoteAppStateWithLocalState(
+            mergeIncomingAppState(fallbackState, remoteState),
+            fallbackState,
+          ),
       lastSyncedAt: data.updated_at,
       remoteSignature,
       keptLocalChanges: shouldKeepLocalChanges,
@@ -256,7 +275,10 @@ export async function loadOrCreateRemoteAppState(
     if (latest) {
       const latestState = coerceAppState(latest.state)
       return {
-        state: mergeRemoteAppStateWithLocalState(latestState, fallbackState),
+        state: mergeRemoteAppStateWithLocalState(
+          mergeIncomingAppState(fallbackState, latestState),
+          fallbackState,
+        ),
         lastSyncedAt: latest.updated_at,
         remoteSignature: getRemoteStateSignature(latestState),
         keptLocalChanges: false,
@@ -282,7 +304,10 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
     const stored = getStoredE2ERemoteState()
     if (stored && expectedUpdatedAt && stored.updatedAt !== expectedUpdatedAt) {
       throw new RemoteStateConflictError(
-        mergeRemoteAppStateWithLocalState(stored.state, state),
+        mergeRemoteAppStateWithLocalState(
+          mergeIncomingAppState(state, stored.state),
+          state,
+        ),
         stored.updatedAt,
       )
     }
@@ -319,7 +344,10 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
   const latest = await getRemoteWorkspaceStateRow()
   if (latest) {
     throw new RemoteStateConflictError(
-      mergeRemoteAppStateWithLocalState(coerceAppState(latest.state), state),
+      mergeRemoteAppStateWithLocalState(
+        mergeIncomingAppState(state, coerceAppState(latest.state)),
+        state,
+      ),
       latest.updated_at,
     )
   }
