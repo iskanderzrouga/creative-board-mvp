@@ -44,13 +44,17 @@ export function DailyPulsePage({
   }, [feedItems, personFilter])
 
   return (
-    <div className="page-shell pulse-page-shell">
-      <PageHeader title="Daily Pulse" rightContent={headerUtilityContent} />
-      <p className="pulse-subtitle">See what everyone is working on today.</p>
+    <div className="page-shell pulse-page-shell" style={{ color: '#1a1a1a' }}>
+      <div style={{ color: '#1a1a1a' }}>
+        <PageHeader title="Daily Pulse" rightContent={headerUtilityContent} />
+      </div>
+      <p className="pulse-subtitle" style={{ color: '#1a1a1a' }}>
+        See what everyone is working on today.
+      </p>
 
       <section className="pulse-controls">
-        <label className="pulse-control-field">
-          <span>Date</span>
+        <label className="pulse-control-field" style={{ color: '#1a1a1a' }}>
+          <span style={{ color: '#1a1a1a' }}>Date</span>
           <input
             className="inline-input"
             type="date"
@@ -59,16 +63,18 @@ export function DailyPulsePage({
           />
         </label>
 
-        <label className="pulse-control-field">
-          <span>Person</span>
+        <label className="pulse-control-field" style={{ color: '#1a1a1a' }}>
+          <span style={{ color: '#1a1a1a' }}>Person</span>
           <select
             className="inline-select"
             value={personFilter}
             onChange={(event) => onPersonFilterChange(event.target.value)}
           >
-            <option value="all">All</option>
+            <option value="all" style={{ color: '#1a1a1a' }}>
+              All
+            </option>
             {peopleOptions.map((name) => (
-              <option key={name} value={name}>
+              <option key={name} value={name} style={{ color: '#1a1a1a' }}>
                 {name}
               </option>
             ))}
@@ -77,42 +83,56 @@ export function DailyPulsePage({
       </section>
 
       <section className="pulse-feed" aria-live="polite">
-        {loading ? <div className="dashboard-placeholder">Loading daily check-ins…</div> : null}
-        {!loading && errorMessage ? <div className="dashboard-placeholder">{errorMessage}</div> : null}
+        {loading ? (
+          <div className="dashboard-placeholder" style={{ color: '#1a1a1a' }}>
+            Loading daily check-ins…
+          </div>
+        ) : null}
+        {!loading && errorMessage ? (
+          <div className="dashboard-placeholder" style={{ color: '#1a1a1a' }}>
+            {errorMessage}
+          </div>
+        ) : null}
 
         {!loading && !errorMessage && visibleItems.length === 0 ? (
-          <div className="dashboard-placeholder">No team members match this filter.</div>
+          <div className="dashboard-placeholder" style={{ color: '#1a1a1a' }}>
+            No team members match this filter.
+          </div>
         ) : null}
 
         {!loading && !errorMessage
           ? visibleItems.map((item) =>
               item.checkin ? (
-                <article key={`${item.member.name}-${item.checkin.id}`} className="pulse-card">
+                <article key={`${item.member.name}-${item.checkin.id}`} className="pulse-card" style={{ color: '#1a1a1a' }}>
                   <header className="pulse-card-header">
-                    <h3>{item.member.name}</h3>
-                    <span>{formatSubmissionTime(item.checkin.created_at, timezone)}</span>
+                    <h3 style={{ color: '#1a1a1a' }}>{item.member.name}</h3>
+                    <span style={{ color: '#1a1a1a' }}>{formatSubmissionTime(item.checkin.created_at, timezone)}</span>
                   </header>
                   <dl className="pulse-card-content">
                     <div>
-                      <dt>What did you work on yesterday?</dt>
-                      <dd>{item.checkin.yesterday_work}</dd>
+                      <dt style={{ color: '#1a1a1a' }}>What did you work on yesterday?</dt>
+                      <dd style={{ color: '#1a1a1a' }}>{item.checkin.yesterday_work}</dd>
                     </div>
                     <div>
-                      <dt>What are you working on today?</dt>
-                      <dd>{item.checkin.today_plan}</dd>
+                      <dt style={{ color: '#1a1a1a' }}>What are you working on today?</dt>
+                      <dd style={{ color: '#1a1a1a' }}>{item.checkin.today_plan}</dd>
                     </div>
                     <div>
-                      <dt>Any blockers or roadblocks?</dt>
-                      <dd>{item.checkin.blockers?.trim() ? item.checkin.blockers : 'No blockers reported.'}</dd>
+                      <dt style={{ color: '#1a1a1a' }}>Any blockers or roadblocks?</dt>
+                      <dd style={{ color: '#1a1a1a' }}>
+                        {item.checkin.blockers?.trim() ? item.checkin.blockers : 'No blockers reported.'}
+                      </dd>
                     </div>
                   </dl>
                 </article>
               ) : (
-                <article key={`${item.member.name}-missing`} className="pulse-card is-missing">
+                <article key={`${item.member.name}-missing`} className="pulse-card is-missing" style={{ color: '#1a1a1a' }}>
                   <header className="pulse-card-header">
-                    <h3>{item.member.name}</h3>
+                    <h3 style={{ color: '#1a1a1a' }}>{item.member.name}</h3>
                   </header>
-                  <p className="pulse-missing-copy">Not yet checked in</p>
+                  <p className="pulse-missing-copy" style={{ color: '#1a1a1a' }}>
+                    Not yet checked in
+                  </p>
                 </article>
               ),
             )
