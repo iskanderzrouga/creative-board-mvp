@@ -22,6 +22,21 @@ export function DailyCheckinModal({
     blockers: '',
   })
 
+  const resolvedDateLabel = useMemo(() => {
+    const label = dateLabel.trim()
+    if (label) {
+      return label
+    }
+
+    return new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    })
+  }, [dateLabel])
+
   const submitDisabled = useMemo(
     () =>
       submitting ||
@@ -62,7 +77,7 @@ export function DailyCheckinModal({
             <h1 id="daily-checkin-title" style={{ color: '#1a1a1a' }}>
               Daily Check-in
             </h1>
-            <p style={{ color: '#1a1a1a' }}>{dateLabel}</p>
+            <p style={{ color: '#1a1a1a' }}>{resolvedDateLabel}</p>
           </header>
 
           {yesterdayPlan ? (
