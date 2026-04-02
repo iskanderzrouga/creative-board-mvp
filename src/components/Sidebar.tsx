@@ -94,6 +94,26 @@ function ScriptsIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function PulseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M4 12h3l2-4 4 8 2-4h5" />
+      <path d="M4.5 6.5h15a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16V8a1.5 1.5 0 0 1 1.5-1.5Z" />
+    </svg>
+  )
+}
+
 function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
@@ -109,6 +129,8 @@ function getPageLabel(page: ExtendedPage) {
       return 'Analytics'
     case 'workload':
       return 'Workload'
+    case 'pulse':
+      return 'Daily Pulse'
     case 'scripts':
       return 'Script Workshop'
     case 'settings':
@@ -131,6 +153,8 @@ function getPageIcon(page: ExtendedPage): PageIcon {
       return AnalyticsIcon
     case 'workload':
       return WorkloadIcon
+    case 'pulse':
+      return PulseIcon
     case 'scripts':
       return ScriptsIcon
     case 'settings':
@@ -177,6 +201,7 @@ function SidebarComponent({
     ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
     ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
     { page: 'board', disabled: false },
+    { page: 'pulse', disabled: false },
     ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),
     ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
     ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
