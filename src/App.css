@@ -6417,11 +6417,12 @@ button {
 
 .daily-checkin-header h1 {
   margin: 0;
+  color: var(--text-strong);
 }
 
 .daily-checkin-header p {
   margin: 0.25rem 0 0;
-  color: var(--text-muted);
+  color: var(--muted-strong);
   font-size: 0.94rem;
 }
 
@@ -6435,11 +6436,13 @@ button {
 .daily-checkin-yesterday h2 {
   margin: 0;
   font-size: 0.95rem;
+  color: var(--text-strong);
 }
 
 .daily-checkin-yesterday p {
   margin: 0.45rem 0 0;
   white-space: pre-wrap;
+  color: var(--muted-strong);
 }
 
 .daily-checkin-field {
@@ -6450,7 +6453,7 @@ button {
 
 .daily-checkin-field span {
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-strong);
 }
 
 .daily-checkin-field textarea {
@@ -6458,10 +6461,21 @@ button {
   border-radius: 10px;
   border: 1px solid var(--border-soft);
   background: var(--surface-panel);
-  color: var(--text-primary);
+  color: var(--text-strong);
   padding: 0.7rem;
   resize: vertical;
   min-height: 84px;
+}
+
+.daily-checkin-field textarea::placeholder {
+  color: #1a1a1a !important;
+  opacity: 1;
+}
+
+.daily-checkin-submit-button {
+  color: #1a1a1a !important;
+  background: #d9d9d9 !important;
+  border: 1px solid #bdbdbd !important;
 }
 
 .daily-checkin-error {
@@ -6477,11 +6491,12 @@ button {
 
 .pulse-page-shell {
   gap: 1rem;
+  color: var(--text-strong);
 }
 
 .pulse-subtitle {
   margin: -0.35rem 0 0;
-  color: var(--text-muted);
+  color: var(--muted-strong);
 }
 
 .pulse-controls {
@@ -6499,7 +6514,7 @@ button {
 
 .pulse-control-field span {
   font-size: 0.84rem;
-  color: var(--text-muted);
+  color: var(--text-strong);
   font-weight: 600;
 }
 
@@ -6507,9 +6522,13 @@ button {
   border-radius: 10px;
   border: 1px solid var(--border-soft);
   background: var(--surface-card);
-  color: var(--text-primary);
+  color: var(--text-strong);
   padding: 0.5rem 0.65rem;
   font: inherit;
+}
+
+.pulse-placeholder {
+  color: #1a1a1a !important;
 }
 
 .pulse-feed {
@@ -6538,7 +6557,7 @@ button {
 }
 
 .pulse-card-header span {
-  color: var(--text-muted);
+  color: var(--muted-strong);
   font-size: 0.85rem;
 }
 
@@ -6550,13 +6569,14 @@ button {
 
 .pulse-card-content dt {
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: var(--text-strong);
   margin: 0;
 }
 
 .pulse-card-content dd {
   margin: 0.2rem 0 0;
   white-space: pre-wrap;
+  color: var(--muted-strong);
 }
 
 .pulse-card.is-missing {
@@ -6565,6 +6585,6 @@ button {
 
 .pulse-missing-copy {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-strong);
   font-weight: 600;
 }
