@@ -88,6 +88,7 @@ import {
   isLaunchOpsRole,
   SCRIPT_REVIEWERS,
   createNotification,
+  getDevCardBlockerReason,
   type ScriptConfidenceLevel,
   type ScriptReviewerId,
   markNotificationRead,
@@ -119,6 +120,17 @@ import {
   type Timeframe,
   type ViewerContext,
 } from './board'
+import {
+  notifyCreativeBlockerAdded,
+  notifyCreativeBlockerRemoved,
+  notifyCreativeReadyForReview,
+  notifyCreativeTaskAssigned,
+  notifyDevBlockerAdded,
+  notifyDevBlockerRemoved,
+  notifyDevReadyForReview,
+  notifyDevTaskAssigned,
+  notifyScriptReadyForReview,
+} from './slackNotifications'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
@@ -1160,6 +1172,15 @@ function App() {
         ],
       },
     }))
+
+    try {
+      notifyScriptReadyForReview({
+        scriptTitle: input.title,
+        brand: input.brand,
+      })
+    } catch (error) {
+      console.error('Script review notification trigger failed.', error)
+    }
     showToast('Script added to active workshop.', 'green')
   }
 
@@ -1380,10 +1401,67 @@ function App() {
   }
 
   function handleSaveDevCard(cardId: string, updates: Partial<DevCard>) {
+    const previousCard = state.devBoard.cards.find((card) => card.id === cardId) ?? null
+    const nextCard = previousCard ? { ...previousCard, ...updates } : null
+
     updateState((current) => ({
       ...current,
       devBoard: updateDevCard(current.devBoard, cardId, updates),
     }))
+
+    if (!previousCard || !nextCard || !activePortfolioView) {
+      return
+    }
+
+    const previousAssigneeName =
+      getTeamMemberById(activePortfolioView, previousCard.assigneeId)?.name ??
+      previousCard.assigneeId ??
+      'Unassigned'
+    const nextAssigneeName =
+      getTeamMemberById(activePortfolioView, nextCard.assigneeId)?.name ??
+      nextCard.assigneeId ??
+      'Unassigned'
+
+    if (
+      Object.prototype.hasOwnProperty.call(updates, 'assigneeId') &&
+      previousCard.assigneeId !== nextCard.assigneeId &&
+      nextCard.assigneeId
+    ) {
+      try {
+        notifyDevTaskAssigned({
+          cardTitle: nextCard.title,
+          assigneeName: nextAssigneeName,
+        })
+      } catch (error) {
+        console.error('Dev task assignment notification trigger failed.', error)
+      }
+    }
+
+    const previousBlockerText = getDevCardBlockerReason(previousCard)
+    const nextBlockerText = getDevCardBlockerReason(nextCard)
+
+    if (!previousBlockerText && nextBlockerText) {
+      try {
+        notifyDevBlockerAdded({
+          cardTitle: nextCard.title,
+          blockerText: nextBlockerText,
+          assigneeName: nextAssigneeName,
+        })
+      } catch (error) {
+        console.error('Dev blocker-added notification trigger failed.', error)
+      }
+    }
+
+    if (previousBlockerText && !nextBlockerText) {
+      try {
+        notifyDevBlockerRemoved({
+          cardTitle: nextCard.title,
+          assigneeName: previousAssigneeName,
+        })
+      } catch (error) {
+        console.error('Dev blocker-removed notification trigger failed.', error)
+      }
+    }
   }
 
   function handleDeleteDevCard(cardId: string) {
@@ -1410,6 +1488,22 @@ function App() {
       ...current,
       devBoard: moveDevCard(current.devBoard, cardId, destinationColumn),
     }))
+
+    if (card.column !== 'For Review' && destinationColumn === 'For Review') {
+      const assigneeName =
+        (activePortfolioView ? getTeamMemberById(activePortfolioView, card.assigneeId)?.name : null) ??
+        card.assigneeId ??
+        'Unassigned'
+      try {
+        notifyDevReadyForReview({
+          cardTitle: card.title,
+          assigneeName,
+        })
+      } catch (error) {
+        console.error('Dev ready-for-review notification trigger failed.', error)
+      }
+    }
+
     return { ok: true }
   }
 
@@ -1706,6 +1800,10 @@ function App() {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
+
+    const previousCard = activeSelectedPortfolio.cards.find((card) => card.id === selectedCard.cardId) ?? null
+    const nextCard = previousCard ? { ...previousCard, ...updates } : null
+
     const actor = getActorName(activeSelectedPortfolio)
     updatePortfolio(activeSelectedPortfolio.id, (portfolio) =>
       applyCardUpdates(
@@ -1718,6 +1816,67 @@ function App() {
         viewerContext,
       ),
     )
+
+    if (!previousCard || !nextCard) {
+      return
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(updates, 'owner') &&
+      previousCard.owner !== nextCard.owner &&
+      nextCard.owner
+    ) {
+      try {
+        notifyCreativeTaskAssigned({
+          cardTitle: nextCard.title,
+          brand: nextCard.brand,
+          editorName: nextCard.owner,
+        })
+      } catch (error) {
+        console.error('Creative assignment notification trigger failed.', error)
+      }
+    }
+
+    const previousBlockerText = previousCard.blocked?.reason?.trim() ?? ''
+    const nextBlockerText = nextCard.blocked?.reason?.trim() ?? ''
+    const assigneeName = nextCard.owner ?? previousCard.owner ?? 'Unassigned'
+
+    if (!previousBlockerText && nextBlockerText) {
+      try {
+        notifyCreativeBlockerAdded({
+          cardTitle: nextCard.title,
+          brand: nextCard.brand,
+          blockerText: nextBlockerText,
+          editorName: assigneeName,
+        })
+      } catch (error) {
+        console.error('Creative blocker-added notification trigger failed.', error)
+      }
+    }
+
+    if (previousBlockerText && !nextBlockerText) {
+      try {
+        notifyCreativeBlockerRemoved({
+          cardTitle: nextCard.title,
+          brand: nextCard.brand,
+          editorName: assigneeName,
+        })
+      } catch (error) {
+        console.error('Creative blocker-removed notification trigger failed.', error)
+      }
+    }
+
+    if (previousCard.stage !== 'Review' && nextCard.stage === 'Review') {
+      try {
+        notifyCreativeReadyForReview({
+          cardTitle: nextCard.title,
+          brand: nextCard.brand,
+          editorName: nextCard.owner ?? 'Unassigned',
+        })
+      } catch (error) {
+        console.error('Creative ready-for-review notification trigger failed.', error)
+      }
+    }
   }
 
   function requestDeleteOpenCard() {
@@ -2000,6 +2159,30 @@ function App() {
     if (!moved) {
       showToast('That move is not allowed.', 'red')
       return
+    }
+
+    if (destinationOwner && card.owner !== destinationOwner) {
+      try {
+        notifyCreativeTaskAssigned({
+          cardTitle: card.title,
+          brand: card.brand,
+          editorName: destinationOwner,
+        })
+      } catch (error) {
+        console.error('Creative assignment notification trigger failed.', error)
+      }
+    }
+
+    if (card.stage !== 'Review' && destinationStage === 'Review') {
+      try {
+        notifyCreativeReadyForReview({
+          cardTitle: card.title,
+          brand: card.brand,
+          editorName: destinationOwner ?? card.owner ?? 'Unassigned',
+        })
+      } catch (error) {
+        console.error('Creative ready-for-review notification trigger failed.', error)
+      }
     }
 
     if (revisionReason) {
