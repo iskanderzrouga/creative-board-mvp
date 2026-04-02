@@ -82,7 +82,7 @@ export function DailyCheckinModal({
         <div className="daily-checkin-actions">
           <button
             type="button"
-            className="primary-button"
+            className="primary-button daily-checkin-submit-button"
             disabled={submitDisabled}
             onClick={() => {
               void onSubmit(values)

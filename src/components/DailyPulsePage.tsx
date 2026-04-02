@@ -77,11 +77,11 @@ export function DailyPulsePage({
       </section>
 
       <section className="pulse-feed" aria-live="polite">
-        {loading ? <div className="dashboard-placeholder">Loading daily check-ins…</div> : null}
-        {!loading && errorMessage ? <div className="dashboard-placeholder">{errorMessage}</div> : null}
+        {loading ? <div className="dashboard-placeholder pulse-placeholder">Loading daily check-ins…</div> : null}
+        {!loading && errorMessage ? <div className="dashboard-placeholder pulse-placeholder">{errorMessage}</div> : null}
 
         {!loading && !errorMessage && visibleItems.length === 0 ? (
-          <div className="dashboard-placeholder">No team members match this filter.</div>
+          <div className="dashboard-placeholder pulse-placeholder">No team members match this filter.</div>
         ) : null}
 
         {!loading && !errorMessage
