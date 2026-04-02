@@ -6388,3 +6388,183 @@ button {
   gap: 0.8rem;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
 }
+
+.daily-checkin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.daily-checkin-modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 20px;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.daily-checkin-header h1 {
+  margin: 0;
+}
+
+.daily-checkin-header p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.94rem;
+}
+
+.daily-checkin-yesterday {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 0.8rem;
+}
+
+.daily-checkin-yesterday h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.daily-checkin-yesterday p {
+  margin: 0.45rem 0 0;
+  white-space: pre-wrap;
+}
+
+.daily-checkin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.daily-checkin-field span {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.daily-checkin-field textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  padding: 0.7rem;
+  resize: vertical;
+  min-height: 84px;
+}
+
+.daily-checkin-error {
+  margin: 0;
+  color: var(--danger-text);
+  font-size: 0.9rem;
+}
+
+.daily-checkin-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pulse-page-shell {
+  gap: 1rem;
+}
+
+.pulse-subtitle {
+  margin: -0.35rem 0 0;
+  color: var(--text-muted);
+}
+
+.pulse-controls {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.pulse-control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 220px;
+}
+
+.pulse-control-field span {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.inline-input {
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+}
+
+.pulse-feed {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.pulse-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.pulse-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: baseline;
+}
+
+.pulse-card-header h3 {
+  margin: 0;
+}
+
+.pulse-card-header span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.pulse-card-content {
+  margin: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.pulse-card-content dt {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.pulse-card-content dd {
+  margin: 0.2rem 0 0;
+  white-space: pre-wrap;
+}
+
+.pulse-card.is-missing {
+  border-style: dashed;
+}
+
+.pulse-missing-copy {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 600;
+}

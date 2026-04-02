@@ -39,6 +39,8 @@ import { BoardPage } from './components/BoardPage'
 import { CardDetailPanel } from './components/CardDetailPanel'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { DeleteCardModal } from './components/DeleteCardModal'
+import { DailyCheckinModal } from './components/DailyCheckinModal'
+import { DailyPulsePage } from './components/DailyPulsePage'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { PageHeader } from './components/PageHeader'
@@ -63,6 +65,16 @@ import {
 import {
   isSupabaseConfigured,
 } from './supabase'
+import {
+  formatDisplayDate,
+  getCheckinDates,
+  getCheckinsByDate,
+  getPreviousDayPlan,
+  getTeamMembersForPulse,
+  hasCheckinForDate,
+  resolveViewerTimezone,
+  submitDailyCheckin,
+} from './dailyCheckins'
 import {
   GROUPED_STAGES,
   STAGES,
@@ -110,6 +122,8 @@ import {
   type AppState,
   type BoardFilters,
   type Card,
+  type DailyCheckinFormValues,
+  type DailyPulseFeedItem,
   type DevBoardColumnId,
   type DevCard,
   type LaneModel,
@@ -187,6 +201,8 @@ function getPathForPage(page: ExtendedPage) {
       return '/analytics'
     case 'workload':
       return '/workload'
+    case 'pulse':
+      return '/pulse'
     case 'scripts':
       return '/scripts'
     case 'settings':
@@ -207,6 +223,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
       return 'analytics'
     case '/workload':
       return 'workload'
+    case '/pulse':
+      return 'pulse'
     case '/scripts':
       return 'scripts'
     case '/settings':
@@ -303,6 +321,19 @@ function App() {
       getCurrentPage(loadAppState()),
     ),
   )
+  const [dailyCheckinGateStatus, setDailyCheckinGateStatus] = useState<'checking' | 'required' | 'ready'>('checking')
+  const [dailyCheckinTimezone, setDailyCheckinTimezone] = useState(() =>
+    Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  )
+  const [dailyCheckinToday, setDailyCheckinToday] = useState('')
+  const [dailyCheckinYesterdayPlan, setDailyCheckinYesterdayPlan] = useState<string | null>(null)
+  const [dailyCheckinSubmitting, setDailyCheckinSubmitting] = useState(false)
+  const [dailyCheckinError, setDailyCheckinError] = useState<string | null>(null)
+  const [pulseSelectedDate, setPulseSelectedDate] = useState('')
+  const [pulsePersonFilter, setPulsePersonFilter] = useState('all')
+  const [pulseFeedItems, setPulseFeedItems] = useState<DailyPulseFeedItem[]>([])
+  const [pulseLoading, setPulseLoading] = useState(false)
+  const [pulseError, setPulseError] = useState<string | null>(null)
 
   const {
     authStatus,
@@ -362,7 +393,9 @@ function App() {
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const productionPage = getCurrentPage(state)
   const currentPage: ExtendedPage =
-    routePage === 'backlog' || routePage === 'dev' || routePage === 'scripts' ? routePage : productionPage
+    routePage === 'backlog' || routePage === 'dev' || routePage === 'scripts' || routePage === 'pulse'
+      ? routePage
+      : productionPage
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
@@ -501,7 +534,30 @@ function App() {
     : 'Local mode'
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
+  const dailyCheckinEmail = backlogAccessEmail
+  const allTeamMembers = useMemo(
+    () =>
+      state.portfolios.flatMap((portfolio) => portfolio.team).filter((member, index, list) => {
+        const duplicateIndex = list.findIndex((current) => current.id === member.id)
+        return duplicateIndex === index
+      }),
+    [state.portfolios],
+  )
+  const pulsePeopleOptions = useMemo(
+    () => getTeamMembersForPulse(allTeamMembers).map((member) => member.name),
+    [allTeamMembers],
+  )
   const canAccessBacklog = !authEnabled || canAccessBacklogByEmail(backlogAccessEmail)
+
+  useEffect(() => {
+    if (pulsePersonFilter === 'all') {
+      return
+    }
+
+    if (!pulsePeopleOptions.includes(pulsePersonFilter)) {
+      setPulsePersonFilter('all')
+    }
+  }, [pulsePeopleOptions, pulsePersonFilter])
   const backlogBrandOptions = useMemo(() => {
     const uniqueBrands = new Set<string>()
     scopedPortfolios.forEach((portfolio) => {
@@ -906,6 +962,143 @@ function App() {
     }
   }, [productionPage, routePage, state.activeRole.mode])
 
+  useEffect(() => {
+    if (authEnabled && (authStatus !== 'signed-in' || accessStatus !== 'granted')) {
+      setDailyCheckinGateStatus('checking')
+      return
+    }
+
+    const timezone = resolveViewerTimezone(allTeamMembers, dailyCheckinEmail, workspaceAccess?.editorName ?? null)
+    const { today, yesterday } = getCheckinDates(timezone)
+    setDailyCheckinTimezone(timezone)
+    setDailyCheckinToday(today)
+    setPulseSelectedDate((current) => current || today)
+
+    if (!dailyCheckinEmail) {
+      setDailyCheckinGateStatus('ready')
+      return
+    }
+
+    let cancelled = false
+    setDailyCheckinGateStatus('checking')
+    setDailyCheckinError(null)
+
+    void hasCheckinForDate(dailyCheckinEmail, today).then(async ({ data, error }) => {
+      if (cancelled) {
+        return
+      }
+
+      if (error) {
+        setDailyCheckinGateStatus('ready')
+        return
+      }
+
+      if (data) {
+        setDailyCheckinGateStatus('ready')
+        return
+      }
+
+      const previousDayPlanResult = await getPreviousDayPlan(dailyCheckinEmail, yesterday)
+      if (cancelled) {
+        return
+      }
+
+      setDailyCheckinYesterdayPlan(previousDayPlanResult.data)
+      setDailyCheckinGateStatus('required')
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    accessStatus,
+    allTeamMembers,
+    authEnabled,
+    authStatus,
+    dailyCheckinEmail,
+    workspaceAccess?.editorName,
+  ])
+
+  useEffect(() => {
+    if (!pulseSelectedDate) {
+      return
+    }
+
+    const members = getTeamMembersForPulse(allTeamMembers)
+    const checkinsByIdentity = new Map<string, DailyPulseFeedItem['checkin']>()
+    let cancelled = false
+
+    setPulseLoading(true)
+    setPulseError(null)
+
+    void getCheckinsByDate(pulseSelectedDate).then(({ data, error }) => {
+      if (cancelled) {
+        return
+      }
+
+      if (error) {
+        setPulseLoading(false)
+        setPulseError('Daily Pulse is unavailable in local mode.')
+        const fallbackItems = members.map((member) => ({ member, checkin: null }))
+        setPulseFeedItems(fallbackItems)
+        return
+      }
+
+      data.forEach((checkin) => {
+        const emailKey = checkin.user_email.trim().toLowerCase()
+        const nameKey = checkin.user_name.trim().toLowerCase()
+        checkinsByIdentity.set(emailKey, checkin)
+        checkinsByIdentity.set(nameKey, checkin)
+      })
+
+      const withMissing = members.map((member) => {
+        const emailKey = member.email?.trim().toLowerCase() ?? ''
+        const nameKey = member.name.trim().toLowerCase()
+        return {
+          member,
+          checkin: checkinsByIdentity.get(emailKey) ?? checkinsByIdentity.get(nameKey) ?? null,
+        }
+      })
+
+      const unknownContributors = data
+        .filter((checkin) =>
+          withMissing.every(
+            (entry) =>
+              entry.member.name.trim().toLowerCase() !== checkin.user_name.trim().toLowerCase() &&
+              (entry.member.email?.trim().toLowerCase() ?? '') !== checkin.user_email.trim().toLowerCase(),
+          ),
+        )
+        .map((checkin) => ({
+          member: {
+            name: checkin.user_name,
+            email: checkin.user_email,
+          },
+          checkin,
+        }))
+
+      const merged = [...withMissing, ...unknownContributors]
+      merged.sort((a, b) => {
+        if (!a.checkin && !b.checkin) {
+          return a.member.name.localeCompare(b.member.name)
+        }
+        if (!a.checkin) {
+          return 1
+        }
+        if (!b.checkin) {
+          return -1
+        }
+        return a.checkin.created_at.localeCompare(b.checkin.created_at)
+      })
+
+      setPulseFeedItems(merged)
+      setPulseLoading(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [allTeamMembers, pulseSelectedDate])
+
   // Backlog localStorage persist + remote sync is now handled inside useAppEffects
 
   useEffect(() => {
@@ -1140,6 +1333,36 @@ function App() {
     if (page === 'board') {
       focusBoardAttention()
     }
+  }
+
+  async function handleDailyCheckinSubmit(values: DailyCheckinFormValues) {
+    if (!dailyCheckinEmail || !dailyCheckinToday) {
+      setDailyCheckinGateStatus('ready')
+      return
+    }
+
+    setDailyCheckinSubmitting(true)
+    setDailyCheckinError(null)
+    const { error } = await submitDailyCheckin(
+      dailyCheckinEmail,
+      userDisplayName,
+      dailyCheckinToday,
+      values,
+    )
+
+    if (error) {
+      if (error === 'supabase-not-configured') {
+        setDailyCheckinGateStatus('ready')
+        setDailyCheckinSubmitting(false)
+        return
+      }
+      setDailyCheckinError('We could not submit your check-in. Please try again.')
+      setDailyCheckinSubmitting(false)
+      return
+    }
+
+    setDailyCheckinGateStatus('ready')
+    setDailyCheckinSubmitting(false)
   }
 
   function handleAddScript(input: { title: string; brand: string; googleDocUrl: string }) {
@@ -2470,6 +2693,9 @@ function App() {
   }
 
   const sidebarExpanded = compactLayout || sidebarPinned || sidebarHovered || touchSidebarOpen
+  const dailyCheckinDateLabel = dailyCheckinToday
+    ? formatDisplayDate(dailyCheckinToday, dailyCheckinTimezone)
+    : formatDisplayDate(getCheckinDates(dailyCheckinTimezone).today, dailyCheckinTimezone)
   const toastView = <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
   function resetBoardFilters() {
@@ -2580,6 +2806,19 @@ function App() {
           }
           onRetry={accessStatus === 'error' ? handleRetryAccessCheck : undefined}
           onUseDifferentEmail={handleTryDifferentEmail}
+          signOutPending={signOutPending}
+          onSignOut={handleSignOut}
+        />
+        {toastView}
+      </>
+    )
+  }
+
+  if (dailyCheckinGateStatus === 'checking') {
+    return (
+      <>
+        <RemoteLoadingShell
+          email={authSession?.email ?? userSecondaryLabel ?? 'Workspace user'}
           signOutPending={signOutPending}
           onSignOut={handleSignOut}
         />
@@ -2765,6 +3004,21 @@ function App() {
           />
         ) : null}
 
+        {currentPage === 'pulse' ? (
+          <DailyPulsePage
+            timezone={dailyCheckinTimezone}
+            selectedDate={pulseSelectedDate || dailyCheckinToday}
+            personFilter={pulsePersonFilter}
+            peopleOptions={pulsePeopleOptions}
+            feedItems={pulseFeedItems}
+            loading={pulseLoading}
+            errorMessage={pulseError}
+            headerUtilityContent={headerUtilityContent}
+            onDateChange={(nextDate) => setPulseSelectedDate(nextDate)}
+            onPersonFilterChange={(value) => setPulsePersonFilter(value)}
+          />
+        ) : null}
+
         {currentPage === 'workload' && activePortfolioView ? (
           <DndContext
             sensors={sensors}
@@ -2940,6 +3194,16 @@ function App() {
 
       {keyboardShortcutsOpen ? (
         <KeyboardShortcutsModal onClose={() => setKeyboardShortcutsOpen(false)} />
+      ) : null}
+
+      {dailyCheckinGateStatus === 'required' ? (
+        <DailyCheckinModal
+          dateLabel={dailyCheckinDateLabel}
+          yesterdayPlan={dailyCheckinYesterdayPlan}
+          submitting={dailyCheckinSubmitting}
+          errorMessage={dailyCheckinError}
+          onSubmit={handleDailyCheckinSubmit}
+        />
       ) : null}
 
       {toastView}
