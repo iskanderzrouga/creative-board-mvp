@@ -26,7 +26,7 @@ export const STAGES = [
 
 export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
 export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
-export const APP_PAGES = ['board', 'analytics', 'workload', 'settings', 'scripts'] as const
+export const APP_PAGES = ['board', 'analytics', 'workload', 'pulse', 'settings', 'scripts'] as const
 export const DEV_BOARD_COLUMNS = [
   'To Brief',
   'Up Next',
@@ -252,6 +252,34 @@ export interface TeamMember {
   timezone: string
   wipCap: number | null
   active: boolean
+}
+
+export interface DailyCheckinRow {
+  id: string
+  workspace_id: string
+  user_email: string
+  user_name: string
+  checkin_date: string
+  yesterday_work: string
+  today_plan: string
+  blockers: string | null
+  created_at: string
+}
+
+export interface DailyCheckinFormValues {
+  yesterdayWork: string
+  todayPlan: string
+  blockers: string
+}
+
+export interface DailyPulseTeamMember {
+  name: string
+  email: string | null
+}
+
+export interface DailyPulseFeedItem {
+  member: DailyPulseTeamMember
+  checkin: DailyCheckinRow | null
 }
 
 export interface Portfolio {
