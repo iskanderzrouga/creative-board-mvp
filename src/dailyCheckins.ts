@@ -15,35 +15,6 @@ interface QueryResult<T> {
   error: string | null
 }
 
-function buildDateFormatter(timezone: string) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-}
-
-function getDateParts(value: Date, timezone: string) {
-  const formatter = buildDateFormatter(timezone)
-  const parts = formatter.formatToParts(value)
-  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
-  return { year, month, day }
-}
-
-function toDateString(value: Date, timezone: string) {
-  const parts = getDateParts(value, timezone)
-  return `${parts.year}-${parts.month}-${parts.day}`
-}
-
-function shiftDateByDays(value: Date, days: number) {
-  const next = new Date(value)
-  next.setUTCDate(next.getUTCDate() + days)
-  return next
-}
-
 function normalizeTimezone(timezone: string | null | undefined) {
   const candidate = timezone?.trim()
   if (!candidate) {
@@ -56,6 +27,17 @@ function normalizeTimezone(timezone: string | null | undefined) {
   } catch {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   }
+}
+
+function getDateStringForTimezone(timezone: string, referenceDate = new Date()) {
+  return referenceDate.toLocaleDateString('en-CA', { timeZone: timezone })
+}
+
+function getPreviousDateString(dateString: string) {
+  const [year, month, day] = dateString.split('-').map((part) => Number(part))
+  const date = new Date(Date.UTC(year || 1970, (month || 1) - 1, day || 1))
+  date.setUTCDate(date.getUTCDate() - 1)
+  return date.toISOString().slice(0, 10)
 }
 
 export function resolveViewerTimezone(
@@ -84,8 +66,8 @@ export function resolveViewerTimezone(
 }
 
 export function getCheckinDates(timezone: string, referenceDate = new Date()) {
-  const today = toDateString(referenceDate, timezone)
-  const yesterday = toDateString(shiftDateByDays(referenceDate, -1), timezone)
+  const today = getDateStringForTimezone(timezone, referenceDate)
+  const yesterday = getPreviousDateString(today)
   return { today, yesterday }
 }
 
@@ -222,14 +204,12 @@ export function getTeamMembersForPulse(team: TeamMember[]): DailyPulseTeamMember
   return Array.from(deduped.values()).sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function formatDisplayDate(value: string, timezone: string) {
-  const [year, month, day] = value.split('-').map((part) => Number(part))
-  const utcDate = new Date(Date.UTC(year || 1970, (month || 1) - 1, day || 1, 12, 0, 0))
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
+export function formatDisplayDate(_value: string, timezone: string) {
+  return new Date().toLocaleDateString('en-US', {
     weekday: 'long',
+    year: 'numeric',
     month: 'long',
     day: 'numeric',
-    year: 'numeric',
-  }).format(utcDate)
+    timeZone: timezone,
+  })
 }
