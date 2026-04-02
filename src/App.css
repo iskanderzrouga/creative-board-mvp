@@ -6436,7 +6436,7 @@ button {
 .daily-checkin-yesterday h2 {
   margin: 0;
   font-size: 0.95rem;
-  color: var(--text-strong);
+  color: var(--text-strong); 
 }
 
 .daily-checkin-yesterday p {
@@ -6469,13 +6469,15 @@ button {
 
 .daily-checkin-field textarea::placeholder {
   color: #1a1a1a !important;
+=======
   opacity: 1;
 }
 
 .daily-checkin-submit-button {
-  color: #1a1a1a !important;
-  background: #d9d9d9 !important;
-  border: 1px solid #bdbdbd !important;
+.daily-checkin-submit-button {
+    color: #1a1a1a !important;
+    background: #d9d9d9 !important;
+    border: 1px solid #bdbdbd !important;
 }
 
 .daily-checkin-error {
@@ -6529,6 +6531,7 @@ button {
 
 .pulse-placeholder {
   color: #1a1a1a !important;
+
 }
 
 .pulse-feed {

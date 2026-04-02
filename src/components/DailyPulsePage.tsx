@@ -97,7 +97,6 @@ export function DailyPulsePage({
             {errorMessage}
           </div>
         ) : null}
-
         {!loading && !errorMessage && visibleItems.length === 0 ? (
           <div className="dashboard-placeholder pulse-placeholder" style={{ color: '#1a1a1a' }}>
             No team members match this filter.
