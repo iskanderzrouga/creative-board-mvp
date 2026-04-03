@@ -202,6 +202,7 @@ function SidebarComponent({
   }> = isDeveloperUser
     ? [
         { page: 'dev', disabled: false },
+        { page: 'pulse', disabled: false },
         { page: 'settings', disabled: false },
       ]
     : [

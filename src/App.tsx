@@ -18,9 +18,11 @@ import './App.css'
 import {
   canEditorDragStage,
   copyToClipboard,
+  getAllowedPageForDeveloper,
   getAllowedPageForRole,
   getBackwardMoveReasonOptions,
   getCurrentPage,
+  type ExtendedAppPage,
   getDefaultBackwardMoveForm,
   getRoleFromWorkspaceAccess,
   getSearchCountLabel,
@@ -156,7 +158,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
-type ExtendedPage = AppPage | 'backlog' | 'dev'
+type ExtendedPage = ExtendedAppPage
 
 interface CopyState {
   key: string
@@ -245,10 +247,6 @@ function canAccessBacklogByEmail(email: string | null) {
 
   const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
   return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
-}
-
-function getAllowedPageForDeveloper(page: ExtendedPage) {
-  return page === 'settings' ? 'settings' : 'dev'
 }
 
 function App() {
@@ -423,8 +421,12 @@ function App() {
     }) ?? null
   const isDeveloperUser =
     isDeveloperRole(currentEditor?.role ?? null) || isDeveloperRole(accessMatchedMember?.role ?? null)
+  const developerTeamMembers = useMemo(
+    () => allTeamMembers.filter((member) => isDeveloperRole(member.role)),
+    [allTeamMembers],
+  )
   const productionPage: AppPage = isDeveloperUser
-    ? (state.activePage === 'settings' ? 'settings' : 'board')
+    ? (routePage === 'settings' ? 'settings' : routePage === 'pulse' ? 'pulse' : 'board')
     : getCurrentPage(state)
   const currentPage: ExtendedPage = isDeveloperUser
     ? getAllowedPageForDeveloper(routePage)
@@ -906,7 +908,7 @@ function App() {
         setRoutePage(allowedPage)
         setState((current) => ({
           ...current,
-          activePage: allowedPage === 'settings' ? 'settings' : 'board',
+          activePage: allowedPage === 'settings' ? 'settings' : allowedPage === 'pulse' ? 'pulse' : 'board',
         }))
         return
       }
@@ -987,7 +989,7 @@ function App() {
 
   useEffect(() => {
     if (isDeveloperUser) {
-      if (routePage !== 'dev' && routePage !== 'settings') {
+      if (routePage !== 'dev' && routePage !== 'settings' && routePage !== 'pulse') {
         setRoutePage('dev')
       }
       return
@@ -1307,7 +1309,7 @@ function App() {
       setRoutePage(allowedPage)
       setState((current) => ({
         ...current,
-        activePage: allowedPage === 'settings' ? 'settings' : 'board',
+        activePage: allowedPage === 'settings' ? 'settings' : allowedPage === 'pulse' ? 'pulse' : 'board',
       }))
       setSelectedCard(null)
       setSelectedDevCard(null)
@@ -1411,6 +1413,9 @@ function App() {
 
     setDailyCheckinGateStatus('ready')
     setDailyCheckinSubmitting(false)
+    if (isDeveloperUser) {
+      setPage('dev')
+    }
   }
 
   function handleAddScript(input: { title: string; brand: string; googleDocUrl: string }) {
@@ -3005,7 +3010,7 @@ function App() {
         {currentPage === 'dev' ? (
           <DevBoardPage
             devBoard={state.devBoard}
-            teamMembers={activePortfolioView?.team ?? []}
+            teamMembers={developerTeamMembers}
             canEdit={state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'}
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
@@ -3210,7 +3215,7 @@ function App() {
         <DevCardDetailPanel
           key={selectedDevCardData.id}
           card={selectedDevCardData}
-          teamMembers={activePortfolioView?.team ?? []}
+          teamMembers={developerTeamMembers}
           isOpen={!isClosingCardPanel}
           onClose={() => setSelectedDevCard(null)}
           onSave={handleSaveDevCard}
