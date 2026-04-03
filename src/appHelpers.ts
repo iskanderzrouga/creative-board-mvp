@@ -141,6 +141,10 @@ export function isLikelyEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
+export function isDeveloperRole(role: string | null | undefined) {
+  return role?.trim().toLowerCase() === 'developer'
+}
+
 export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode | 'editor') {
   if (roleMode === 'owner' || roleMode === 'manager') {
     return page
