@@ -15,6 +15,7 @@ interface SidebarProps {
   portfolio: Portfolio | null
   portfolios: Portfolio[]
   role: ActiveRole
+  isDeveloperUser: boolean
   canAccessBacklog: boolean
   userName: string
   userSecondaryLabel: string | null
@@ -181,6 +182,7 @@ function SidebarComponent({
   portfolio,
   portfolios,
   role,
+  isDeveloperUser,
   canAccessBacklog,
   userName,
   userSecondaryLabel,
@@ -197,16 +199,21 @@ function SidebarComponent({
     page: ExtendedPage
     disabled: boolean
     tooltip?: string
-  }> = [
-    ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
-    ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
-    { page: 'board', disabled: false },
-    { page: 'pulse', disabled: false },
-    ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),
-    ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
-    ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
-    ...(canAccessAllPages ? [{ page: 'settings' as const, disabled: false }] : []),
-  ]
+  }> = isDeveloperUser
+    ? [
+        { page: 'dev', disabled: false },
+        { page: 'settings', disabled: false },
+      ]
+    : [
+        ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
+        ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
+        { page: 'board', disabled: false },
+        { page: 'pulse', disabled: false },
+        ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),
+        ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),
+        ...(canAccessWorkload ? [{ page: 'workload' as const, disabled: false }] : []),
+        ...(canAccessAllPages ? [{ page: 'settings' as const, disabled: false }] : []),
+      ]
   const avatarSource = userName || userSecondaryLabel || 'User'
   const avatarInitial = avatarSource.charAt(0).toUpperCase() || 'U'
 
