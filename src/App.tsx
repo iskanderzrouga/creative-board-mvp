@@ -24,6 +24,7 @@ import {
   getDefaultBackwardMoveForm,
   getRoleFromWorkspaceAccess,
   getSearchCountLabel,
+  isDeveloperRole,
   isBackwardMoveOtherReasonId,
   isLikelyEmail,
   type BackwardMoveFormState,
@@ -246,6 +247,10 @@ function canAccessBacklogByEmail(email: string | null) {
   return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
 }
 
+function getAllowedPageForDeveloper(page: ExtendedPage) {
+  return page === 'settings' ? 'settings' : 'dev'
+}
+
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
@@ -391,15 +396,41 @@ function App() {
     null
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
-  const productionPage = getCurrentPage(state)
-  const currentPage: ExtendedPage =
-    routePage === 'backlog' || routePage === 'dev' || routePage === 'scripts' || routePage === 'pulse'
-      ? routePage
-      : productionPage
+  const allTeamMembers = useMemo(
+    () =>
+      state.portfolios.flatMap((portfolio) => portfolio.team).filter((member, index, list) => {
+        const duplicateIndex = list.findIndex((current) => current.id === member.id)
+        return duplicateIndex === index
+      }),
+    [state.portfolios],
+  )
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
     : null
+  const workspaceAccessEmail = workspaceAccess?.email?.trim().toLowerCase() ?? null
+  const workspaceAccessEditorName = workspaceAccess?.editorName?.trim().toLowerCase() ?? null
+  const accessMatchedMember =
+    allTeamMembers.find((member) => {
+      const memberEmail = member.accessEmail?.trim().toLowerCase() ?? null
+      if (workspaceAccessEmail && memberEmail && workspaceAccessEmail === memberEmail) {
+        return true
+      }
+
+      return Boolean(
+        workspaceAccessEditorName && member.name.trim().toLowerCase() === workspaceAccessEditorName,
+      )
+    }) ?? null
+  const isDeveloperUser =
+    isDeveloperRole(currentEditor?.role ?? null) || isDeveloperRole(accessMatchedMember?.role ?? null)
+  const productionPage: AppPage = isDeveloperUser
+    ? (state.activePage === 'settings' ? 'settings' : 'board')
+    : getCurrentPage(state)
+  const currentPage: ExtendedPage = isDeveloperUser
+    ? getAllowedPageForDeveloper(routePage)
+    : routePage === 'backlog' || routePage === 'dev' || routePage === 'scripts' || routePage === 'pulse'
+      ? routePage
+      : productionPage
   const isLaunchOpsActive =
     state.activeRole.mode === 'contributor' && isLaunchOpsRole(currentEditor?.role ?? null)
   const viewerContext = useMemo<ViewerContext>(
@@ -535,14 +566,6 @@ function App() {
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const dailyCheckinEmail = backlogAccessEmail
-  const allTeamMembers = useMemo(
-    () =>
-      state.portfolios.flatMap((portfolio) => portfolio.team).filter((member, index, list) => {
-        const duplicateIndex = list.findIndex((current) => current.id === member.id)
-        return duplicateIndex === index
-      }),
-    [state.portfolios],
-  )
   const pulsePeopleOptions = useMemo(
     () => getTeamMembersForPulse(allTeamMembers).map((member) => member.name),
     [allTeamMembers],
@@ -864,10 +887,6 @@ function App() {
       return
     }
 
-    if (routePage !== 'backlog' && routePage !== 'dev' && routePage !== productionPage) {
-      return
-    }
-
     const nextPath = getPathForPage(currentPage)
     if (window.location.pathname !== nextPath) {
       window.history.replaceState({}, '', nextPath)
@@ -881,6 +900,16 @@ function App() {
 
     const handlePopState = () => {
       const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
+
+      if (isDeveloperUser) {
+        const allowedPage = getAllowedPageForDeveloper(nextPage)
+        setRoutePage(allowedPage)
+        setState((current) => ({
+          ...current,
+          activePage: allowedPage === 'settings' ? 'settings' : 'board',
+        }))
+        return
+      }
 
       if (nextPage === 'backlog') {
         if (canAccessBacklog && (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
@@ -942,7 +971,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [canAccessBacklog, state])
+  }, [canAccessBacklog, isDeveloperUser, state])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
@@ -951,16 +980,23 @@ function App() {
   }, [canAccessBacklog, productionPage, routePage])
 
   useEffect(() => {
-    if (routePage === 'dev' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
+    if (!isDeveloperUser && routePage === 'dev' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
       setRoutePage(productionPage)
     }
-  }, [productionPage, routePage, state.activeRole.mode])
+  }, [isDeveloperUser, productionPage, routePage, state.activeRole.mode])
 
   useEffect(() => {
+    if (isDeveloperUser) {
+      if (routePage !== 'dev' && routePage !== 'settings') {
+        setRoutePage('dev')
+      }
+      return
+    }
+
     if (routePage === 'scripts' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
       setRoutePage(productionPage)
     }
-  }, [productionPage, routePage, state.activeRole.mode])
+  }, [isDeveloperUser, productionPage, routePage, state.activeRole.mode])
 
   useEffect(() => {
     if (authEnabled && (authStatus !== 'signed-in' || accessStatus !== 'granted')) {
@@ -1266,6 +1302,18 @@ function App() {
   }
 
   function setPage(page: ExtendedPage) {
+    if (isDeveloperUser) {
+      const allowedPage = getAllowedPageForDeveloper(page)
+      setRoutePage(allowedPage)
+      setState((current) => ({
+        ...current,
+        activePage: allowedPage === 'settings' ? 'settings' : 'board',
+      }))
+      setSelectedCard(null)
+      setSelectedDevCard(null)
+      return
+    }
+
     if (page === 'backlog') {
       if (!canAccessBacklog) {
         setRoutePage(productionPage)
@@ -2840,6 +2888,7 @@ function App() {
           portfolio={activePortfolioView}
           portfolios={scopedPortfolios}
           role={state.activeRole}
+          isDeveloperUser={isDeveloperUser}
           canAccessBacklog={canAccessBacklog}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
