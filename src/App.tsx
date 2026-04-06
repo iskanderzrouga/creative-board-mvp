@@ -99,12 +99,13 @@ import {
   getTeamMemberById,
   getVisibleCards,
   getVisibleColumns,
-  getLatestScriptReview,
+  isScriptReadyToLaunch,
   isLaunchOpsRole,
   SCRIPT_REVIEWERS,
   createNotification,
   getDevCardBlockerReason,
   type ScriptConfidenceLevel,
+  type ScriptReviewStatus,
   type ScriptReviewerId,
   markNotificationRead,
   markAllNotificationsRead,
@@ -1436,6 +1437,7 @@ function App() {
             title: input.title,
             brand: input.brand,
             googleDocUrl: input.googleDocUrl,
+            reviewStatus: 'draft',
             reviews: {
               naomi: [],
               iskander: [],
@@ -1460,7 +1462,10 @@ function App() {
     showToast('Script added to active workshop.', 'green')
   }
 
-  function handleUpdateScript(scriptId: string, updates: { title?: string; brand?: string; googleDocUrl?: string }) {
+  function handleUpdateScript(
+    scriptId: string,
+    updates: { title?: string; brand?: string; googleDocUrl?: string; reviewStatus?: ScriptReviewStatus },
+  ) {
     if (!canManageScripts) {
       return
     }
@@ -1476,6 +1481,7 @@ function App() {
                 title: updates.title ?? script.title,
                 brand: updates.brand ?? script.brand,
                 googleDocUrl: updates.googleDocUrl ?? script.googleDocUrl,
+                reviewStatus: updates.reviewStatus ?? script.reviewStatus,
                 updatedAt: timestamp,
               }
             : script,
@@ -1530,11 +1536,21 @@ function App() {
 
     const script = state.scriptWorkshop.scripts.find((item) => item.id === scriptId)
     const readyAfterSubmit = script
-      ? SCRIPT_REVIEWERS.every((reviewer) => {
-          if (reviewer.id === reviewerId) {
-            return confidence === 'high'
-          }
-          return getLatestScriptReview(script, reviewer.id)?.confidence === 'high'
+      ? isScriptReadyToLaunch({
+          ...script,
+          reviews: {
+            ...script.reviews,
+            [reviewerId]: [
+              ...(script.reviews[reviewerId] ?? []),
+              {
+                id: reviewId,
+                reviewerId,
+                confidence,
+                comment: comment.trim(),
+                timestamp,
+              },
+            ],
+          },
         })
       : false
 

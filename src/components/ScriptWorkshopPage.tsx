@@ -6,6 +6,7 @@ import {
   getLatestScriptReview,
   isScriptReadyToLaunch,
   type ScriptConfidenceLevel,
+  type ScriptReviewStatus,
   type ScriptReviewerId,
   type ScriptWorkshopItem,
 } from '../board'
@@ -25,7 +26,10 @@ interface ScriptWorkshopPageProps {
   currentAuthorName: string
   headerUtilityContent?: ReactNode
   onAddScript: (input: AddScriptInput) => void
-  onUpdateScript: (scriptId: string, updates: { title?: string; brand?: string; googleDocUrl?: string }) => void
+  onUpdateScript: (
+    scriptId: string,
+    updates: { title?: string; brand?: string; googleDocUrl?: string; reviewStatus?: ScriptReviewStatus },
+  ) => void
   onSubmitReview: (scriptId: string, reviewerId: ScriptReviewerId, confidence: ScriptConfidenceLevel, comment: string) => void
   onAddComment: (scriptId: string, text: string) => void
 }

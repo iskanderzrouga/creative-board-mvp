@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
@@ -122,12 +122,14 @@ export function CardDetailPanel({
   const [audienceDraft, setAudienceDraft] = useState(card.audience)
   const [landingPageDraft, setLandingPageDraft] = useState(card.landingPage)
   const [figmaUrlDraft, setFigmaUrlDraft] = useState(card.figmaUrl)
+  const [briefDraft, setBriefDraft] = useState(card.brief)
   const [keyMessageDraft, setKeyMessageDraft] = useState(card.keyMessage)
   const [visualDirectionDraft, setVisualDirectionDraft] = useState(card.visualDirection)
   const [ctaDraft, setCtaDraft] = useState(card.cta)
   const [referenceLinksDraft, setReferenceLinksDraft] = useState(card.referenceLinks)
   const [adCopyDraft, setAdCopyDraft] = useState(card.adCopy)
   const [notesDraft, setNotesDraft] = useState(card.notes)
+  const [frameioLinkDraft, setFrameioLinkDraft] = useState(card.frameioLink)
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -138,6 +140,10 @@ export function CardDetailPanel({
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [trackingOpen, setTrackingOpen] = useState(false)
   const commentImageRef = useRef<HTMLInputElement | null>(null)
+  const textDebounceRef = useRef<Record<'brief' | 'frameioLink', number | null>>({
+    brief: null,
+    frameioLink: null,
+  })
 
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
   const isOwnedEditor = viewerMode === 'contributor' && viewerName === card.owner
@@ -257,6 +263,41 @@ export function CardDetailPanel({
 
     onSave({ [key]: value } as Pick<Card, typeof key>)
   }
+
+  function clearDebouncedSave(key: 'brief' | 'frameioLink') {
+    if (textDebounceRef.current[key] !== null && typeof window !== 'undefined') {
+      window.clearTimeout(textDebounceRef.current[key] ?? undefined)
+      textDebounceRef.current[key] = null
+    }
+  }
+
+  function scheduleDebouncedSave(key: 'brief' | 'frameioLink', value: string) {
+    clearDebouncedSave(key)
+    if (typeof window === 'undefined') {
+      return
+    }
+    textDebounceRef.current[key] = window.setTimeout(() => {
+      if (value !== card[key]) {
+        onSave({ [key]: value } as Pick<Card, typeof key>)
+      }
+      textDebounceRef.current[key] = null
+    }, 500)
+  }
+
+  function flushDebouncedSave(key: 'brief' | 'frameioLink', value: string) {
+    clearDebouncedSave(key)
+    if (value !== card[key]) {
+      onSave({ [key]: value } as Pick<Card, typeof key>)
+    }
+  }
+
+  useEffect(
+    () => () => {
+      clearDebouncedSave('brief')
+      clearDebouncedSave('frameioLink')
+    },
+    [],
+  )
 
   function handleLinkSave() {
     if (!linkLabel.trim() || !linkUrl.trim()) {
@@ -896,10 +937,31 @@ export function CardDetailPanel({
         >
           <div className="section-rule-title">Brief</div>
           <RichTextEditor
-            value={card.brief}
-            onChange={(next) => onSave({ brief: next })}
+            value={briefDraft}
+            onChange={(next) => {
+              setBriefDraft(next)
+              scheduleDebouncedSave('brief', next)
+            }}
+            onBlur={() => flushDebouncedSave('brief', briefDraft)}
             readOnly={!canEditOwnedContent}
           />
+        </section>
+
+        <section className="panel-section">
+          <div className="section-rule-title">Ad Copy</div>
+          <label className="full-width">
+            <span>Ad Copy</span>
+            {canEditOwnedContent ? (
+              <textarea
+                value={adCopyDraft}
+                onChange={(event) => setAdCopyDraft(event.target.value)}
+                onBlur={() => commitTextDraft('adCopy', adCopyDraft)}
+                rows={4}
+              />
+            ) : (
+              <strong>{card.adCopy || '—'}</strong>
+            )}
+          </label>
         </section>
 
         {creativeTask ? (
@@ -962,19 +1024,6 @@ export function CardDetailPanel({
                 )}
               </label>
               <label className="full-width">
-                <span>Ad Copy</span>
-                {canEditOwnedContent ? (
-                  <textarea
-                    value={adCopyDraft}
-                    onChange={(event) => setAdCopyDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('adCopy', adCopyDraft)}
-                    rows={4}
-                  />
-                ) : (
-                  <strong>{card.adCopy || '—'}</strong>
-                )}
-              </label>
-              <label className="full-width">
                 <span>Notes</span>
                 {canEditOwnedContent ? (
                   <textarea
@@ -1003,8 +1052,12 @@ export function CardDetailPanel({
               <span className="frameio-label">Frame.io</span>
               {canEditFrameio ? (
                 <input
-                  value={card.frameioLink}
-                  onChange={(event) => onSave({ frameioLink: event.target.value })}
+                  value={frameioLinkDraft}
+                  onChange={(event) => {
+                    setFrameioLinkDraft(event.target.value)
+                    scheduleDebouncedSave('frameioLink', event.target.value)
+                  }}
+                  onBlur={() => flushDebouncedSave('frameioLink', frameioLinkDraft)}
                   placeholder="Paste Frame.io review link"
                 />
               ) : card.frameioLink ? (
