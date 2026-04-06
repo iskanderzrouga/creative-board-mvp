@@ -418,6 +418,8 @@ export const SCRIPT_REVIEWERS = [
 
 export type ScriptReviewerId = (typeof SCRIPT_REVIEWERS)[number]['id']
 export type ScriptConfidenceLevel = 'low' | 'medium' | 'high'
+export const SCRIPT_REVIEW_STATUSES = ['draft', 'ready-for-review', 'in-production'] as const
+export type ScriptReviewStatus = (typeof SCRIPT_REVIEW_STATUSES)[number]
 
 export interface ScriptReviewEntry {
   id: string
@@ -439,6 +441,7 @@ export interface ScriptWorkshopItem {
   title: string
   brand: string
   googleDocUrl: string
+  reviewStatus: ScriptReviewStatus
   reviews: Record<ScriptReviewerId, ScriptReviewEntry[]>
   comments: ScriptThreadComment[]
   createdAt: string
@@ -742,7 +745,7 @@ export interface QuickCreateInput {
 export const DEFAULT_QUICK_CREATE_INPUT: QuickCreateInput = {
   brand: '',
   product: '',
-  taskTypeId: 'video-ugc-short',
+  taskTypeId: 'video-ugc-30-60',
   title: '',
   angle: '',
   sourceCardId: null,
@@ -1325,8 +1328,11 @@ export function getTaskTypeById(settings: GlobalSettings, taskTypeId: string) {
 
 export function isCreativeTaskTypeId(taskTypeId: string) {
   return (
-    taskTypeId === 'video-ugc-short' ||
-    taskTypeId === 'video-ugc-medium' ||
+    taskTypeId === 'video-ugc-under-30' ||
+    taskTypeId === 'video-ugc-30-60' ||
+    taskTypeId === 'video-ugc-1-2' ||
+    taskTypeId === 'video-ugc-2-3' ||
+    taskTypeId === 'video-ugc-3-plus' ||
     taskTypeId === 'iteration' ||
     taskTypeId === 'static-single'
   )
@@ -1538,13 +1544,25 @@ function inferTaskTypeId(
   legacyVideoType: string,
 ) {
   if (legacyType === 'Video') {
+    if (legacyVideoType.includes('< 30s')) {
+      return 'video-ugc-under-30'
+    }
+    if (legacyVideoType.includes('30s-60s') || legacyVideoType.includes('< 60s')) {
+      return 'video-ugc-30-60'
+    }
     if (legacyVideoType.includes('1-2 min')) {
-      return 'video-ugc-medium'
+      return 'video-ugc-1-2'
+    }
+    if (legacyVideoType.includes('2-3 min')) {
+      return 'video-ugc-2-3'
+    }
+    if (legacyVideoType.includes('3+ min')) {
+      return 'video-ugc-3-plus'
     }
     if (legacyVideoType.toLowerCase().includes('relaunch')) {
       return 'iteration'
     }
-    return 'video-ugc-short'
+    return 'video-ugc-30-60'
   }
   if (legacyType === 'Static') {
     return 'static-single'
@@ -1571,9 +1589,13 @@ function normalizeStoredTaskTypeId(taskLibrary: TaskType[], rawTaskTypeId: strin
         ? 'static-single'
         : rawTaskTypeId === 'landing-page'
           ? 'lp-design'
-          : rawTaskTypeId === 'offer' || rawTaskTypeId === 'ad-copy' || rawTaskTypeId === 'launch-prep'
-            ? 'custom'
-            : rawTaskTypeId
+          : rawTaskTypeId === 'video-ugc-short'
+            ? 'video-ugc-30-60'
+            : rawTaskTypeId === 'video-ugc-medium'
+              ? 'video-ugc-1-2'
+            : rawTaskTypeId === 'offer' || rawTaskTypeId === 'ad-copy' || rawTaskTypeId === 'launch-prep'
+              ? 'custom'
+              : rawTaskTypeId
 
   return (
     taskLibrary.find((taskType) => taskType.id === normalizedTaskTypeId)?.id ??
@@ -1586,8 +1608,8 @@ function normalizeStoredTaskTypeId(taskLibrary: TaskType[], rawTaskTypeId: strin
 function createSeedTaskLibrary(): TaskType[] {
   const definitions: Array<Omit<TaskType, 'order'>> = [
     {
-      id: 'video-ugc-short',
-      name: 'Video (UGC < 1 min)',
+      id: 'video-ugc-under-30',
+      name: '< 30s',
       category: 'Creative',
       icon: '🎬',
       color: '#e0f2fe',
@@ -1599,13 +1621,52 @@ function createSeedTaskLibrary(): TaskType[] {
       locked: true,
     },
     {
-      id: 'video-ugc-medium',
-      name: 'Video (UGC 1-2 min)',
+      id: 'video-ugc-30-60',
+      name: '30s-60s',
+      category: 'Creative',
+      icon: '🎬',
+      color: '#bae6fd',
+      textColor: '#0369a1',
+      estimatedHours: 12,
+      requiredFields: ['angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage', 'platform'],
+      isDefault: true,
+      locked: true,
+    },
+    {
+      id: 'video-ugc-1-2',
+      name: '1-2 min',
       category: 'Creative',
       icon: '🎬',
       color: '#bfdbfe',
       textColor: '#1d4ed8',
       estimatedHours: 16,
+      requiredFields: ['angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage', 'platform'],
+      isDefault: true,
+      locked: true,
+    },
+    {
+      id: 'video-ugc-2-3',
+      name: '2-3 min',
+      category: 'Creative',
+      icon: '🎬',
+      color: '#c7d2fe',
+      textColor: '#4338ca',
+      estimatedHours: 20,
+      requiredFields: ['angle', 'funnelStage'],
+      optionalFields: ['audience', 'landingPage', 'platform'],
+      isDefault: true,
+      locked: true,
+    },
+    {
+      id: 'video-ugc-3-plus',
+      name: '3+ min',
+      category: 'Creative',
+      icon: '🎬',
+      color: '#ddd6fe',
+      textColor: '#5b21b6',
+      estimatedHours: 24,
       requiredFields: ['angle', 'funnelStage'],
       optionalFields: ['audience', 'landingPage', 'platform'],
       isDefault: true,
@@ -2680,6 +2741,11 @@ export function coerceAppState(raw: unknown): AppState {
             title: script.title,
             brand: script.brand,
             googleDocUrl: script.googleDocUrl,
+            reviewStatus:
+              typeof script.reviewStatus === 'string' &&
+              SCRIPT_REVIEW_STATUSES.includes(script.reviewStatus as ScriptReviewStatus)
+                ? (script.reviewStatus as ScriptReviewStatus)
+                : 'draft',
             reviews,
             comments,
             createdAt: typeof script.createdAt === 'string' ? script.createdAt : new Date().toISOString(),
@@ -2731,7 +2797,8 @@ export function getLatestScriptReview(
 }
 
 export function isScriptReadyToLaunch(script: ScriptWorkshopItem) {
-  return SCRIPT_REVIEWERS.every((reviewer) => getLatestScriptReview(script, reviewer.id)?.confidence === 'high')
+  const isEligibleForCounting = script.reviewStatus === 'ready-for-review' || script.reviewStatus === 'in-production'
+  return isEligibleForCounting && SCRIPT_REVIEWERS.every((reviewer) => getLatestScriptReview(script, reviewer.id)?.confidence === 'high')
 }
 
 export function loadAppState() {
@@ -3455,11 +3522,17 @@ function isProductionPriority(value: unknown): value is Exclude<CardPriority, nu
 }
 
 function getP1DeadlineHoursForTaskTypeId(taskTypeId: string) {
-  if (taskTypeId === 'video-ugc-short' || taskTypeId === 'static-single') {
+  if (taskTypeId === 'video-ugc-under-30' || taskTypeId === 'video-ugc-30-60' || taskTypeId === 'static-single') {
     return 8
   }
-  if (taskTypeId === 'video-ugc-medium') {
+  if (taskTypeId === 'video-ugc-1-2') {
     return 16
+  }
+  if (taskTypeId === 'video-ugc-2-3') {
+    return 20
+  }
+  if (taskTypeId === 'video-ugc-3-plus') {
+    return 24
   }
   if (taskTypeId.includes('vsl-short')) {
     return 16
