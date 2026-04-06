@@ -2252,7 +2252,16 @@ function normalizePortfolio(
   settings: GlobalSettings,
   portfolioIndex: number,
 ): Portfolio {
-  const normalizedBrands = portfolio.brands.map((brand, index) => {
+  const rawPortfolio = portfolio as unknown as {
+    brands?: unknown
+    team?: unknown
+    cards?: unknown
+  }
+  const rawBrands = Array.isArray(rawPortfolio.brands) ? (rawPortfolio.brands as Brand[]) : []
+  const rawTeam = Array.isArray(rawPortfolio.team) ? (rawPortfolio.team as TeamMember[]) : []
+  const rawCards = Array.isArray(rawPortfolio.cards) ? (rawPortfolio.cards as Card[]) : []
+
+  const normalizedBrands = rawBrands.map((brand, index) => {
     const fallback = BRAND_PALETTES[(portfolioIndex + index) % BRAND_PALETTES.length]
     return {
       ...brand,
@@ -2266,7 +2275,7 @@ function normalizePortfolio(
     }
   })
 
-  const normalizedTeam = portfolio.team.map((member) => ({
+  const normalizedTeam = rawTeam.map((member) => ({
     ...member,
     weeklyHours:
       typeof member.weeklyHours === 'number'
@@ -2340,110 +2349,198 @@ function normalizePortfolio(
   })
 
   const normalizedCards = reindexCards(
-    portfolio.cards.map((rawCard) => {
-      const taskTypeId =
-        rawCard.taskTypeId
-          ? normalizeStoredTaskTypeId(taskLibrary, rawCard.taskTypeId)
-          : inferTaskTypeId(taskLibrary, 'Video', rawCard.title, '')
-      const taskType = getTaskTypeById({ ...settings, taskLibrary }, taskTypeId)
-      const activityLog =
-        rawCard.activityLog && rawCard.activityLog.length > 0
-          ? rawCard.activityLog
-          : [
-              createSeedActivity(
-                'Naomi',
-                'created this card',
-                'created',
-                `${rawCard.dateCreated}T00:00:00Z`,
-              ),
-            ]
+    rawCards.map((rawCard) => {
+      try {
+        const taskTypeId =
+          rawCard.taskTypeId
+            ? normalizeStoredTaskTypeId(taskLibrary, rawCard.taskTypeId)
+            : inferTaskTypeId(taskLibrary, 'Video', rawCard.title, '')
+        const taskType = getTaskTypeById({ ...settings, taskLibrary }, taskTypeId)
+        const activityLog =
+          rawCard.activityLog && rawCard.activityLog.length > 0
+            ? rawCard.activityLog
+            : [
+                createSeedActivity(
+                  'Naomi',
+                  'created this card',
+                  'created',
+                  `${rawCard.dateCreated}T00:00:00Z`,
+                ),
+              ]
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = rawCard as any
-      return syncGeneratedNames({
-        ...rawCard,
-        taskTypeId,
-        estimatedHours:
-          typeof rawCard.estimatedHours === 'number'
-            ? rawCard.estimatedHours
-            : typeof raw.effortPoints === 'number'
-              ? raw.effortPoints
-              : taskType.estimatedHours,
-        revisionEstimatedHours:
-          typeof (rawCard as Card).revisionEstimatedHours === 'number'
-            ? (rawCard as Card).revisionEstimatedHours
-            : null,
-        priority: isProductionPriority(raw.priority) ? raw.priority : null,
-        p1AssignedAt: typeof raw.p1AssignedAt === 'string' ? raw.p1AssignedAt : null,
-        p1Deadline: typeof raw.p1Deadline === 'string' ? raw.p1Deadline : null,
-        actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
-        dueDate: rawCard.dueDate ?? null,
-        designType:
-          raw.designType === 'Packaging' ||
-          raw.designType === 'Logo' ||
-          raw.designType === 'Brand Asset' ||
-          raw.designType === 'Other'
-            ? raw.designType
-            : null,
-        figmaUrl: typeof raw.figmaUrl === 'string' ? raw.figmaUrl : '',
-        sourceCardId: typeof raw.sourceCardId === 'string' && raw.sourceCardId ? raw.sourceCardId : null,
-        relatedLpDesignCardId:
-          typeof raw.relatedLpDesignCardId === 'string' && raw.relatedLpDesignCardId
-            ? raw.relatedLpDesignCardId
-            : null,
-        keyMessage: typeof raw.keyMessage === 'string' ? raw.keyMessage : '',
-        visualDirection: typeof raw.visualDirection === 'string' ? raw.visualDirection : '',
-        cta: typeof raw.cta === 'string' ? raw.cta : '',
-        referenceLinks: typeof raw.referenceLinks === 'string' ? raw.referenceLinks : '',
-        adCopy: typeof raw.adCopy === 'string' ? raw.adCopy : '',
-        notes: typeof raw.notes === 'string' ? raw.notes : '',
-        blocked: rawCard.blocked ?? null,
-        archivedAt: rawCard.archivedAt ?? null,
-        activityLog,
-    stageEnteredAt:
-          rawCard.stageHistory[rawCard.stageHistory.length - 1]?.enteredAt ?? rawCard.stageEnteredAt,
-        editorTimer:
-          raw.editorTimer &&
-          typeof raw.editorTimer.startedAt === 'string' &&
-          (raw.editorTimer.stoppedAt === null || typeof raw.editorTimer.stoppedAt === 'string') &&
-          (raw.editorTimer.elapsedMs === null || typeof raw.editorTimer.elapsedMs === 'number')
-            ? {
-                startedAt: raw.editorTimer.startedAt,
-                stoppedAt: raw.editorTimer.stoppedAt,
-                elapsedMs: raw.editorTimer.elapsedMs,
-              }
-            : null,
-        columnMovementHistory: Array.isArray(raw.columnMovementHistory)
-          ? raw.columnMovementHistory
-              .map((entry: unknown) => {
-                if (!entry || typeof entry !== 'object') {
-                  return null
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = rawCard as any
+        const stageHistory = Array.isArray(rawCard.stageHistory) ? rawCard.stageHistory : []
+
+        return syncGeneratedNames({
+          ...rawCard,
+          taskTypeId,
+          estimatedHours:
+            typeof rawCard.estimatedHours === 'number'
+              ? rawCard.estimatedHours
+              : typeof raw.effortPoints === 'number'
+                ? raw.effortPoints
+                : taskType.estimatedHours,
+          revisionEstimatedHours:
+            typeof (rawCard as Card).revisionEstimatedHours === 'number'
+              ? (rawCard as Card).revisionEstimatedHours
+              : null,
+          priority: isProductionPriority(raw.priority) ? raw.priority : null,
+          p1AssignedAt: typeof raw.p1AssignedAt === 'string' ? raw.p1AssignedAt : null,
+          p1Deadline: typeof raw.p1Deadline === 'string' ? raw.p1Deadline : null,
+          actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
+          dueDate: rawCard.dueDate ?? null,
+          designType:
+            raw.designType === 'Packaging' ||
+            raw.designType === 'Logo' ||
+            raw.designType === 'Brand Asset' ||
+            raw.designType === 'Other'
+              ? raw.designType
+              : null,
+          figmaUrl: typeof raw.figmaUrl === 'string' ? raw.figmaUrl : '',
+          sourceCardId: typeof raw.sourceCardId === 'string' && raw.sourceCardId ? raw.sourceCardId : null,
+          relatedLpDesignCardId:
+            typeof raw.relatedLpDesignCardId === 'string' && raw.relatedLpDesignCardId
+              ? raw.relatedLpDesignCardId
+              : null,
+          keyMessage: typeof raw.keyMessage === 'string' ? raw.keyMessage : '',
+          visualDirection: typeof raw.visualDirection === 'string' ? raw.visualDirection : '',
+          cta: typeof raw.cta === 'string' ? raw.cta : '',
+          referenceLinks: typeof raw.referenceLinks === 'string' ? raw.referenceLinks : '',
+          adCopy: typeof raw.adCopy === 'string' ? raw.adCopy : '',
+          notes: typeof raw.notes === 'string' ? raw.notes : '',
+          blocked: rawCard.blocked ?? null,
+          archivedAt: rawCard.archivedAt ?? null,
+          activityLog,
+          stageHistory,
+          stageEnteredAt: stageHistory[stageHistory.length - 1]?.enteredAt ?? rawCard.stageEnteredAt,
+          editorTimer:
+            raw.editorTimer &&
+            typeof raw.editorTimer.startedAt === 'string' &&
+            (raw.editorTimer.stoppedAt === null || typeof raw.editorTimer.stoppedAt === 'string') &&
+            (raw.editorTimer.elapsedMs === null || typeof raw.editorTimer.elapsedMs === 'number')
+              ? {
+                  startedAt: raw.editorTimer.startedAt,
+                  stoppedAt: raw.editorTimer.stoppedAt,
+                  elapsedMs: raw.editorTimer.elapsedMs,
                 }
-                const candidate = entry as Partial<ColumnMoveEntry>
-                const isValidStage = (value: unknown): value is StageId =>
-                  value === 'Backlog' ||
-                  value === 'Briefed' ||
-                  value === 'In Production' ||
-                  value === 'Review' ||
-                  value === 'Ready' ||
-                  value === 'Live'
-                if (
-                  !isValidStage(candidate.from) ||
-                  !isValidStage(candidate.to) ||
-                  typeof candidate.timestamp !== 'string'
-                ) {
-                  return null
-                }
-                return {
-                  from: candidate.from,
-                  to: candidate.to,
-                  timestamp: candidate.timestamp,
-                } satisfies ColumnMoveEntry
-              })
-              .filter((entry: ColumnMoveEntry | null): entry is ColumnMoveEntry => entry !== null)
-          : [],
-        legacyNaming: typeof raw.legacyNaming === 'boolean' ? raw.legacyNaming : false,
-      }, { adNamingTemplates: settings.adNamingTemplates })
+              : null,
+          columnMovementHistory: Array.isArray(raw.columnMovementHistory)
+            ? raw.columnMovementHistory
+                .map((entry: unknown) => {
+                  if (!entry || typeof entry !== 'object') {
+                    return null
+                  }
+                  const candidate = entry as Partial<ColumnMoveEntry>
+                  const isValidStage = (value: unknown): value is StageId =>
+                    value === 'Backlog' ||
+                    value === 'Briefed' ||
+                    value === 'In Production' ||
+                    value === 'Review' ||
+                    value === 'Ready' ||
+                    value === 'Live'
+                  if (
+                    !isValidStage(candidate.from) ||
+                    !isValidStage(candidate.to) ||
+                    typeof candidate.timestamp !== 'string'
+                  ) {
+                    return null
+                  }
+                  return {
+                    from: candidate.from,
+                    to: candidate.to,
+                    timestamp: candidate.timestamp,
+                  } satisfies ColumnMoveEntry
+                })
+                .filter((entry: ColumnMoveEntry | null): entry is ColumnMoveEntry => entry !== null)
+            : [],
+          legacyNaming: typeof raw.legacyNaming === 'boolean' ? raw.legacyNaming : false,
+        }, { adNamingTemplates: settings.adNamingTemplates })
+      } catch {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = rawCard as any
+        const stage = STAGES.includes(raw?.stage as StageId) ? (raw.stage as StageId) : 'Backlog'
+        const taskTypeId =
+          typeof raw?.taskTypeId === 'string'
+            ? normalizeStoredTaskTypeId(taskLibrary, raw.taskTypeId)
+            : (taskLibrary[0]?.id ?? 'custom')
+        const fallbackDateCreated =
+          typeof raw?.dateCreated === 'string' ? raw.dateCreated : new Date().toISOString().slice(0, 10)
+        return {
+          ...rawCard,
+          id: typeof raw?.id === 'string' ? raw.id : `card-${Math.random().toString(36).slice(2, 10)}`,
+          title: typeof raw?.title === 'string' ? raw.title : '',
+          brand: typeof raw?.brand === 'string' ? raw.brand : '',
+          product: typeof raw?.product === 'string' ? raw.product : '',
+          platform:
+            raw?.platform === 'Meta' ||
+            raw?.platform === 'AppLovin' ||
+            raw?.platform === 'TikTok' ||
+            raw?.platform === 'Google' ||
+            raw?.platform === 'Other'
+              ? raw.platform
+              : 'Other',
+          taskTypeId,
+          hook: typeof raw?.hook === 'string' ? raw.hook : '',
+          angle: typeof raw?.angle === 'string' ? raw.angle : '',
+          audience: typeof raw?.audience === 'string' ? raw.audience : '',
+          landingPage: typeof raw?.landingPage === 'string' ? raw.landingPage : '',
+          funnelStage:
+            raw?.funnelStage === 'Cold' ||
+            raw?.funnelStage === 'Warm' ||
+            raw?.funnelStage === 'Promo' ||
+            raw?.funnelStage === 'Promo Evergreen'
+              ? raw.funnelStage
+              : 'Cold',
+          designType:
+            raw?.designType === 'Packaging' ||
+            raw?.designType === 'Logo' ||
+            raw?.designType === 'Brand Asset' ||
+            raw?.designType === 'Other'
+              ? raw.designType
+              : null,
+          figmaUrl: typeof raw?.figmaUrl === 'string' ? raw.figmaUrl : '',
+          sourceCardId: typeof raw?.sourceCardId === 'string' && raw.sourceCardId ? raw.sourceCardId : null,
+          relatedLpDesignCardId:
+            typeof raw?.relatedLpDesignCardId === 'string' && raw.relatedLpDesignCardId
+              ? raw.relatedLpDesignCardId
+              : null,
+          generatedSheetName: typeof raw?.generatedSheetName === 'string' ? raw.generatedSheetName : '',
+          generatedAdName: typeof raw?.generatedAdName === 'string' ? raw.generatedAdName : '',
+          owner: typeof raw?.owner === 'string' ? raw.owner : null,
+          stage,
+          stageEnteredAt: typeof raw?.stageEnteredAt === 'string' ? raw.stageEnteredAt : fallbackDateCreated,
+          stageHistory: Array.isArray(raw?.stageHistory) ? raw.stageHistory : [],
+          editorTimer: null,
+          columnMovementHistory: Array.isArray(raw?.columnMovementHistory) ? raw.columnMovementHistory : [],
+          brief: typeof raw?.brief === 'string' ? raw.brief : '',
+          keyMessage: typeof raw?.keyMessage === 'string' ? raw.keyMessage : '',
+          visualDirection: typeof raw?.visualDirection === 'string' ? raw.visualDirection : '',
+          cta: typeof raw?.cta === 'string' ? raw.cta : '',
+          referenceLinks: typeof raw?.referenceLinks === 'string' ? raw.referenceLinks : '',
+          adCopy: typeof raw?.adCopy === 'string' ? raw.adCopy : '',
+          notes: typeof raw?.notes === 'string' ? raw.notes : '',
+          comments: Array.isArray(raw?.comments) ? raw.comments : [],
+          attachments: Array.isArray(raw?.attachments) ? raw.attachments : [],
+          driveFolderUrl: typeof raw?.driveFolderUrl === 'string' ? raw.driveFolderUrl : '',
+          driveFolderCreated: raw?.driveFolderCreated === true,
+          frameioLink: typeof raw?.frameioLink === 'string' ? raw.frameioLink : '',
+          dateAssigned: typeof raw?.dateAssigned === 'string' ? raw.dateAssigned : fallbackDateCreated,
+          dateCreated: fallbackDateCreated,
+          positionInSection: typeof raw?.positionInSection === 'number' ? raw.positionInSection : 0,
+          estimatedHours: typeof raw?.estimatedHours === 'number' ? raw.estimatedHours : 0,
+          revisionEstimatedHours: typeof raw?.revisionEstimatedHours === 'number' ? raw.revisionEstimatedHours : null,
+          dueDate: typeof raw?.dueDate === 'string' ? raw.dueDate : null,
+          blocked: raw?.blocked ?? null,
+          archivedAt: typeof raw?.archivedAt === 'string' ? raw.archivedAt : null,
+          priority: isProductionPriority(raw?.priority) ? raw.priority : null,
+          p1AssignedAt: typeof raw?.p1AssignedAt === 'string' ? raw.p1AssignedAt : null,
+          p1Deadline: typeof raw?.p1Deadline === 'string' ? raw.p1Deadline : null,
+          actualHoursLogged: typeof raw?.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
+          activityLog: Array.isArray(raw?.activityLog) ? raw.activityLog : [],
+          legacyNaming: typeof raw?.legacyNaming === 'boolean' ? raw.legacyNaming : false,
+        } satisfies Card
+      }
     }),
   )
 
