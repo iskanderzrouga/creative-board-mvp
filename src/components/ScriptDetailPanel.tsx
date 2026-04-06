@@ -1,10 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
   SCRIPT_REVIEWERS,
   getLatestScriptReview,
   type ScriptConfidenceLevel,
-  type ScriptReviewStatus,
   type ScriptReviewerId,
   type ScriptReviewEntry,
   type ScriptWorkshopItem,
@@ -18,10 +17,7 @@ interface ScriptDetailPanelProps {
   currentAuthorName: string
   canManageScripts: boolean
   onClose: () => void
-  onUpdateScript: (
-    scriptId: string,
-    updates: { title?: string; brand?: string; googleDocUrl?: string; reviewStatus?: ScriptReviewStatus },
-  ) => void
+  onUpdateScript: (scriptId: string, updates: { title?: string; brand?: string; googleDocUrl?: string }) => void
   onSubmitReview: (scriptId: string, reviewerId: ScriptReviewerId, confidence: ScriptConfidenceLevel, comment: string) => void
   onAddComment: (scriptId: string, text: string) => void
 }
@@ -30,12 +26,6 @@ const CONFIDENCE_OPTIONS: Array<{ value: ScriptConfidenceLevel; label: string }>
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-]
-
-const REVIEW_STATUS_OPTIONS: Array<{ value: ScriptReviewStatus; label: string }> = [
-  { value: 'draft', label: 'Drafting' },
-  { value: 'ready-for-review', label: 'Ready for review' },
-  { value: 'in-production', label: 'In production' },
 ]
 
 function formatTimestamp(timestamp: string) {
@@ -74,20 +64,12 @@ export function ScriptDetailPanel({
   const [titleDraft, setTitleDraft] = useState(script.title)
   const [brandDraft, setBrandDraft] = useState(script.brand)
   const [docDraft, setDocDraft] = useState(script.googleDocUrl)
-  const [reviewStatusDraft, setReviewStatusDraft] = useState<ScriptReviewStatus>(script.reviewStatus)
   const [reviewConfidence, setReviewConfidence] = useState<ScriptConfidenceLevel>('medium')
   const [reviewComment, setReviewComment] = useState('')
   const [reviewAttempted, setReviewAttempted] = useState(false)
   const [threadComment, setThreadComment] = useState('')
 
   useModalAccessibility(panelRef, isOpen)
-
-  useEffect(() => {
-    setTitleDraft(script.title)
-    setBrandDraft(script.brand)
-    setDocDraft(script.googleDocUrl)
-    setReviewStatusDraft(script.reviewStatus)
-  }, [script])
 
   const selectedReviewer = useMemo(
     () => SCRIPT_REVIEWERS.find((reviewer) => reviewer.id === currentReviewerId) ?? null,
@@ -166,25 +148,6 @@ export function ScriptDetailPanel({
                 {brandOptions.map((brand) => (
                   <option key={brand} value={brand}>
                     {brand}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="panel-field">
-              <span>Review Status</span>
-              <select
-                className="panel-input"
-                value={reviewStatusDraft}
-                onChange={(event) => {
-                  const nextStatus = event.target.value as ScriptReviewStatus
-                  setReviewStatusDraft(nextStatus)
-                  onUpdateScript(script.id, { reviewStatus: nextStatus })
-                }}
-                disabled={!canManageScripts}
-              >
-                {REVIEW_STATUS_OPTIONS.map((statusOption) => (
-                  <option key={statusOption.value} value={statusOption.value}>
-                    {statusOption.label}
                   </option>
                 ))}
               </select>
