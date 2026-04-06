@@ -22,6 +22,7 @@ import {
   type DevBoardColumnId,
   type DevBoardState,
   type DevCard,
+  type DevCardStatus,
   type TeamMember,
 } from '../board'
 
@@ -44,6 +45,26 @@ function getDropColumnId(value: string | null): DevBoardColumnId | null {
     return value.replace('dev-column:', '') as DevBoardColumnId
   }
   return null
+}
+
+function getDevStatusLabel(status: DevCardStatus) {
+  if (status === 'working') {
+    return 'Working on It'
+  }
+  if (status === 'ready-today') {
+    return 'Ready by Today'
+  }
+  return 'To Do'
+}
+
+function getDevStatusClassName(status: DevCardStatus) {
+  if (status === 'working') {
+    return 'is-working'
+  }
+  if (status === 'ready-today') {
+    return 'is-ready-today'
+  }
+  return 'is-todo'
 }
 
 function DevCardItem({
@@ -86,7 +107,10 @@ function DevCardItem({
         </div>
         <span className="board-card-id">{card.id}</span>
       </div>
-      <p className="board-card-title">{card.title}</p>
+      <div className="board-card-title-row">
+        <p className="board-card-title">{card.title}</p>
+        <span className={`dev-status-badge ${getDevStatusClassName(card.status)}`}>{getDevStatusLabel(card.status)}</span>
+      </div>
       <div className="board-card-tags">
         <span className="brand-pill">{card.brand}</span>
         <span className="task-type-pill">{card.changeRequestType}</span>
