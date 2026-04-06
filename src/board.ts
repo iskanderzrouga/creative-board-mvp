@@ -225,6 +225,7 @@ export interface Card {
   p1Deadline?: string | null
   actualHoursLogged: number
   activityLog: ActivityEntry[]
+  updatedAt: string
   legacyNaming?: boolean
 }
 
@@ -392,6 +393,7 @@ export interface DevCard {
   customBlocker: string
   column: DevBoardColumnId
   dateCreated: string
+  updatedAt: string
 }
 
 export interface DevBoardState {
@@ -1984,6 +1986,7 @@ function inflateSeedCard(
     p1Deadline: null,
     actualHoursLogged: 0,
     activityLog,
+    updatedAt: stageEnteredAt,
     legacyNaming: true,
   }
 
@@ -2465,6 +2468,7 @@ function normalizePortfolio(
         blocked: rawCard.blocked ?? null,
         archivedAt: rawCard.archivedAt ?? null,
         activityLog,
+        updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
     stageEnteredAt:
           rawCard.stageHistory[rawCard.stageHistory.length - 1]?.enteredAt ?? rawCard.stageEnteredAt,
         editorTimer:
@@ -2643,6 +2647,7 @@ export function coerceAppState(raw: unknown): AppState {
             customBlocker: typeof card.customBlocker === 'string' ? card.customBlocker : '',
             column: card.column as DevBoardColumnId,
             dateCreated: typeof card.dateCreated === 'string' ? card.dateCreated : new Date().toISOString(),
+            updatedAt: typeof card.updatedAt === 'string' ? card.updatedAt : new Date().toISOString(),
           } satisfies DevCard
         })
         .filter((card): card is DevCard => card !== null)
@@ -2986,6 +2991,7 @@ interface CreateDevCardInput {
 }
 
 export function addDevCard(state: DevBoardState, input: CreateDevCardInput): DevBoardState {
+  const updatedAt = new Date().toISOString()
   const nextCard: DevCard = {
     id: createDevCardId(state),
     title: input.title.trim() || 'Untitled Dev Task',
@@ -3002,7 +3008,8 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
     blockerOption: input.blockerOption ?? null,
     customBlocker: input.customBlocker?.trim() ?? '',
     column: 'To Brief',
-    dateCreated: new Date().toISOString(),
+    dateCreated: updatedAt,
+    updatedAt,
   }
 
   return {
@@ -3013,6 +3020,7 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
 
 export function updateDevCard(state: DevBoardState, cardId: string, updates: Partial<DevCard>): DevBoardState {
   let changed = false
+  const updatedAt = new Date().toISOString()
   const cards = state.cards.map((card) => {
     if (card.id !== cardId) {
       return card
@@ -3021,6 +3029,7 @@ export function updateDevCard(state: DevBoardState, cardId: string, updates: Par
     return {
       ...card,
       ...updates,
+      updatedAt,
     }
   })
   return changed ? { ...state, cards } : state
@@ -3045,7 +3054,10 @@ export function moveDevCard(state: DevBoardState, cardId: string, destinationCol
   }
   return {
     ...state,
-    cards: state.cards.map((item) => (item.id === cardId ? { ...item, column: destinationColumn } : item)),
+    cards: state.cards.map((item) =>
+      item.id === cardId
+        ? { ...item, column: destinationColumn, updatedAt: new Date().toISOString() }
+        : item),
   }
 }
 
@@ -3475,6 +3487,7 @@ export function createCardFromQuickInput(
     activityLog: [
       createActivityEntry(actor, 'created this card', 'created', createdAt),
     ],
+    updatedAt: createdAt,
     legacyNaming: false,
   }
 
@@ -4708,6 +4721,7 @@ export function moveCardInPortfolio(
           },
         ]
       : existingCard.columnMovementHistory,
+    updatedAt: movedAt,
   }
 
   if (ownerChanged && nextOwner) {
@@ -4845,6 +4859,7 @@ export function applyCardUpdates(
         {
           ...card,
           ...normalizedUpdates,
+          updatedAt: timestamp,
         },
         settings,
       )
