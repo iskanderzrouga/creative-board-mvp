@@ -1705,15 +1705,14 @@ function App() {
       return
     }
 
-    const resolveTeamMemberName = (memberId: string | null | undefined) => {
-      if (!memberId) {
-        return 'Unassigned'
-      }
-      return getTeamMemberById(activePortfolioView, memberId)?.name ?? 'Unassigned'
-    }
-
-    const previousAssigneeName = resolveTeamMemberName(previousCard.assigneeId)
-    const nextAssigneeName = resolveTeamMemberName(nextCard.assigneeId)
+    const previousAssigneeName =
+      getTeamMemberById(activePortfolioView, previousCard.assigneeId)?.name ??
+      previousCard.assigneeId ??
+      'Unassigned'
+    const nextAssigneeName =
+      getTeamMemberById(activePortfolioView, nextCard.assigneeId)?.name ??
+      nextCard.assigneeId ??
+      'Unassigned'
 
     if (
       Object.prototype.hasOwnProperty.call(updates, 'assigneeId') &&
@@ -1785,6 +1784,7 @@ function App() {
     if (card.column !== 'For Review' && destinationColumn === 'For Review') {
       const assigneeName =
         (activePortfolioView ? getTeamMemberById(activePortfolioView, card.assigneeId)?.name : null) ??
+        card.assigneeId ??
         'Unassigned'
       try {
         notifyDevReadyForReview({
@@ -2113,13 +2113,6 @@ function App() {
       return
     }
 
-    const resolveCreativeMemberName = (memberId: string | null | undefined) => {
-      if (!memberId) {
-        return 'Unassigned'
-      }
-      return getTeamMemberById(activeSelectedPortfolio, memberId)?.name ?? 'Unassigned'
-    }
-
     if (
       Object.prototype.hasOwnProperty.call(updates, 'owner') &&
       previousCard.owner !== nextCard.owner &&
@@ -2129,7 +2122,7 @@ function App() {
         notifyCreativeTaskAssigned({
           cardTitle: nextCard.title,
           brand: nextCard.brand,
-          editorName: resolveCreativeMemberName(nextCard.owner),
+          editorName: nextCard.owner,
         })
       } catch (error) {
         console.error('Creative assignment notification trigger failed.', error)
@@ -2138,7 +2131,7 @@ function App() {
 
     const previousBlockerText = previousCard.blocked?.reason?.trim() ?? ''
     const nextBlockerText = nextCard.blocked?.reason?.trim() ?? ''
-    const assigneeName = resolveCreativeMemberName(nextCard.owner ?? previousCard.owner)
+    const assigneeName = nextCard.owner ?? previousCard.owner ?? 'Unassigned'
 
     if (!previousBlockerText && nextBlockerText) {
       try {
@@ -2170,7 +2163,7 @@ function App() {
         notifyCreativeReadyForReview({
           cardTitle: nextCard.title,
           brand: nextCard.brand,
-          editorName: resolveCreativeMemberName(nextCard.owner),
+          editorName: nextCard.owner ?? 'Unassigned',
         })
       } catch (error) {
         console.error('Creative ready-for-review notification trigger failed.', error)
@@ -2461,12 +2454,11 @@ function App() {
     }
 
     if (destinationOwner && card.owner !== destinationOwner) {
-      const destinationOwnerName = getTeamMemberById(portfolio, destinationOwner)?.name ?? 'Unassigned'
       try {
         notifyCreativeTaskAssigned({
           cardTitle: card.title,
           brand: card.brand,
-          editorName: destinationOwnerName,
+          editorName: destinationOwner,
         })
       } catch (error) {
         console.error('Creative assignment notification trigger failed.', error)
@@ -2474,13 +2466,11 @@ function App() {
     }
 
     if (card.stage !== 'Review' && destinationStage === 'Review') {
-      const reviewOwnerName =
-        getTeamMemberById(portfolio, destinationOwner ?? card.owner)?.name ?? 'Unassigned'
       try {
         notifyCreativeReadyForReview({
           cardTitle: card.title,
           brand: card.brand,
-          editorName: reviewOwnerName,
+          editorName: destinationOwner ?? card.owner ?? 'Unassigned',
         })
       } catch (error) {
         console.error('Creative ready-for-review notification trigger failed.', error)
