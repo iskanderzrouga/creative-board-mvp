@@ -50,7 +50,6 @@ export const DEV_BLOCKER_OPTIONS = [
   'Waiting for images/videos',
   'Custom…',
 ] as const
-export const DEV_CARD_STATUSES = ['todo', 'working', 'ready-today'] as const
 export const ROLE_MODES = ['owner', 'manager', 'contributor', 'viewer'] as const
 export const ACCESS_SCOPE_MODES = [
   'all-portfolios',
@@ -101,7 +100,6 @@ export type AppPage = (typeof APP_PAGES)[number]
 export type DevBoardColumnId = (typeof DEV_BOARD_COLUMNS)[number]
 export type DevChangeRequestType = (typeof DEV_CHANGE_REQUEST_TYPES)[number]
 export type DevBlockerOption = (typeof DEV_BLOCKER_OPTIONS)[number]
-export type DevCardStatus = (typeof DEV_CARD_STATUSES)[number]
 export type RoleMode = (typeof ROLE_MODES)[number]
 export type AccessScopeMode = (typeof ACCESS_SCOPE_MODES)[number]
 export type Timeframe = (typeof TIMEFRAMES)[number]
@@ -386,8 +384,6 @@ export interface DevCard {
   assigneeId: string | null
   dueDate: string | null
   changeRequestType: DevChangeRequestType
-  notes: string
-  status: DevCardStatus
   blockerOption: DevBlockerOption | null
   customBlocker: string
   column: DevBoardColumnId
@@ -2630,11 +2626,6 @@ export function coerceAppState(raw: unknown): AppState {
               DEV_CHANGE_REQUEST_TYPES.includes(card.changeRequestType as DevChangeRequestType)
                 ? (card.changeRequestType as DevChangeRequestType)
                 : 'Bug Fix',
-            notes: typeof card.notes === 'string' ? card.notes : '',
-            status:
-              typeof card.status === 'string' && DEV_CARD_STATUSES.includes(card.status as DevCardStatus)
-                ? (card.status as DevCardStatus)
-                : 'todo',
             blockerOption:
               typeof card.blockerOption === 'string' &&
               DEV_BLOCKER_OPTIONS.includes(card.blockerOption as DevBlockerOption)
@@ -2979,8 +2970,6 @@ interface CreateDevCardInput {
   assigneeId?: string | null
   dueDate?: string | null
   changeRequestType?: DevChangeRequestType
-  notes?: string
-  status?: DevCardStatus
   blockerOption?: DevBlockerOption | null
   customBlocker?: string
 }
@@ -2997,8 +2986,6 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
     assigneeId: input.assigneeId ?? null,
     dueDate: input.dueDate ?? null,
     changeRequestType: input.changeRequestType ?? 'Bug Fix',
-    notes: input.notes?.trim() ?? '',
-    status: input.status ?? 'todo',
     blockerOption: input.blockerOption ?? null,
     customBlocker: input.customBlocker?.trim() ?? '',
     column: 'To Brief',
