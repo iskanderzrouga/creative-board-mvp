@@ -958,45 +958,6 @@ button {
   -webkit-box-orient: vertical;
 }
 
-.board-card-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 4px 0 8px;
-}
-
-.board-card-title-row .board-card-title {
-  margin: 0;
-  flex: 1;
-}
-
-.dev-status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.dev-status-badge.is-todo {
-  background: var(--surface-tint);
-  color: var(--muted-strong);
-}
-
-.dev-status-badge.is-working {
-  background: var(--warning-surface);
-  color: var(--warning-text-strong);
-}
-
-.dev-status-badge.is-ready-today {
-  background: var(--success-surface);
-  color: var(--success-text-strong);
-}
-
 .board-card-tags,
 .panel-pill-row {
   display: flex;
