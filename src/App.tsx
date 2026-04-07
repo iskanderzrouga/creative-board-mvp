@@ -3021,7 +3021,11 @@ function App() {
           <DevBoardPage
             devBoard={state.devBoard}
             teamMembers={developerTeamMembers}
-            canEdit={state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'}
+            canEdit={
+              state.activeRole.mode === 'owner' ||
+              state.activeRole.mode === 'manager' ||
+              (state.activeRole.mode === 'contributor' && isDeveloperUser)
+            }
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
             onAddCard={handleAddDevCard}
