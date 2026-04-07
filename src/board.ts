@@ -386,6 +386,7 @@ export interface DevCard {
   changeRequestType: DevChangeRequestType
   blockerOption: DevBlockerOption | null
   customBlocker: string
+  status?: 'not-started' | 'in-progress' | 'done'
   column: DevBoardColumnId
   dateCreated: string
 }
@@ -2633,7 +2634,7 @@ export function coerceAppState(raw: unknown): AppState {
       : null
   const devCards = Array.isArray(candidateDevBoard?.cards)
     ? candidateDevBoard.cards
-        .map((item) => {
+        .map<DevCard | null>((item) => {
           if (!item || typeof item !== 'object') {
             return null
           }
@@ -2668,6 +2669,10 @@ export function coerceAppState(raw: unknown): AppState {
                 ? (card.blockerOption as DevBlockerOption)
                 : null,
             customBlocker: typeof card.customBlocker === 'string' ? card.customBlocker : '',
+            status:
+              card?.status === 'in-progress' || card?.status === 'done'
+                ? card.status
+                : 'not-started',
             column: card.column as DevBoardColumnId,
             dateCreated: typeof card.dateCreated === 'string' ? card.dateCreated : new Date().toISOString(),
           } satisfies DevCard
@@ -3018,6 +3023,7 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
     changeRequestType: input.changeRequestType ?? 'Bug Fix',
     blockerOption: input.blockerOption ?? null,
     customBlocker: input.customBlocker?.trim() ?? '',
+    status: 'not-started',
     column: 'To Brief',
     dateCreated: new Date().toISOString(),
   }

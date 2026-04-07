@@ -61,6 +61,14 @@ function DevCardItem({
     id: card.id,
     disabled: !canDrag,
   })
+  const status = card.status ?? 'not-started'
+  const statusLabel = status === 'in-progress' ? 'In Progress' : status === 'done' ? 'Done' : 'Not Started'
+  const statusStyles =
+    status === 'in-progress'
+      ? { backgroundColor: '#dbeafe', color: '#1d4ed8' }
+      : status === 'done'
+        ? { backgroundColor: '#dcfce7', color: '#15803d' }
+        : { backgroundColor: '#e5e7eb', color: '#374151' }
 
   return (
     <button
@@ -85,6 +93,23 @@ function DevCardItem({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+      </div>
+      <div>
+        <span
+          style={{
+            display: 'inline-block',
+            borderRadius: 999,
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            lineHeight: 1.2,
+            padding: '0.2rem 0.5rem',
+            marginBottom: '0.45rem',
+            ...statusStyles,
+          }}
+        >
+          {statusLabel}
+        </span>
       </div>
       <p className="board-card-title">{card.title}</p>
       <div className="board-card-tags">
