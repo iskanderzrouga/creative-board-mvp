@@ -37,6 +37,7 @@ export function DevCardDetailPanel({
   const [changeRequestTypeDraft, setChangeRequestTypeDraft] = useState<DevChangeRequestType>(card.changeRequestType)
   const [blockerOptionDraft, setBlockerOptionDraft] = useState<DevBlockerOption | ''>(card.blockerOption ?? '')
   const [customBlockerDraft, setCustomBlockerDraft] = useState(card.customBlocker)
+  const [statusDraft, setStatusDraft] = useState<NonNullable<DevCard['status']>>(card.status ?? 'not-started')
 
   useModalAccessibility(panelRef, isOpen)
 
@@ -169,6 +170,25 @@ export function DevCardDetailPanel({
                     {option}
                   </option>
                 ))}
+              </select>
+            </label>
+          </section>
+
+          <section className="panel-section">
+            <label className="panel-field">
+              <span>Status</span>
+              <select
+                className="panel-input"
+                value={statusDraft}
+                onChange={(event) => {
+                  const value = event.target.value as NonNullable<DevCard['status']>
+                  setStatusDraft(value)
+                  onSave(card.id, { status: value })
+                }}
+              >
+                <option value="not-started">Not Started</option>
+                <option value="in-progress">In Progress</option>
+                <option value="done">Done</option>
               </select>
             </label>
           </section>
