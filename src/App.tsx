@@ -194,6 +194,11 @@ const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
 const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
 
+function hasDeveloperBoardRole(role: string | null | undefined) {
+  const normalizedRole = role?.trim().toLowerCase() ?? null
+  return normalizedRole === 'developer' || isDeveloperRole(role ?? null)
+}
+
 function getPathForPage(page: ExtendedPage) {
   switch (page) {
     case 'backlog':
@@ -420,11 +425,16 @@ function App() {
       )
     }) ?? null
   const isDeveloperUser =
-    isDeveloperRole(currentEditor?.role ?? null) || isDeveloperRole(accessMatchedMember?.role ?? null)
+    hasDeveloperBoardRole(currentEditor?.role ?? null) || hasDeveloperBoardRole(accessMatchedMember?.role ?? null)
   const developerTeamMembers = useMemo(
-    () => allTeamMembers.filter((member) => isDeveloperRole(member.role)),
+    () => allTeamMembers.filter((member) => hasDeveloperBoardRole(member.role)),
     [allTeamMembers],
   )
+  console.log('isDeveloperUser:', isDeveloperUser, 'activeRole:', state.activeRole)
+  const devBoardCanEdit =
+    state.activeRole.mode === 'owner' ||
+    state.activeRole.mode === 'manager' ||
+    (state.activeRole.mode === 'contributor' && isDeveloperUser)
   const productionPage: AppPage = isDeveloperUser
     ? (routePage === 'settings' ? 'settings' : routePage === 'pulse' ? 'pulse' : 'board')
     : getCurrentPage(state)
@@ -1761,23 +1771,28 @@ function App() {
     if (validationMessage) {
       return { ok: false, message: validationMessage }
     }
-    updateState((current) => ({
-      ...current,
-      devBoard: moveDevCard(current.devBoard, cardId, destinationColumn),
-    }))
+    try {
+      updateState((current) => ({
+        ...current,
+        devBoard: moveDevCard(current.devBoard, cardId, destinationColumn),
+      }))
 
-    if (card.column !== 'For Review' && destinationColumn === 'For Review') {
-      const assigneeName =
-        (activePortfolioView ? getTeamMemberById(activePortfolioView, card.assigneeId)?.name : null) ??
-        'Unassigned'
-      try {
-        notifyDevReadyForReview({
-          cardTitle: card.title,
-          assigneeName,
-        })
-      } catch (error) {
-        console.error('Dev ready-for-review notification trigger failed.', error)
+      if (card.column !== 'For Review' && destinationColumn === 'For Review') {
+        const assigneeName =
+          (activePortfolioView ? getTeamMemberById(activePortfolioView, card.assigneeId)?.name : null) ??
+          'Unassigned'
+        try {
+          notifyDevReadyForReview({
+            cardTitle: card.title,
+            assigneeName,
+          })
+        } catch (error) {
+          console.error('Dev ready-for-review notification trigger failed.', error)
+        }
       }
+    } catch (error) {
+      console.error('Failed to move Dev board card.', error)
+      return { ok: false, message: 'Card move could not be saved. Please try again.' }
     }
 
     return { ok: true }
@@ -3021,11 +3036,7 @@ function App() {
           <DevBoardPage
             devBoard={state.devBoard}
             teamMembers={developerTeamMembers}
-            canEdit={
-              state.activeRole.mode === 'owner' ||
-              state.activeRole.mode === 'manager' ||
-              (state.activeRole.mode === 'contributor' && isDeveloperUser)
-            }
+            canEdit={devBoardCanEdit}
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
             onAddCard={handleAddDevCard}
