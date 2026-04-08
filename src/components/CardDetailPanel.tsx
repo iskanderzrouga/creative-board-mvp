@@ -128,6 +128,8 @@ export function CardDetailPanel({
   const [referenceLinksDraft, setReferenceLinksDraft] = useState(card.referenceLinks)
   const [adCopyDraft, setAdCopyDraft] = useState(card.adCopy)
   const [notesDraft, setNotesDraft] = useState(card.notes)
+  const [briefDraft, setBriefDraft] = useState(card.brief)
+  const [frameioLinkDraft, setFrameioLinkDraft] = useState(card.frameioLink)
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -248,7 +250,9 @@ export function CardDetailPanel({
       | 'cta'
       | 'referenceLinks'
       | 'adCopy'
-      | 'notes',
+      | 'notes'
+      | 'brief'
+      | 'frameioLink',
     value: string,
   ) {
     if (value === card[key]) {
@@ -293,6 +297,7 @@ export function CardDetailPanel({
         onClick={onClose}
       />
       <aside
+        key={`${card.id}-${isOpen ? 'open' : 'closed'}`}
         ref={panelRef}
         className={`slide-panel ${isOpen ? 'is-open' : ''}`}
         role="dialog"
@@ -896,8 +901,9 @@ export function CardDetailPanel({
         >
           <div className="section-rule-title">Brief</div>
           <RichTextEditor
-            value={card.brief}
-            onChange={(next) => onSave({ brief: next })}
+            value={briefDraft}
+            onChange={setBriefDraft}
+            onBlur={() => commitTextDraft('brief', briefDraft)}
             readOnly={!canEditOwnedContent}
           />
         </section>
@@ -1003,8 +1009,9 @@ export function CardDetailPanel({
               <span className="frameio-label">Frame.io</span>
               {canEditFrameio ? (
                 <input
-                  value={card.frameioLink}
-                  onChange={(event) => onSave({ frameioLink: event.target.value })}
+                  value={frameioLinkDraft}
+                  onChange={(event) => setFrameioLinkDraft(event.target.value)}
+                  onBlur={() => commitTextDraft('frameioLink', frameioLinkDraft)}
                   placeholder="Paste Frame.io review link"
                 />
               ) : card.frameioLink ? (

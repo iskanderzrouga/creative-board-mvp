@@ -4,6 +4,7 @@ import { useEffect, useRef, type ClipboardEvent } from 'react'
 interface RichTextEditorProps {
   value: string
   onChange: (nextValue: string) => void
+  onBlur?: () => void
   readOnly?: boolean
 }
 
@@ -18,6 +19,7 @@ function runCommand(command: string, value?: string) {
 export function RichTextEditor({
   value,
   onChange,
+  onBlur,
   readOnly = false,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -172,6 +174,7 @@ export function RichTextEditor({
         contentEditable={!readOnly}
         suppressContentEditableWarning
         onInput={handleInput}
+        onBlur={onBlur}
         onPaste={handlePaste}
       />
     </div>
