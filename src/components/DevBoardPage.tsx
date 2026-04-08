@@ -69,6 +69,21 @@ function DevCardItem({
       : status === 'done'
         ? { backgroundColor: '#dcfce7', color: '#15803d' }
         : { backgroundColor: '#e5e7eb', color: '#374151' }
+  const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false)
+
+  async function handleCopyCardLink(event: React.MouseEvent | React.KeyboardEvent) {
+    event.stopPropagation()
+    event.preventDefault()
+
+    const shareUrl = `https://creative-board-lake.vercel.app/dev?card=${card.id}`
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopyFeedbackVisible(true)
+      window.setTimeout(() => setCopyFeedbackVisible(false), 1400)
+    } catch {
+      setCopyFeedbackVisible(false)
+    }
+  }
 
   return (
     <button
@@ -93,6 +108,23 @@ function DevCardItem({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Copy link for ${card.id}`}
+          title="Copy card link"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={handleCopyCardLink}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              void handleCopyCardLink(event)
+            }
+          }}
+          style={{ marginLeft: 'auto', fontSize: '0.85rem', opacity: 0.7 }}
+        >
+          🔗
+        </span>
+        {copyFeedbackVisible ? <span className="card-progress-chip">Link copied</span> : null}
       </div>
       <div>
         <span

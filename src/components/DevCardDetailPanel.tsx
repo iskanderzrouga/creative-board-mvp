@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useId, useMemo, useRef, useState } from 'react'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
   DEV_BLOCKER_OPTIONS,
@@ -9,6 +9,34 @@ import {
   type DevChangeRequestType,
   type TeamMember,
 } from '../board'
+
+
+const URL_REGEX = /(https?:\/\/[^\s]+)/g
+
+function renderTextWithClickableLinks(value: string) {
+  if (!value.trim()) {
+    return '—'
+  }
+
+  return value.split('\n').map((line, lineIndex) => {
+    const parts = line.split(URL_REGEX)
+
+    return (
+      <Fragment key={`${line}-${lineIndex}`}>
+        {parts.map((part, partIndex) =>
+          part.startsWith('http://') || part.startsWith('https://') ? (
+            <a key={`${part}-${partIndex}`} href={part} target="_blank" rel="noopener noreferrer">
+              {part}
+            </a>
+          ) : (
+            <Fragment key={`${part}-${partIndex}`}>{part}</Fragment>
+          ),
+        )}
+        {lineIndex < value.split('\n').length - 1 ? <br /> : null}
+      </Fragment>
+    )
+  })
+}
 
 interface DevCardDetailPanelProps {
   card: DevCard
@@ -38,6 +66,7 @@ export function DevCardDetailPanel({
   const [blockerOptionDraft, setBlockerOptionDraft] = useState<DevBlockerOption | ''>(card.blockerOption ?? '')
   const [customBlockerDraft, setCustomBlockerDraft] = useState(card.customBlocker)
   const [statusDraft, setStatusDraft] = useState<NonNullable<DevCard['status']>>(card.status ?? 'not-started')
+  const [activeTextField, setActiveTextField] = useState<string | null>(null)
 
   useModalAccessibility(panelRef, isOpen)
 
@@ -58,6 +87,74 @@ export function DevCardDetailPanel({
   function handleCloseWithSave() {
     commit()
     onClose()
+  }
+
+  function renderEditableField({
+    fieldKey,
+    value,
+    onChange,
+    multiline = false,
+    rows = 4,
+    placeholder,
+  }: {
+    fieldKey: string
+    value: string
+    onChange: (value: string) => void
+    multiline?: boolean
+    rows?: number
+    placeholder?: string
+  }) {
+    const isEditing = activeTextField === fieldKey
+
+    if (!isEditing) {
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          className={multiline ? 'panel-textarea' : 'panel-input'}
+          onClick={() => setActiveTextField(fieldKey)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              setActiveTextField(fieldKey)
+            }
+          }}
+        >
+          {renderTextWithClickableLinks(value)}
+        </div>
+      )
+    }
+
+    if (multiline) {
+      return (
+        <textarea
+          className="panel-textarea"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={() => {
+            setActiveTextField(null)
+            commit()
+          }}
+          rows={rows}
+          autoFocus
+          placeholder={placeholder}
+        />
+      )
+    }
+
+    return (
+      <input
+        className="panel-input"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={() => {
+          setActiveTextField(null)
+          commit()
+        }}
+        autoFocus
+        placeholder={placeholder}
+      />
+    )
   }
 
   return (
@@ -91,36 +188,33 @@ export function DevCardDetailPanel({
         <div className="slide-panel-content">
           <section className="panel-section">
             <h3>Task Description</h3>
-            <textarea
-              className="panel-textarea"
-              value={taskDescriptionDraft}
-              onChange={(event) => setTaskDescriptionDraft(event.target.value)}
-              onBlur={commit}
-              rows={6}
-              required
-            />
+            {renderEditableField({
+              fieldKey: 'taskDescription',
+              value: taskDescriptionDraft,
+              onChange: setTaskDescriptionDraft,
+              multiline: true,
+              rows: 6,
+            })}
           </section>
 
           <section className="panel-section">
             <h3>Loom Video URL</h3>
-            <input
-              className="panel-input"
-              value={loomVideoUrlDraft}
-              onChange={(event) => setLoomVideoUrlDraft(event.target.value)}
-              onBlur={commit}
-              placeholder="https://www.loom.com/share/..."
-            />
+            {renderEditableField({
+              fieldKey: 'loomVideoUrl',
+              value: loomVideoUrlDraft,
+              onChange: setLoomVideoUrlDraft,
+              placeholder: 'https://www.loom.com/share/...',
+            })}
           </section>
 
           <section className="panel-section">
             <h3>New URL to Use</h3>
-            <input
-              className="panel-input"
-              value={newUrlToUseDraft}
-              onChange={(event) => setNewUrlToUseDraft(event.target.value)}
-              onBlur={commit}
-              placeholder="https://example.com/new-page"
-            />
+            {renderEditableField({
+              fieldKey: 'newUrlToUse',
+              value: newUrlToUseDraft,
+              onChange: setNewUrlToUseDraft,
+              placeholder: 'https://example.com/new-page',
+            })}
           </section>
 
           <section className="panel-section panel-grid-2">
@@ -223,13 +317,12 @@ export function DevCardDetailPanel({
             {blockerOptionDraft === 'Custom…' ? (
               <label className="panel-field">
                 <span>Custom blocker details</span>
-                <input
-                  className="panel-input"
-                  value={customBlockerDraft}
-                  onChange={(event) => setCustomBlockerDraft(event.target.value)}
-                  onBlur={commit}
-                  placeholder="Describe what is blocking this task"
-                />
+                {renderEditableField({
+                  fieldKey: 'customBlocker',
+                  value: customBlockerDraft,
+                  onChange: setCustomBlockerDraft,
+                  placeholder: 'Describe what is blocking this task',
+                })}
               </label>
             ) : null}
             {blockerDetails ? <p className="muted-copy">Active blocker: {blockerDetails}</p> : null}
