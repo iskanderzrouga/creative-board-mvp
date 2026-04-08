@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import {
   formatDateShort,
@@ -75,6 +75,21 @@ function BoardCardSurfaceComponent({
   const priorityTone = getPriorityBadgeTone(card.priority)
   const priorityLabel = getPriorityLabel(card.priority)
   const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
+  const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false)
+
+  async function handleCopyCardLink(event: React.MouseEvent | React.KeyboardEvent) {
+    event.stopPropagation()
+    event.preventDefault()
+
+    const shareUrl = `https://creative-board-lake.vercel.app/board?card=${card.id}`
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopyFeedbackVisible(true)
+      window.setTimeout(() => setCopyFeedbackVisible(false), 1400)
+    } catch {
+      setCopyFeedbackVisible(false)
+    }
+  }
 
   return (
     <button
@@ -98,6 +113,23 @@ function BoardCardSurfaceComponent({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Copy link for ${card.id}`}
+          title="Copy card link"
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={handleCopyCardLink}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              void handleCopyCardLink(event)
+            }
+          }}
+          style={{ marginLeft: 'auto', fontSize: '0.85rem', opacity: 0.7 }}
+        >
+          🔗
+        </span>
+        {copyFeedbackVisible ? <span className="card-progress-chip">Link copied</span> : null}
         {showPriorityControl ? (
           <span
             className={`production-priority-badge ${priorityTone}`}
