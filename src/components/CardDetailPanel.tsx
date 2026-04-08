@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useId, useMemo, useRef, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
@@ -72,6 +72,40 @@ const COMMENT_PREVIEW_COUNT = 10
 const ACTIVITY_PREVIEW_COUNT = 5
 const COMMENT_MAX_LENGTH = 2000
 
+
+const URL_REGEX = /(https?:\/\/[^\s]+)/g
+
+function renderTextWithClickableLinks(value: string) {
+  const lines = value.split('\n')
+
+  return lines.map((line, lineIndex) => {
+    const parts = line.split(URL_REGEX)
+
+    return (
+      <Fragment key={`${line}-${lineIndex}`}>
+        {parts.map((part, partIndex) =>
+          part.match(/^https?:\/\//) ? (
+            <a key={`${part}-${partIndex}`} href={part} target="_blank" rel="noopener noreferrer">
+              {part}
+            </a>
+          ) : (
+            <Fragment key={`${part}-${partIndex}`}>{part}</Fragment>
+          ),
+        )}
+        {lineIndex < lines.length - 1 ? <br /> : null}
+      </Fragment>
+    )
+  })
+}
+
+function renderDisplayValue(value: string) {
+  if (!value.trim()) {
+    return '—'
+  }
+
+  return renderTextWithClickableLinks(value)
+}
+
 function isHttpUrl(value: string) {
   try {
     const parsed = new URL(value)
@@ -139,6 +173,7 @@ export function CardDetailPanel({
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [trackingOpen, setTrackingOpen] = useState(false)
+  const [activeTextField, setActiveTextField] = useState<string | null>(null)
   const commentImageRef = useRef<HTMLInputElement | null>(null)
 
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
@@ -286,6 +321,65 @@ export function CardDetailPanel({
     setLinkErrorMessage(null)
   }
 
+  function renderEditableTextField({
+    fieldKey,
+    value,
+    onChange,
+    onCommit,
+    multiline = false,
+    rows = 4,
+    placeholder,
+    className,
+  }: {
+    fieldKey: string
+    value: string
+    onChange: (value: string) => void
+    onCommit: () => void
+    multiline?: boolean
+    rows?: number
+    placeholder?: string
+    className?: string
+  }) {
+    const isEditing = activeTextField === fieldKey
+
+    if (!isEditing) {
+      return (
+        <div
+          role="button"
+          tabIndex={0}
+          className={className}
+          onClick={() => setActiveTextField(fieldKey)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              setActiveTextField(fieldKey)
+            }
+          }}
+        >
+          {renderDisplayValue(value)}
+        </div>
+      )
+    }
+
+    const sharedProps = {
+      className,
+      value,
+      placeholder,
+      onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      onBlur: () => {
+        onCommit()
+        setActiveTextField(null)
+      },
+      autoFocus: true,
+    }
+
+    if (multiline) {
+      return <textarea {...sharedProps} rows={rows} />
+    }
+
+    return <input {...sharedProps} />
+  }
+
   const canEditTitle =
     iterationTask ? false : creativeTask ? canManage : canEditOwnedContent
 
@@ -314,8 +408,14 @@ export function CardDetailPanel({
                 className="panel-title-input"
                 value={titleDraft}
                 aria-label={titleLabel}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                onBlur={() => commitTextDraft('title', titleDraft)}
+                onChange={(event) => {
+                  setActiveTextField('title')
+                  setTitleDraft(event.target.value)
+                }}
+                onBlur={() => {
+                  commitTextDraft('title', titleDraft)
+                  setActiveTextField(null)
+                }}
               />
             ) : (
               <h2 id={titleId} className="panel-title">
@@ -640,36 +740,39 @@ export function CardDetailPanel({
                   <label>
                     <span>Angle / Theme</span>
                     {canManage ? (
-                      <input
-                        value={angleDraft}
-                        onChange={(event) => setAngleDraft(event.target.value)}
-                        onBlur={() => commitTextDraft('angle', angleDraft)}
-                      />
+                      renderEditableTextField({
+                        fieldKey: 'angle',
+                        value: angleDraft,
+                        onChange: setAngleDraft,
+                        onCommit: () => commitTextDraft('angle', angleDraft),
+                      })
                     ) : (
-                      <strong>{card.angle || '—'}</strong>
+                      <strong>{renderDisplayValue(card.angle)}</strong>
                     )}
                   </label>
                   <label>
                     <span>Audience</span>
                     {canManage ? (
-                      <input
-                        value={audienceDraft}
-                        onChange={(event) => setAudienceDraft(event.target.value)}
-                        onBlur={() => commitTextDraft('audience', audienceDraft)}
-                      />
+                      renderEditableTextField({
+                        fieldKey: 'audience',
+                        value: audienceDraft,
+                        onChange: setAudienceDraft,
+                        onCommit: () => commitTextDraft('audience', audienceDraft),
+                      })
                     ) : (
-                      <strong>{card.audience || '—'}</strong>
+                      <strong>{renderDisplayValue(card.audience)}</strong>
                     )}
                   </label>
                   <label>
                     <span>Landing Page URL</span>
                     {canManage ? (
-                      <input
-                        value={landingPageDraft}
-                        onChange={(event) => setLandingPageDraft(event.target.value)}
-                        onBlur={() => commitTextDraft('landingPage', landingPageDraft)}
-                        placeholder="https://..."
-                      />
+                      renderEditableTextField({
+                        fieldKey: 'landingPage',
+                        value: landingPageDraft,
+                        onChange: setLandingPageDraft,
+                        onCommit: () => commitTextDraft('landingPage', landingPageDraft),
+                        placeholder: 'https://...',
+                      })
                     ) : (
                       <strong>
                         {card.landingPage ? (
@@ -759,12 +862,13 @@ export function CardDetailPanel({
                   <label>
                     <span>Figma URL</span>
                     {canEditOwnedContent ? (
-                      <input
-                        value={figmaUrlDraft}
-                        onChange={(event) => setFigmaUrlDraft(event.target.value)}
-                        onBlur={() => commitTextDraft('figmaUrl', figmaUrlDraft)}
-                        placeholder="https://figma.com/..."
-                      />
+                      renderEditableTextField({
+                        fieldKey: 'figmaUrl',
+                        value: figmaUrlDraft,
+                        onChange: setFigmaUrlDraft,
+                        onCommit: () => commitTextDraft('figmaUrl', figmaUrlDraft),
+                        placeholder: 'https://figma.com/...',
+                      })
                     ) : (
                       <strong>
                         {card.figmaUrl ? (
@@ -920,77 +1024,87 @@ export function CardDetailPanel({
               <label>
                 <span>Key Message</span>
                 {canEditOwnedContent ? (
-                  <input
-                    value={keyMessageDraft}
-                    onChange={(event) => setKeyMessageDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('keyMessage', keyMessageDraft)}
-                  />
+                  renderEditableTextField({
+                    fieldKey: 'keyMessage',
+                    value: keyMessageDraft,
+                    onChange: setKeyMessageDraft,
+                    onCommit: () => commitTextDraft('keyMessage', keyMessageDraft),
+                  })
                 ) : (
-                  <strong>{card.keyMessage || '—'}</strong>
+                  <strong>{renderDisplayValue(card.keyMessage)}</strong>
                 )}
               </label>
               <label>
                 <span>CTA</span>
                 {canEditOwnedContent ? (
-                  <input
-                    value={ctaDraft}
-                    onChange={(event) => setCtaDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('cta', ctaDraft)}
-                  />
+                  renderEditableTextField({
+                    fieldKey: 'cta',
+                    value: ctaDraft,
+                    onChange: setCtaDraft,
+                    onCommit: () => commitTextDraft('cta', ctaDraft),
+                  })
                 ) : (
-                  <strong>{card.cta || '—'}</strong>
+                  <strong>{renderDisplayValue(card.cta)}</strong>
                 )}
               </label>
               <label className="full-width">
                 <span>Visual Direction</span>
                 {canEditOwnedContent ? (
-                  <textarea
-                    value={visualDirectionDraft}
-                    onChange={(event) => setVisualDirectionDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('visualDirection', visualDirectionDraft)}
-                    rows={4}
-                  />
+                  renderEditableTextField({
+                    fieldKey: 'visualDirection',
+                    value: visualDirectionDraft,
+                    onChange: setVisualDirectionDraft,
+                    onCommit: () => commitTextDraft('visualDirection', visualDirectionDraft),
+                    multiline: true,
+                    rows: 4,
+                  })
                 ) : (
-                  <strong>{card.visualDirection || '—'}</strong>
+                  <strong>{renderDisplayValue(card.visualDirection)}</strong>
                 )}
               </label>
               <label className="full-width">
                 <span>Reference Links</span>
                 {canEditOwnedContent ? (
-                  <textarea
-                    value={referenceLinksDraft}
-                    onChange={(event) => setReferenceLinksDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('referenceLinks', referenceLinksDraft)}
-                    rows={4}
-                  />
+                  renderEditableTextField({
+                    fieldKey: 'referenceLinks',
+                    value: referenceLinksDraft,
+                    onChange: setReferenceLinksDraft,
+                    onCommit: () => commitTextDraft('referenceLinks', referenceLinksDraft),
+                    multiline: true,
+                    rows: 4,
+                  })
                 ) : (
-                  <strong>{card.referenceLinks || '—'}</strong>
+                  <strong>{renderDisplayValue(card.referenceLinks)}</strong>
                 )}
               </label>
               <label className="full-width">
                 <span>Ad Copy</span>
                 {canEditOwnedContent ? (
-                  <textarea
-                    value={adCopyDraft}
-                    onChange={(event) => setAdCopyDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('adCopy', adCopyDraft)}
-                    rows={4}
-                  />
+                  renderEditableTextField({
+                    fieldKey: 'adCopy',
+                    value: adCopyDraft,
+                    onChange: setAdCopyDraft,
+                    onCommit: () => commitTextDraft('adCopy', adCopyDraft),
+                    multiline: true,
+                    rows: 4,
+                  })
                 ) : (
-                  <strong>{card.adCopy || '—'}</strong>
+                  <strong>{renderDisplayValue(card.adCopy)}</strong>
                 )}
               </label>
               <label className="full-width">
                 <span>Notes</span>
                 {canEditOwnedContent ? (
-                  <textarea
-                    value={notesDraft}
-                    onChange={(event) => setNotesDraft(event.target.value)}
-                    onBlur={() => commitTextDraft('notes', notesDraft)}
-                    rows={4}
-                  />
+                  renderEditableTextField({
+                    fieldKey: 'notes',
+                    value: notesDraft,
+                    onChange: setNotesDraft,
+                    onCommit: () => commitTextDraft('notes', notesDraft),
+                    multiline: true,
+                    rows: 4,
+                  })
                 ) : (
-                  <strong>{card.notes || '—'}</strong>
+                  <strong>{renderDisplayValue(card.notes)}</strong>
                 )}
               </label>
             </div>
@@ -1008,12 +1122,13 @@ export function CardDetailPanel({
             <div className="frameio-row">
               <span className="frameio-label">Frame.io</span>
               {canEditFrameio ? (
-                <input
-                  value={frameioLinkDraft}
-                  onChange={(event) => setFrameioLinkDraft(event.target.value)}
-                  onBlur={() => commitTextDraft('frameioLink', frameioLinkDraft)}
-                  placeholder="Paste Frame.io review link"
-                />
+                renderEditableTextField({
+                  fieldKey: 'frameioLink',
+                  value: frameioLinkDraft,
+                  onChange: setFrameioLinkDraft,
+                  onCommit: () => commitTextDraft('frameioLink', frameioLinkDraft),
+                  placeholder: 'Paste Frame.io review link',
+                })
               ) : card.frameioLink ? (
                 <a href={card.frameioLink} target="_blank" rel="noreferrer">
                   {card.frameioLink}
