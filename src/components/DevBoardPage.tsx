@@ -208,6 +208,7 @@ export function DevBoardPage({
   function handleDragEnd(event: DragEndEvent) {
     setActiveDragCardId(null)
     if (!canEdit) {
+      showToast('You do not have permission to move Dev board cards.', 'red')
       return
     }
 

@@ -55,13 +55,17 @@ export function DevCardDetailPanel({
       customBlocker: customBlockerDraft,
     })
   }
+  function handleCloseWithSave() {
+    commit()
+    onClose()
+  }
 
   return (
     <>
       <div
         className={`panel-overlay ${isOpen ? 'is-visible' : ''}`}
         aria-hidden="true"
-        onClick={onClose}
+        onClick={handleCloseWithSave}
       />
       <aside
         ref={panelRef}
@@ -79,7 +83,7 @@ export function DevCardDetailPanel({
             </h2>
             <p className="muted-copy">Brand: {card.brand}</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close card details">
+          <button type="button" className="icon-button" onClick={handleCloseWithSave} aria-label="Close card details">
             ×
           </button>
         </div>
@@ -240,7 +244,7 @@ export function DevCardDetailPanel({
           >
             Delete card
           </button>
-          <button type="button" className="primary-button" onClick={onClose}>
+          <button type="button" className="primary-button" onClick={handleCloseWithSave}>
             Done
           </button>
         </div>
