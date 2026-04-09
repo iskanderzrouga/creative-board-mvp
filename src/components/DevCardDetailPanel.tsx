@@ -1,6 +1,8 @@
 import { useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { LinkifiedText } from './LinkifiedText'
+import { ImageAttachments } from './ImageAttachments'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { getSupabaseClient, isSupabaseConfigured } from '../supabase'
 import {
   DEV_BLOCKER_OPTIONS,
   DEV_CHANGE_REQUEST_TYPES,
@@ -47,6 +49,29 @@ function getActiveContributorIdFromStorage() {
   }
 }
 
+function getActiveRoleModeFromStorage() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as {
+      activeRole?: {
+        mode?: unknown
+      }
+    }
+    return parsed.activeRole?.mode === 'owner' || parsed.activeRole?.mode === 'manager'
+      ? parsed.activeRole.mode
+      : null
+  } catch {
+    return null
+  }
+}
+
 interface DevCardDetailPanelProps {
   card: DevCard
   teamMembers: TeamMember[]
@@ -67,7 +92,10 @@ export function DevCardDetailPanel({
   const titleId = useId()
   const panelRef = useRef<HTMLElement | null>(null)
   const activeContributorId = useMemo(() => getActiveContributorIdFromStorage(), [])
-  const canEditAssignedCard = Boolean(card.assigneeId && activeContributorId && card.assigneeId === activeContributorId)
+  const activeRoleMode = useMemo(() => getActiveRoleModeFromStorage(), [])
+  const canManage = activeRoleMode === 'owner' || activeRoleMode === 'manager'
+  const canEditAssignedCard = canManage || Boolean(card.assigneeId && activeContributorId && card.assigneeId === activeContributorId)
+  const attachmentsEnabled = isSupabaseConfigured() && Boolean(getSupabaseClient())
   const [taskDescriptionDraft, setTaskDescriptionDraft] = useState(card.taskDescription)
   const [loomVideoUrlDraft, setLoomVideoUrlDraft] = useState<string[]>(
     coerceStringArrayField(card.loomVideoUrl).length > 0 ? coerceStringArrayField(card.loomVideoUrl) : [''],
@@ -437,6 +465,19 @@ export function DevCardDetailPanel({
             ) : null}
             {blockerDetails ? <p className="muted-copy">Active blocker: {blockerDetails}</p> : null}
           </section>
+
+          {attachmentsEnabled ? (
+            <section className="panel-section">
+              <h3>Attachments</h3>
+              <ImageAttachments
+                cardId={card.id}
+                attachments={card.attachments ?? []}
+                canEdit={canEditAssignedCard}
+                enabled={attachmentsEnabled}
+                onChange={(nextAttachments) => onSave(card.id, { attachments: nextAttachments })}
+              />
+            </section>
+          ) : null}
         </div>
 
         <div className="slide-panel-footer">
