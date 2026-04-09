@@ -1,7 +1,9 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
 import { LinkifiedText } from './LinkifiedText'
+import { ImageAttachments } from './ImageAttachments'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { getSupabaseClient, isSupabaseConfigured } from '../supabase'
 import {
   DESIGN_TYPES,
   PLATFORMS,
@@ -81,15 +83,6 @@ function renderDisplayValue(value: string) {
   return <LinkifiedText text={value} />
 }
 
-function isHttpUrl(value: string) {
-  try {
-    const parsed = new URL(value)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 function formatDaysSinceBriefedLabel(daysSinceBriefed: number | null) {
   if (daysSinceBriefed === null) {
     return 'Not briefed yet'
@@ -147,9 +140,6 @@ export function CardDetailPanel({
     frameioLinks.length > 0 ? frameioLinks : [''],
   )
   const [commentDraft, setCommentDraft] = useState('')
-  const [linkLabel, setLinkLabel] = useState('')
-  const [linkUrl, setLinkUrl] = useState('')
-  const [linkErrorMessage, setLinkErrorMessage] = useState<string | null>(null)
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [commentImageDataUrl, setCommentImageDataUrl] = useState<string | null>(null)
   const [showAllComments, setShowAllComments] = useState(false)
@@ -164,11 +154,12 @@ export function CardDetailPanel({
   const isLaunchOpsViewer = viewerMode === 'contributor' && isLaunchOpsRole(viewerMemberRole)
   const canComment = canManage || isLaunchOpsViewer || viewerName === card.owner
   const canEditFrameio = canManage || isOwnedEditor
-  const canEditLinks = canManage || isOwnedEditor
+  const canEditAttachments = canManage || isOwnedEditor
   const canSetBlocked = canManage || isLaunchOpsViewer || isOwnedEditor
   const canClearBlocked = canManage || isOwnedEditor
   const canClearOwner = card.stage === 'Backlog'
   const canSetPriority = card.stage === 'In Production' && Boolean(card.owner) && (canManage || isOwnedEditor)
+  const attachmentsEnabled = isSupabaseConfigured() && Boolean(getSupabaseClient())
 
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const creativeTask = isCreativeTaskTypeId(taskType.id)
@@ -203,6 +194,7 @@ export function CardDetailPanel({
     { id: 'links', label: 'Links' },
     { id: 'comments', label: 'Comments' },
     { id: 'activity', label: 'Activity' },
+    ...(attachmentsEnabled ? [{ id: 'attachments', label: 'Attachments' }] : []),
     { id: 'tracking', label: 'Tracking' },
   ]
 
@@ -299,30 +291,6 @@ export function CardDetailPanel({
       const next = previous.filter((_, itemIndex) => itemIndex !== index)
       return next.length > 0 ? next : ['']
     })
-  }
-
-  function handleLinkSave() {
-    if (!linkLabel.trim() || !linkUrl.trim()) {
-      return
-    }
-
-    if (!isHttpUrl(linkUrl.trim())) {
-      setLinkErrorMessage('Enter a full http:// or https:// link before saving.')
-      return
-    }
-
-    onSave({
-      attachments: [
-        ...card.attachments,
-        {
-          label: linkLabel.trim(),
-          url: linkUrl.trim(),
-        },
-      ],
-    })
-    setLinkLabel('')
-    setLinkUrl('')
-    setLinkErrorMessage(null)
   }
 
   function renderEditableTextField({
@@ -1177,71 +1145,6 @@ export function CardDetailPanel({
             </div>
           ) : null}
 
-          <div className="link-list">
-            {card.attachments.length === 0 ? (
-              <div className="muted-copy">No links added yet.</div>
-            ) : (
-              card.attachments.map((attachment, index) => (
-                <div key={`${attachment.label}-${index}`} className="link-row">
-                  <a href={attachment.url} target="_blank" rel="noreferrer">
-                    <span className="link-label">{attachment.label}</span>
-                    <span className="link-url">{attachment.url}</span>
-                  </a>
-                  {canEditLinks ? (
-                    <button
-                      type="button"
-                      className="clear-link"
-                      onClick={() =>
-                        onSave({
-                          attachments: card.attachments.filter((_, itemIndex) => itemIndex !== index),
-                        })
-                      }
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
-
-          {canEditLinks ? (
-            <div className="add-link-form">
-              <input
-                value={linkLabel}
-                onChange={(event) => {
-                  setLinkLabel(event.target.value)
-                  if (linkErrorMessage) {
-                    setLinkErrorMessage(null)
-                  }
-                }}
-                placeholder="Link label"
-              />
-              <input
-                value={linkUrl}
-                aria-invalid={Boolean(linkErrorMessage)}
-                onChange={(event) => {
-                  setLinkUrl(event.target.value)
-                  if (linkErrorMessage) {
-                    setLinkErrorMessage(null)
-                  }
-                }}
-                placeholder="https://"
-              />
-              <button
-                type="button"
-                className="primary-button"
-                onClick={handleLinkSave}
-              >
-                Add link
-              </button>
-              {linkErrorMessage ? (
-                <p className="field-error" role="alert">
-                  {linkErrorMessage}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
         </section>
 
         <section
@@ -1370,6 +1273,24 @@ export function CardDetailPanel({
             </div>
           ) : null}
         </section>
+
+        {attachmentsEnabled ? (
+          <section
+            ref={(node) => {
+              sectionRefs.current.attachments = node
+            }}
+            className="panel-section"
+          >
+            <div className="section-rule-title">Attachments</div>
+            <ImageAttachments
+              cardId={card.id}
+              attachments={card.attachments ?? []}
+              canEdit={canEditAttachments}
+              enabled={attachmentsEnabled}
+              onChange={(nextAttachments) => onSave({ attachments: nextAttachments })}
+            />
+          </section>
+        ) : null}
 
         <section
           ref={(node) => {
