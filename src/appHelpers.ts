@@ -145,22 +145,24 @@ export function isDeveloperRole(role: string | null | undefined) {
   return role?.trim().toLowerCase() === 'developer'
 }
 
-export type ExtendedAppPage = AppPage | 'backlog' | 'dev'
+export type ExtendedAppPage = AppPage | 'backlog' | 'dev' | 'strategy'
 
 export function getAllowedPageForDeveloper(page: ExtendedAppPage): ExtendedAppPage {
   return page === 'dev' || page === 'pulse' || page === 'settings' ? page : 'dev'
 }
 
-export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode | 'editor') {
+export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode | 'editor'): AppPage
+export function getAllowedPageForRole(page: ExtendedAppPage, roleMode: RoleMode | 'editor'): ExtendedAppPage
+export function getAllowedPageForRole(page: ExtendedAppPage, roleMode: RoleMode | 'editor') {
   if (roleMode === 'owner' || roleMode === 'manager') {
     return page
   }
 
   if (roleMode === 'contributor' || roleMode === 'editor') {
-    return page === 'board' || page === 'workload' || page === 'pulse' ? page : ('board' as AppPage)
+    return page === 'board' || page === 'workload' || page === 'pulse' ? page : 'board'
   }
 
-  return page === 'pulse' ? page : ('board' as AppPage)
+  return page === 'pulse' ? page : 'board'
 }
 
 export function getRoleFromWorkspaceAccess(

@@ -451,6 +451,39 @@ export interface ScriptWorkshopState {
   scripts: ScriptWorkshopItem[]
 }
 
+export interface StrategyCycleKPI {
+  id: string
+  description: string
+  target: number
+  actual: number
+}
+
+export interface StrategyCycleLever {
+  id: string
+  name: string
+  objective: string
+  kpis: StrategyCycleKPI[]
+}
+
+export interface StrategyCycleConclusion {
+  authorEmail: string
+  authorName: string
+  text: string
+  updatedAt: string
+}
+
+export interface StrategyCycle {
+  id: string
+  name: string
+  startDate: string
+  endDate: string
+  objective: string
+  levers: StrategyCycleLever[]
+  conclusions: StrategyCycleConclusion[]
+  isActive: boolean
+  createdAt: string
+}
+
 export interface PortfolioAccessScope {
   portfolioId: string
   brandNames: string[]
@@ -464,6 +497,7 @@ export interface AppState {
   activePortfolioId: string
   activeRole: ActiveRole
   activePage: AppPage
+  strategyCycles?: StrategyCycle[]
   notifications: AppNotification[]
   version: number
 }
@@ -2821,6 +2855,7 @@ export function coerceAppState(raw: unknown): AppState {
       typeof candidate.activePage === 'string' && APP_PAGES.includes(candidate.activePage as AppPage)
         ? (candidate.activePage as AppPage)
         : seed.activePage,
+    strategyCycles: Array.isArray(candidate.strategyCycles) ? (candidate.strategyCycles as StrategyCycle[]) : [],
     notifications: Array.isArray((candidate as Record<string, unknown>).notifications)
       ? ((candidate as Record<string, unknown>).notifications as AppNotification[])
       : [],

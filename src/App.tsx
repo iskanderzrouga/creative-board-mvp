@@ -53,6 +53,7 @@ import { RemoteLoadingShell } from './components/RemoteLoadingShell'
 import { SettingsPage } from './components/SettingsPage'
 import { Sidebar } from './components/Sidebar'
 import { ScriptWorkshopPage } from './components/ScriptWorkshopPage'
+import { StrategyCyclesPage } from './components/StrategyCyclesPage'
 import { SyncStatusPill } from './components/SyncStatusPill'
 import { ToastStack } from './components/ToastStack'
 import { DevBoardPage } from './components/DevBoardPage'
@@ -134,6 +135,7 @@ import {
   type QuickCreateInput,
   type SettingTab,
   type StageId,
+  type StrategyCycle,
   type Timeframe,
   type ViewerContext,
 } from './board'
@@ -199,6 +201,11 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
 const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+const STRATEGY_LEADERS = [
+  { name: 'Iskander', email: 'iskander@creativeboard.local' },
+  { name: 'Naomi', email: 'naomi@creativeboard.local' },
+  { name: 'Nicolas', email: 'nicolas@creativeboard.local' },
+] as const
 
 function hasDeveloperBoardRole(role: string | null | undefined) {
   const normalizedRole = role?.trim().toLowerCase() ?? null
@@ -219,6 +226,8 @@ function getPathForPage(page: ExtendedPage) {
       return '/pulse'
     case 'scripts':
       return '/scripts'
+    case 'strategy':
+      return '/strategy'
     case 'settings':
       return '/settings'
     case 'board':
@@ -241,6 +250,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
       return 'pulse'
     case '/scripts':
       return 'scripts'
+    case '/strategy':
+      return 'strategy'
     case '/settings':
       return 'settings'
     case '/board':
@@ -446,7 +457,11 @@ function App() {
     : getCurrentPage(state)
   const currentPage: ExtendedPage = isDeveloperUser
     ? getAllowedPageForDeveloper(routePage)
-    : routePage === 'backlog' || routePage === 'dev' || routePage === 'scripts' || routePage === 'pulse'
+    : routePage === 'backlog' ||
+        routePage === 'dev' ||
+        routePage === 'scripts' ||
+        routePage === 'strategy' ||
+        routePage === 'pulse'
       ? routePage
       : productionPage
   const isLaunchOpsActive =
@@ -694,6 +709,7 @@ function App() {
     return styles
   }, [activePortfolioView?.brands])
   const canManageScripts = state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'
+  const strategyCycles = state.strategyCycles ?? []
   const currentReviewerId = useMemo<ScriptReviewerId | null>(() => {
     const sessionEmail =
       authSession?.email?.trim().toLowerCase() ??
@@ -1030,6 +1046,20 @@ function App() {
         return
       }
 
+      if (nextPage === 'strategy') {
+        if (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager') {
+          setRoutePage('strategy')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
+        return
+      }
+
       const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
       setRoutePage(allowedPage)
       setState((current) =>
@@ -1070,7 +1100,11 @@ function App() {
       return
     }
 
-    if (routePage === 'scripts' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
+    if (
+      (routePage === 'scripts' || routePage === 'strategy') &&
+      state.activeRole.mode !== 'owner' &&
+      state.activeRole.mode !== 'manager'
+    ) {
       setRoutePage(productionPage)
     }
   }, [isDeveloperUser, productionPage, routePage, state.activeRole.mode])
@@ -1422,6 +1456,16 @@ function App() {
       return
     }
 
+    if (page === 'strategy') {
+      if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+        return
+      }
+      setRoutePage('strategy')
+      setSelectedCard(null)
+      setSelectedDevCard(null)
+      return
+    }
+
     if (getAllowedPageForRole(page, state.activeRole.mode) !== page) {
       return
     }
@@ -1645,6 +1689,58 @@ function App() {
             : script,
         ),
       },
+    }))
+  }
+
+  function buildDefaultStrategyCycleLevers(): StrategyCycle['levers'] {
+    return ['Creative', 'Funnel', 'Offers'].map((name, leverIndex) => ({
+      id: `lever-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${leverIndex}`,
+      name,
+      objective: '',
+      kpis: [0, 1, 2].map((kpiIndex) => ({
+        id: `kpi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${leverIndex}-${kpiIndex}`,
+        description: '',
+        target: 0,
+        actual: 0,
+      })),
+    }))
+  }
+
+  function handleCreateStrategyCycle(input: { name: string; startDate: string; endDate: string }) {
+    if (!input.name.trim() || !input.startDate || !input.endDate) {
+      return
+    }
+
+    const createdAt = new Date().toISOString()
+    const newCycle: StrategyCycle = {
+      id: `strategy-cycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: input.name.trim(),
+      startDate: input.startDate,
+      endDate: input.endDate,
+      objective: '',
+      levers: buildDefaultStrategyCycleLevers(),
+      conclusions: STRATEGY_LEADERS.map((leader) => ({
+        authorEmail: leader.email,
+        authorName: leader.name,
+        text: '',
+        updatedAt: createdAt,
+      })),
+      isActive: true,
+      createdAt,
+    }
+
+    updateState((current) => ({
+      ...current,
+      strategyCycles: [newCycle, ...(current.strategyCycles ?? []).map((cycle) => ({ ...cycle, isActive: false }))],
+    }))
+  }
+
+  function handleUpdateStrategyCycle(cycleId: string, updater: (cycle: StrategyCycle) => StrategyCycle) {
+    updateState((current) => ({
+      ...current,
+      strategyCycles: (current.strategyCycles ?? []).map((cycle) =>
+        cycle.id === cycleId ? updater(cycle) : cycle,
+      ),
     }))
   }
 
@@ -3123,6 +3219,18 @@ function App() {
             onUpdateScript={handleUpdateScript}
             onSubmitReview={handleSubmitScriptReview}
             onAddComment={handleAddScriptComment}
+          />
+        ) : null}
+
+        {currentPage === 'strategy' ? (
+          <StrategyCyclesPage
+            cycles={strategyCycles}
+            roleMode={state.activeRole.mode}
+            currentUserEmail={authSession?.email ?? workspaceAccess?.email ?? null}
+            currentUserName={workspaceAccess?.editorName ?? currentEditor?.name ?? null}
+            headerUtilityContent={headerUtilityContent}
+            onCreateCycle={handleCreateStrategyCycle}
+            onUpdateCycle={handleUpdateStrategyCycle}
           />
         ) : null}
 

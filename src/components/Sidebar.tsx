@@ -7,7 +7,7 @@ import {
   WorkloadIcon,
 } from './icons/AppIcons'
 
-type ExtendedPage = AppPage | 'backlog' | 'dev'
+type ExtendedPage = AppPage | 'backlog' | 'dev' | 'strategy'
 
 interface SidebarProps {
   expanded: boolean
@@ -115,12 +115,37 @@ function PulseIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function StrategyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M4.5 6.5h15A1.5 1.5 0 0 1 21 8v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16V8a1.5 1.5 0 0 1 1.5-1.5Z" />
+      <path d="M7.5 14.5v-3" />
+      <path d="M12 14.5V10" />
+      <path d="M16.5 14.5V8.5" />
+    </svg>
+  )
+}
+
 function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
   }
   if (page === 'dev') {
     return 'Dev Board'
+  }
+  if (page === 'strategy') {
+    return 'Strategy'
   }
 
   switch (page) {
@@ -145,6 +170,9 @@ function getPageIcon(page: ExtendedPage): PageIcon {
   }
   if (page === 'dev') {
     return DevIcon
+  }
+  if (page === 'strategy') {
+    return StrategyIcon
   }
 
   switch (page) {
@@ -208,6 +236,7 @@ function SidebarComponent({
     : [
         ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
+        ...(canAccessAllPages ? [{ page: 'strategy' as const, disabled: false }] : []),
         { page: 'board', disabled: false },
         { page: 'pulse', disabled: false },
         ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),
