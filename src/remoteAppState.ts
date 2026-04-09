@@ -1,4 +1,11 @@
-import { coerceAppState, type AppState } from './board'
+import {
+  coerceAppState,
+  type AppState,
+  type Card,
+  type DevCard,
+  type DevBoardState,
+  type Portfolio,
+} from './board'
 import {
   E2E_REMOTE_STATE_KEY,
   getSupabaseClient,
@@ -87,14 +94,139 @@ interface LoadRemoteAppStateOptions {
 
 export class RemoteStateConflictError extends Error {
   latestState: AppState
+  latestRemoteState: AppState
   latestUpdatedAt: string
 
-  constructor(state: AppState, updatedAt: string) {
+  constructor(state: AppState, remoteState: AppState, updatedAt: string) {
     super('Remote workspace changed before this save completed.')
     this.name = 'RemoteStateConflictError'
     this.latestState = state
+    this.latestRemoteState = remoteState
     this.latestUpdatedAt = updatedAt
   }
+}
+
+function parseTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return 0
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getCreativeCardUpdatedAt(card: Card) {
+  let latest = Math.max(
+    parseTimestamp(card.stageEnteredAt),
+    parseTimestamp(card.dateAssigned),
+    parseTimestamp(card.dateCreated),
+  )
+
+  if (card.blocked?.at) {
+    latest = Math.max(latest, parseTimestamp(card.blocked.at))
+  }
+
+  for (const entry of card.columnMovementHistory) {
+    latest = Math.max(latest, parseTimestamp(entry.timestamp))
+  }
+  for (const entry of card.stageHistory) {
+    latest = Math.max(latest, parseTimestamp(entry.enteredAt), parseTimestamp(entry.exitedAt))
+  }
+  for (const entry of card.comments) {
+    latest = Math.max(latest, parseTimestamp(entry.timestamp))
+  }
+  for (const entry of card.activityLog) {
+    latest = Math.max(latest, parseTimestamp(entry.timestamp))
+  }
+
+  return latest
+}
+
+function getDevCardUpdatedAt(card: DevCard) {
+  return parseTimestamp(card.dateCreated)
+}
+
+function mergeCreativeCards(remoteCards: Card[], localCards: Card[]) {
+  const merged = new Map<string, Card>()
+  for (const card of remoteCards) {
+    merged.set(card.id, card)
+  }
+
+  for (const localCard of localCards) {
+    const remoteCard = merged.get(localCard.id)
+    if (!remoteCard) {
+      merged.set(localCard.id, localCard)
+      continue
+    }
+
+    const remoteUpdatedAt = getCreativeCardUpdatedAt(remoteCard)
+    const localUpdatedAt = getCreativeCardUpdatedAt(localCard)
+    merged.set(localCard.id, localUpdatedAt >= remoteUpdatedAt ? localCard : remoteCard)
+  }
+
+  return Array.from(merged.values())
+}
+
+function mergeDevCards(remoteCards: DevCard[], localCards: DevCard[]) {
+  const merged = new Map<string, DevCard>()
+  for (const card of remoteCards) {
+    merged.set(card.id, card)
+  }
+
+  for (const localCard of localCards) {
+    const remoteCard = merged.get(localCard.id)
+    if (!remoteCard) {
+      merged.set(localCard.id, localCard)
+      continue
+    }
+
+    const remoteUpdatedAt = getDevCardUpdatedAt(remoteCard)
+    const localUpdatedAt = getDevCardUpdatedAt(localCard)
+    merged.set(localCard.id, localUpdatedAt >= remoteUpdatedAt ? localCard : remoteCard)
+  }
+
+  return Array.from(merged.values())
+}
+
+function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfolio[]) {
+  const localById = new Map(localPortfolios.map((portfolio) => [portfolio.id, portfolio]))
+  const merged: Portfolio[] = remotePortfolios.map((remotePortfolio) => {
+    const localPortfolio = localById.get(remotePortfolio.id)
+    if (!localPortfolio) {
+      return remotePortfolio
+    }
+
+    return {
+      ...remotePortfolio,
+      cards: mergeCreativeCards(remotePortfolio.cards, localPortfolio.cards),
+    }
+  })
+
+  for (const localPortfolio of localPortfolios) {
+    if (!remotePortfolios.some((portfolio) => portfolio.id === localPortfolio.id)) {
+      merged.push(localPortfolio)
+    }
+  }
+
+  return merged
+}
+
+export function mergeRemoteAppStateCardLevel(remoteState: AppState, localState: AppState): AppState {
+  const mergedSharedState: AppState = {
+    ...remoteState,
+    portfolios: mergePortfolios(remoteState.portfolios, localState.portfolios),
+    devBoard: {
+      cards: mergeDevCards(remoteState.devBoard.cards, localState.devBoard.cards),
+      lastCardNumber: Math.max(remoteState.devBoard.lastCardNumber, localState.devBoard.lastCardNumber),
+    } as DevBoardState,
+  }
+
+  return mergeRemoteAppStateWithLocalState(mergedSharedState, localState)
+}
+
+export interface SaveRemoteAppStateWithMergeResult {
+  updatedAt: string | null
+  savedState: AppState
+  merged: boolean
 }
 
 function hasBrowser() {
@@ -281,8 +413,10 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
   if (isE2ERemoteMode()) {
     const stored = getStoredE2ERemoteState()
     if (stored && expectedUpdatedAt && stored.updatedAt !== expectedUpdatedAt) {
+      const latestRemoteState = stored.state
       throw new RemoteStateConflictError(
-        mergeRemoteAppStateWithLocalState(stored.state, state),
+        mergeRemoteAppStateWithLocalState(latestRemoteState, state),
+        latestRemoteState,
         stored.updatedAt,
       )
     }
@@ -318,12 +452,48 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
 
   const latest = await getRemoteWorkspaceStateRow()
   if (latest) {
+    const latestRemoteState = coerceAppState(latest.state)
     throw new RemoteStateConflictError(
-      mergeRemoteAppStateWithLocalState(coerceAppState(latest.state), state),
+      mergeRemoteAppStateWithLocalState(latestRemoteState, state),
+      latestRemoteState,
       latest.updated_at,
     )
   }
 
   const loaded = await loadOrCreateRemoteAppState(state)
   return loaded.lastSyncedAt
+}
+
+export async function saveRemoteAppStateWithRetryMerge(
+  state: AppState,
+  expectedUpdatedAt: string | null,
+  maxConflictRetries = 3,
+): Promise<SaveRemoteAppStateWithMergeResult> {
+  let candidateState = state
+  let candidateExpectedUpdatedAt = expectedUpdatedAt
+  let latestRemoteState = state
+  let latestRemoteUpdatedAt = expectedUpdatedAt ?? ''
+
+  for (let attempt = 0; attempt < maxConflictRetries; attempt += 1) {
+    try {
+      const updatedAt = await saveRemoteAppState(candidateState, candidateExpectedUpdatedAt)
+      return {
+        updatedAt,
+        savedState: candidateState,
+        merged: attempt > 0,
+      }
+    } catch (error) {
+      if (!(error instanceof RemoteStateConflictError)) {
+        throw error
+      }
+
+      latestRemoteState = error.latestRemoteState
+      latestRemoteUpdatedAt = error.latestUpdatedAt
+      const mergedState = mergeRemoteAppStateCardLevel(latestRemoteState, candidateState)
+      candidateState = mergedState
+      candidateExpectedUpdatedAt = error.latestUpdatedAt
+    }
+  }
+
+  throw new RemoteStateConflictError(candidateState, latestRemoteState, latestRemoteUpdatedAt)
 }

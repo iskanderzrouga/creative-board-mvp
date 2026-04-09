@@ -43,7 +43,9 @@ interface BacklogPageProps {
   showToast: (message: string, tone: 'green' | 'amber' | 'red' | 'blue') => void
   headerUtilityContent?: ReactNode
   onChange: Dispatch<SetStateAction<BacklogState>>
-  onMoveToProduction: (card: BacklogCard) => { ok: true; cardId: string; portfolioId: string } | { ok: false }
+  onMoveToProduction: (card: BacklogCard) =>
+    | { ok: true; cardId: string; portfolioId: string }
+    | { ok: false; message: string }
 }
 
 interface BacklogQuickCreateForm {
@@ -489,7 +491,10 @@ export function BacklogPage({
       })
       if (!productionResult.ok) {
         onChange((current) => moveBacklogCard(current, cardId, 'prioritized'))
-        showToast('Could not create the Production card. The backlog card was returned to Prioritized.', 'red')
+        showToast(
+          `${productionResult.message} The backlog card was returned to Prioritized so you can fix it and retry.`,
+          'red',
+        )
         return
       }
 
