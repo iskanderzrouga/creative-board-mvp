@@ -206,7 +206,7 @@ export interface Card {
   adCopy: string
   notes: string
   comments: CommentEntry[]
-  attachments: Attachment[]
+  attachments?: string[]
   driveFolderUrl: string
   driveFolderCreated: boolean
   frameioLink: string[] | string
@@ -387,6 +387,7 @@ export interface DevCard {
   blockerOption: DevBlockerOption | null
   customBlocker: string
   status?: 'not-started' | 'in-progress' | 'done'
+  attachments?: string[]
   column: DevBoardColumnId
   dateCreated: string
 }
@@ -1818,7 +1819,7 @@ function inflateSeedCard(
     adCopy?: string
     notes?: string
     comments?: CommentEntry[]
-    attachments?: Attachment[]
+    attachments?: string[]
     frameioLink?: string | string[]
     driveFolderUrl?: string
     generatedSheetName?: string
@@ -1950,7 +1951,7 @@ interface ImportedCardSeed {
   frameioLink?: string | string[]
   briefDoc?: string
   comments?: CommentEntry[]
-  attachments?: Attachment[]
+  attachments?: string[]
 }
 
 function toImportedPlatform(value: string): Platform {
@@ -1969,21 +1970,11 @@ function createImportedSeedCard(
   const stageEnteredAt = `${seed.dateAssigned}T00:00:00.000Z`
 
   if (seed.reviewLink && coerceStringArrayField(seed.frameioLink).length === 0) {
-    attachments.unshift({
-      label: seed.reviewLink.includes('figma.com')
-        ? 'Design Review'
-        : seed.reviewLink.includes('drive.google.com')
-          ? 'Review Folder'
-          : 'Review Link',
-      url: seed.reviewLink,
-    })
+    attachments.unshift(seed.reviewLink)
   }
 
   if (seed.briefDoc?.startsWith('http')) {
-    attachments.unshift({
-      label: 'Brief Doc',
-      url: seed.briefDoc,
-    })
+    attachments.unshift(seed.briefDoc)
   }
 
   return inflateSeedCard(taskLibrary, {
@@ -2685,6 +2676,7 @@ export function coerceAppState(raw: unknown): AppState {
               card?.status === 'in-progress' || card?.status === 'done'
                 ? card.status
                 : 'not-started',
+            attachments: Array.isArray(card.attachments) ? card.attachments : [],
             column: card.column as DevBoardColumnId,
             dateCreated: typeof card.dateCreated === 'string' ? card.dateCreated : new Date().toISOString(),
           } satisfies DevCard
