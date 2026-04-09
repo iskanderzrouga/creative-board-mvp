@@ -1,9 +1,17 @@
 import { useMemo, useState } from 'react'
 import type { DailyCheckinFormValues } from '../board'
 
+interface CheckinTaskSummaryItem {
+  id: string
+  title: string
+  stage: string
+}
+
 interface DailyCheckinModalProps {
   dateLabel: string
   yesterdayPlan: string | null
+  creativeBoardTasks: CheckinTaskSummaryItem[]
+  devBoardTasks: CheckinTaskSummaryItem[]
   submitting: boolean
   errorMessage: string | null
   onSubmit: (values: DailyCheckinFormValues) => Promise<void>
@@ -12,6 +20,8 @@ interface DailyCheckinModalProps {
 export function DailyCheckinModal({
   dateLabel,
   yesterdayPlan,
+  creativeBoardTasks,
+  devBoardTasks,
   submitting,
   errorMessage,
   onSubmit,
@@ -44,6 +54,7 @@ export function DailyCheckinModal({
       values.todayPlan.trim().length === 0,
     [submitting, values.todayPlan, values.yesterdayWork],
   )
+  const hasAssignedTasks = creativeBoardTasks.length > 0 || devBoardTasks.length > 0
 
   return (
     <div
@@ -86,6 +97,83 @@ export function DailyCheckinModal({
               <p style={{ color: '#1a1a1a' }}>{yesterdayPlan}</p>
             </section>
           ) : null}
+
+          <section
+            aria-live="polite"
+            style={{
+              color: '#1a1a1a',
+              marginBottom: '20px',
+              border: '1px solid #d1d5db',
+              borderRadius: '10px',
+              padding: '12px',
+              background: '#f9fafb',
+              maxHeight: '190px',
+              overflowY: 'auto',
+            }}
+          >
+            <h2 style={{ color: '#1a1a1a', fontSize: '16px', margin: '0 0 8px 0' }}>Your current tasks:</h2>
+            {hasAssignedTasks ? (
+              <>
+                {creativeBoardTasks.length > 0 ? (
+                  <div style={{ marginBottom: devBoardTasks.length > 0 ? '10px' : 0 }}>
+                    <h3 style={{ color: '#1a1a1a', fontSize: '14px', margin: '0 0 6px 0' }}>Creative Board</h3>
+                    <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                      {creativeBoardTasks.map((task) => (
+                        <li key={`creative-${task.id}`} style={{ color: '#1a1a1a', marginBottom: '6px' }}>
+                          <div style={{ color: '#1a1a1a', fontSize: '13px', lineHeight: 1.35 }}>
+                            <strong style={{ color: '#1a1a1a' }}>{task.id}</strong> — {task.title} · {task.stage}
+                            <span
+                              style={{
+                                color: '#1a1a1a',
+                                fontSize: '11px',
+                                border: '1px solid #9ca3af',
+                                borderRadius: '999px',
+                                padding: '1px 6px',
+                                marginLeft: '8px',
+                                background: '#ffffff',
+                              }}
+                            >
+                              Creative
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {devBoardTasks.length > 0 ? (
+                  <div>
+                    <h3 style={{ color: '#1a1a1a', fontSize: '14px', margin: '0 0 6px 0' }}>Dev Board</h3>
+                    <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                      {devBoardTasks.map((task) => (
+                        <li key={`dev-${task.id}`} style={{ color: '#1a1a1a', marginBottom: '6px' }}>
+                          <div style={{ color: '#1a1a1a', fontSize: '13px', lineHeight: 1.35 }}>
+                            <strong style={{ color: '#1a1a1a' }}>{task.id}</strong> — {task.title} · {task.stage}
+                            <span
+                              style={{
+                                color: '#1a1a1a',
+                                fontSize: '11px',
+                                border: '1px solid #9ca3af',
+                                borderRadius: '999px',
+                                padding: '1px 6px',
+                                marginLeft: '8px',
+                                background: '#ffffff',
+                              }}
+                            >
+                              Dev
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p style={{ color: '#1a1a1a', margin: 0 }}>No cards currently assigned to you.</p>
+            )}
+          </section>
 
           <label className="daily-checkin-field" style={{ color: '#1a1a1a' }}>
             <span style={{ color: '#1a1a1a' }}>What did you work on yesterday?</span>

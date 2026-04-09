@@ -173,6 +173,12 @@ interface SelectedDevCardState {
   cardId: string
 }
 
+interface CheckinTaskSummaryItem {
+  id: string
+  title: string
+  stage: string
+}
+
 interface PendingBackwardMove {
   portfolioId: string
   cardId: string
@@ -578,6 +584,65 @@ function App() {
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const dailyCheckinEmail = backlogAccessEmail
+  const checkinIdentityKeys = useMemo(() => {
+    const keys = new Set<string>()
+    const normalizedEmail = dailyCheckinEmail?.trim().toLowerCase()
+    const normalizedWorkspaceName = workspaceAccess?.editorName?.trim().toLowerCase()
+    const normalizedCurrentEditorName = currentEditor?.name?.trim().toLowerCase()
+    const normalizedMatchedMemberName = accessMatchedMember?.name?.trim().toLowerCase()
+
+    if (normalizedEmail) {
+      keys.add(normalizedEmail)
+    }
+    if (normalizedWorkspaceName) {
+      keys.add(normalizedWorkspaceName)
+    }
+    if (normalizedCurrentEditorName) {
+      keys.add(normalizedCurrentEditorName)
+    }
+    if (normalizedMatchedMemberName) {
+      keys.add(normalizedMatchedMemberName)
+    }
+
+    return keys
+  }, [accessMatchedMember?.name, currentEditor?.name, dailyCheckinEmail, workspaceAccess?.editorName])
+  const checkinCreativeBoardTasks = useMemo<CheckinTaskSummaryItem[]>(() => {
+    if (checkinIdentityKeys.size === 0) {
+      return []
+    }
+
+    return state.portfolios
+      .flatMap((portfolio) => portfolio.cards)
+      .filter((card) => {
+        if (card.archivedAt) {
+          return false
+        }
+        const normalizedOwner = card.owner?.trim().toLowerCase()
+        return Boolean(normalizedOwner && checkinIdentityKeys.has(normalizedOwner))
+      })
+      .map((card) => ({
+        id: card.id,
+        title: card.title,
+        stage: card.stage,
+      }))
+  }, [checkinIdentityKeys, state.portfolios])
+  const checkinDevBoardTasks = useMemo<CheckinTaskSummaryItem[]>(() => {
+    if (checkinIdentityKeys.size === 0) {
+      return []
+    }
+
+    return state.devBoard.cards
+      .filter((card) => {
+        const assigneeName =
+          allTeamMembers.find((member) => member.id === card.assigneeId)?.name?.trim().toLowerCase() ?? null
+        return Boolean(assigneeName && checkinIdentityKeys.has(assigneeName))
+      })
+      .map((card) => ({
+        id: card.id,
+        title: card.title,
+        stage: card.column,
+      }))
+  }, [allTeamMembers, checkinIdentityKeys, state.devBoard.cards])
   const pulsePeopleOptions = useMemo(
     () => getTeamMembersForPulse(allTeamMembers).map((member) => member.name),
     [allTeamMembers],
@@ -3279,6 +3344,8 @@ function App() {
         <DailyCheckinModal
           dateLabel={dailyCheckinDateLabel}
           yesterdayPlan={dailyCheckinYesterdayPlan}
+          creativeBoardTasks={checkinCreativeBoardTasks}
+          devBoardTasks={checkinDevBoardTasks}
           submitting={dailyCheckinSubmitting}
           errorMessage={dailyCheckinError}
           onSubmit={handleDailyCheckinSubmit}
