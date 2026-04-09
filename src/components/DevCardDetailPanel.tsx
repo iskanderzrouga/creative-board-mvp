@@ -1,4 +1,5 @@
-import { Fragment, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { LinkifiedText } from './LinkifiedText'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
   DEV_BLOCKER_OPTIONS,
@@ -11,9 +12,6 @@ import {
   type TeamMember,
 } from '../board'
 
-
-const URL_REGEX = /(https?:\/\/[^\s]+)/g
-
 function coerceStringArrayField(value: string[] | string | null | undefined) {
   if (Array.isArray(value)) {
     return value
@@ -22,31 +20,6 @@ function coerceStringArrayField(value: string[] | string | null | undefined) {
     return value ? [value] : []
   }
   return []
-}
-
-function renderTextWithClickableLinks(value: string) {
-  if (!value.trim()) {
-    return '—'
-  }
-
-  return value.split('\n').map((line, lineIndex) => {
-    const parts = line.split(URL_REGEX)
-
-    return (
-      <Fragment key={`${line}-${lineIndex}`}>
-        {parts.map((part, partIndex) =>
-          part.startsWith('http://') || part.startsWith('https://') ? (
-            <a key={`${part}-${partIndex}`} href={part} target="_blank" rel="noopener noreferrer">
-              {part}
-            </a>
-          ) : (
-            <Fragment key={`${part}-${partIndex}`}>{part}</Fragment>
-          ),
-        )}
-        {lineIndex < value.split('\n').length - 1 ? <br /> : null}
-      </Fragment>
-    )
-  })
 }
 
 function getActiveContributorIdFromStorage() {
@@ -168,7 +141,7 @@ export function DevCardDetailPanel({
             }
           }}
         >
-          {renderTextWithClickableLinks(value)}
+          {value.trim() ? <LinkifiedText text={value} /> : '—'}
         </div>
       )
     }

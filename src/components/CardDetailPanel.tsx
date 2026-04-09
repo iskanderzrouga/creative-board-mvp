@@ -1,5 +1,6 @@
-import { Fragment, useId, useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
+import { LinkifiedText } from './LinkifiedText'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
 import {
   DESIGN_TYPES,
@@ -72,38 +73,12 @@ const COMMENT_PREVIEW_COUNT = 10
 const ACTIVITY_PREVIEW_COUNT = 5
 const COMMENT_MAX_LENGTH = 2000
 
-
-const URL_REGEX = /(https?:\/\/[^\s]+)/g
-
-function renderTextWithClickableLinks(value: string) {
-  const lines = value.split('\n')
-
-  return lines.map((line, lineIndex) => {
-    const parts = line.split(URL_REGEX)
-
-    return (
-      <Fragment key={`${line}-${lineIndex}`}>
-        {parts.map((part, partIndex) =>
-          part.match(/^https?:\/\//) ? (
-            <a key={`${part}-${partIndex}`} href={part} target="_blank" rel="noopener noreferrer">
-              {part}
-            </a>
-          ) : (
-            <Fragment key={`${part}-${partIndex}`}>{part}</Fragment>
-          ),
-        )}
-        {lineIndex < lines.length - 1 ? <br /> : null}
-      </Fragment>
-    )
-  })
-}
-
 function renderDisplayValue(value: string) {
   if (!value.trim()) {
     return '—'
   }
 
-  return renderTextWithClickableLinks(value)
+  return <LinkifiedText text={value} />
 }
 
 function isHttpUrl(value: string) {
@@ -1191,7 +1166,7 @@ export function CardDetailPanel({
               ) : frameioLinks.length > 0 ? (
                 <div className="multi-link-list">
                   {frameioLinks.map((link, index) => (
-                    <a key={`frameio-readonly-${index}`} href={link} target="_blank" rel="noreferrer">
+                    <a key={`frameio-readonly-${index}`} href={link} target="_blank" rel="noopener noreferrer">
                       {link}
                     </a>
                   ))}
