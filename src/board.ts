@@ -118,6 +118,11 @@ export interface Attachment {
   url: string
 }
 
+export interface CardLink {
+  url: string
+  label?: string
+}
+
 export interface CommentEntry {
   author: string
   text: string
@@ -207,6 +212,7 @@ export interface Card {
   notes: string
   comments: CommentEntry[]
   attachments?: string[]
+  links?: CardLink[]
   driveFolderUrl: string
   driveFolderCreated: boolean
   frameioLink: string[] | string
@@ -1941,6 +1947,7 @@ function inflateSeedCard(
     notes: seed.notes ?? '',
     comments: seed.comments ?? [],
     attachments: seed.attachments ?? [],
+    links: [],
     driveFolderUrl: seed.driveFolderUrl ?? '',
     driveFolderCreated: Boolean(seed.driveFolderUrl),
     frameioLink: frameioLinks,
@@ -2261,6 +2268,27 @@ function coerceStringArrayField(value: unknown): string[] {
   return []
 }
 
+function coerceCardLinksField(value: unknown): CardLink[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return null
+      }
+      const candidate = entry as Partial<CardLink>
+      const url = typeof candidate.url === 'string' ? candidate.url.trim() : ''
+      if (!url) {
+        return null
+      }
+      const label = typeof candidate.label === 'string' ? candidate.label.trim() : ''
+      return label ? { url, label } : { url }
+    })
+    .filter((entry): entry is CardLink => entry !== null)
+}
+
 function normalizeRevisionReasons(raw: RevisionReason[] | undefined) {
   const seed = createSeedRevisionReasons()
   const source = Array.isArray(raw) && raw.length > 0 ? raw : seed
@@ -2447,6 +2475,7 @@ function normalizePortfolio(
           referenceLinks: typeof raw.referenceLinks === 'string' ? raw.referenceLinks : '',
           adCopy: typeof raw.adCopy === 'string' ? raw.adCopy : '',
           notes: typeof raw.notes === 'string' ? raw.notes : '',
+          links: coerceCardLinksField(raw.links),
           blocked: rawCard.blocked ?? null,
           archivedAt: rawCard.archivedAt ?? null,
           activityLog,
@@ -2560,6 +2589,7 @@ function normalizePortfolio(
           notes: typeof raw?.notes === 'string' ? raw.notes : '',
           comments: Array.isArray(raw?.comments) ? raw.comments : [],
           attachments: Array.isArray(raw?.attachments) ? raw.attachments : [],
+          links: coerceCardLinksField(raw?.links),
           driveFolderUrl: typeof raw?.driveFolderUrl === 'string' ? raw.driveFolderUrl : '',
           driveFolderCreated: raw?.driveFolderCreated === true,
           frameioLink: coerceStringArrayField(raw?.frameioLink),
@@ -3519,6 +3549,7 @@ export function createCardFromQuickInput(
     notes: '',
     comments: [],
     attachments: [],
+    links: [],
     driveFolderUrl: '',
     driveFolderCreated: false,
     frameioLink: [],
@@ -3574,6 +3605,7 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('adCopy')
     allowedKeys.add('notes')
     allowedKeys.add('attachments')
+    allowedKeys.add('links')
     allowedKeys.add('frameioLink')
     allowedKeys.add('landingPage')
     allowedKeys.add('actualHoursLogged')

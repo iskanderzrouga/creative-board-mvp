@@ -33,9 +33,10 @@ import {
   isLpDesignTaskTypeId,
   isLpDevTaskTypeId,
   isPackagingBrandingTaskTypeId,
-    type Card,
-    type CardPriority,
-    type GlobalSettings,
+  type Card,
+  type CardLink,
+  type CardPriority,
+  type GlobalSettings,
   type Portfolio,
   type RoleMode,
 } from '../board'
@@ -116,6 +117,7 @@ export function CardDetailPanel({
   canViewPerformanceData,
   onStartEditorTimer,
 }: CardDetailPanelProps) {
+  const cardLinks = Array.isArray(card.links) ? card.links : []
   const frameioLinks = Array.isArray(card.frameioLink)
     ? card.frameioLink
     : card.frameioLink
@@ -139,6 +141,9 @@ export function CardDetailPanel({
   const [frameioLinkDraft, setFrameioLinkDraft] = useState<string[]>(
     frameioLinks.length > 0 ? frameioLinks : [''],
   )
+  const [linksDraft, setLinksDraft] = useState<Array<{ url: string; label: string }>>(
+    cardLinks.length > 0 ? cardLinks.map((link) => ({ url: link.url, label: link.label ?? '' })) : [{ url: '', label: '' }],
+  )
   const [commentDraft, setCommentDraft] = useState('')
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [commentImageDataUrl, setCommentImageDataUrl] = useState<string | null>(null)
@@ -154,6 +159,7 @@ export function CardDetailPanel({
   const isLaunchOpsViewer = viewerMode === 'contributor' && isLaunchOpsRole(viewerMemberRole)
   const canComment = canManage || isLaunchOpsViewer || viewerName === card.owner
   const canEditFrameio = canManage || isOwnedEditor
+  const canEditLinks = canManage || isOwnedEditor
   const canEditAttachments = canManage || isOwnedEditor
   const canSetBlocked = canManage || isLaunchOpsViewer || isOwnedEditor
   const canClearBlocked = canManage || isOwnedEditor
@@ -290,6 +296,37 @@ export function CardDetailPanel({
     setFrameioLinkDraft((previous) => {
       const next = previous.filter((_, itemIndex) => itemIndex !== index)
       return next.length > 0 ? next : ['']
+    })
+  }
+
+  function commitLinks() {
+    const nextLinks: CardLink[] = linksDraft
+      .map((link) => ({
+        url: link.url.trim(),
+        label: link.label.trim(),
+      }))
+      .filter((link) => link.url)
+      .map((link) => (link.label ? { url: link.url, label: link.label } : { url: link.url }))
+    if (JSON.stringify(nextLinks) === JSON.stringify(cardLinks)) {
+      return
+    }
+    onSave({ links: nextLinks })
+  }
+
+  function updateLinksDraft(index: number, key: 'url' | 'label', value: string) {
+    setLinksDraft((previous) =>
+      previous.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)),
+    )
+  }
+
+  function addLinkDraftRow() {
+    setLinksDraft((previous) => [...previous, { url: '', label: '' }])
+  }
+
+  function removeLinkDraftRow(index: number) {
+    setLinksDraft((previous) => {
+      const next = previous.filter((_, itemIndex) => itemIndex !== index)
+      return next.length > 0 ? next : [{ url: '', label: '' }]
     })
   }
 
@@ -1144,6 +1181,82 @@ export function CardDetailPanel({
               )}
             </div>
           ) : null}
+          <div className="frameio-row">
+            <span className="frameio-label">Links</span>
+            {canEditLinks ? (
+              <div className="multi-link-list">
+                {linksDraft.map((link, index) => (
+                  <div key={`card-link-${index}`} className="multi-link-row">
+                    <input
+                      className="panel-input"
+                      value={link.url}
+                      onChange={(event) => updateLinksDraft(index, 'url', event.target.value)}
+                      onBlur={commitLinks}
+                      placeholder="https://..."
+                    />
+                    <input
+                      className="panel-input"
+                      value={link.label}
+                      onChange={(event) => updateLinksDraft(index, 'label', event.target.value)}
+                      onBlur={commitLinks}
+                      placeholder="Optional label"
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Remove link ${index + 1}`}
+                      onClick={() => {
+                        removeLinkDraftRow(index)
+                        setTimeout(commitLinks, 0)
+                      }}
+                    >
+                      x
+                    </button>
+                    {index === linksDraft.length - 1 ? (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label="Add link"
+                        onClick={addLinkDraftRow}
+                      >
+                        +
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+                {linksDraft
+                  .map((link) => ({ url: link.url.trim(), label: link.label.trim() }))
+                  .filter((link) => link.url)
+                  .map((link, index) => (
+                    <a
+                      key={`link-editable-preview-${index}`}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', textDecoration: 'underline', cursor: 'pointer' }}
+                    >
+                      {link.label || link.url}
+                    </a>
+                  ))}
+              </div>
+            ) : cardLinks.length > 0 ? (
+              <div className="multi-link-list">
+                {cardLinks.map((link, index) => (
+                  <a
+                    key={`link-readonly-${index}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#2563eb', textDecoration: 'underline', cursor: 'pointer' }}
+                  >
+                    {link.label?.trim() ? link.label : link.url}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <span className="muted-copy">No links yet.</span>
+            )}
+          </div>
 
         </section>
 
