@@ -148,6 +148,11 @@ export function CardDetailPanel({
   canViewPerformanceData,
   onStartEditorTimer,
 }: CardDetailPanelProps) {
+  const frameioLinks = Array.isArray(card.frameioLink)
+    ? card.frameioLink
+    : card.frameioLink
+      ? [card.frameioLink]
+      : []
   const titleId = useId()
   const panelRef = useRef<HTMLElement | null>(null)
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -163,7 +168,9 @@ export function CardDetailPanel({
   const [adCopyDraft, setAdCopyDraft] = useState(card.adCopy)
   const [notesDraft, setNotesDraft] = useState(card.notes)
   const [briefDraft, setBriefDraft] = useState(card.brief)
-  const [frameioLinkDraft, setFrameioLinkDraft] = useState(card.frameioLink)
+  const [frameioLinkDraft, setFrameioLinkDraft] = useState<string[]>(
+    frameioLinks.length > 0 ? frameioLinks : [''],
+  )
   const [commentDraft, setCommentDraft] = useState('')
   const [linkLabel, setLinkLabel] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -286,8 +293,7 @@ export function CardDetailPanel({
       | 'referenceLinks'
       | 'adCopy'
       | 'notes'
-      | 'brief'
-      | 'frameioLink',
+      | 'brief',
     value: string,
   ) {
     if (value === card[key]) {
@@ -295,6 +301,29 @@ export function CardDetailPanel({
     }
 
     onSave({ [key]: value } as Pick<Card, typeof key>)
+  }
+
+  function commitFrameioLinks() {
+    const nextLinks = frameioLinkDraft.map((link) => link.trim()).filter(Boolean)
+    if (JSON.stringify(nextLinks) === JSON.stringify(frameioLinks)) {
+      return
+    }
+    onSave({ frameioLink: nextLinks })
+  }
+
+  function updateFrameioDraft(index: number, value: string) {
+    setFrameioLinkDraft((previous) => previous.map((item, itemIndex) => (itemIndex === index ? value : item)))
+  }
+
+  function addFrameioDraftRow() {
+    setFrameioLinkDraft((previous) => [...previous, ''])
+  }
+
+  function removeFrameioDraftRow(index: number) {
+    setFrameioLinkDraft((previous) => {
+      const next = previous.filter((_, itemIndex) => itemIndex !== index)
+      return next.length > 0 ? next : ['']
+    })
   }
 
   function handleLinkSave() {
@@ -380,8 +409,7 @@ export function CardDetailPanel({
     return <input {...sharedProps} />
   }
 
-  const canEditTitle =
-    iterationTask ? false : creativeTask ? canManage : canEditOwnedContent
+  const canEditTitle = iterationTask ? false : canEditOwnedContent
 
   return (
     <>
@@ -533,7 +561,7 @@ export function CardDetailPanel({
               <div className="metadata-grid">
                 <label>
                   <span>Brand</span>
-                  {canManage ? (
+                  {canEditOwnedContent ? (
                     <select value={card.brand} onChange={(event) => onSave({ brand: event.target.value })}>
                       {portfolio.brands.map((brand) => (
                         <option key={brand.name} value={brand.name}>
@@ -547,7 +575,7 @@ export function CardDetailPanel({
                 </label>
                 <label>
                   <span>Product</span>
-                  {canManage ? (
+                  {canEditOwnedContent ? (
                     <select value={card.product} onChange={(event) => onSave({ product: event.target.value })}>
                       {(getBrandByName(portfolio, card.brand)?.products ?? []).map((product) => (
                         <option key={product} value={product}>
@@ -561,7 +589,7 @@ export function CardDetailPanel({
                 </label>
                 <label>
                   <span>Task Type</span>
-                  {canManage ? (
+                  {canEditOwnedContent ? (
                     <select value={card.taskTypeId} onChange={(event) => handleTaskTypeChange(event.target.value)}>
                       {getTaskTypeGroups(settings).map((group) => (
                         <optgroup key={group.category} label={group.category}>
@@ -583,7 +611,7 @@ export function CardDetailPanel({
                 </label>
                 <label>
                   <span>Assigned To</span>
-                  {canManage ? (
+                  {canEditOwnedContent ? (
                     <select value={card.owner ?? ''} onChange={(event) => onSave({ owner: event.target.value || null })}>
                       {canClearOwner ? <option value="">Unassigned</option> : null}
                       {getEditorOptions(portfolio).map((member) => (
@@ -706,7 +734,7 @@ export function CardDetailPanel({
                 <div className="metadata-grid">
                   <label>
                     <span>Platform</span>
-                    {canManage ? (
+                    {canEditOwnedContent ? (
                       <select
                         value={card.platform}
                         onChange={(event) => onSave({ platform: event.target.value as Card['platform'] })}
@@ -723,7 +751,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Funnel Stage</span>
-                    {canManage ? (
+                    {canEditOwnedContent ? (
                       <select
                         value={card.funnelStage}
                         onChange={(event) => onSave({ funnelStage: event.target.value as Card['funnelStage'] })}
@@ -739,7 +767,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Angle / Theme</span>
-                    {canManage ? (
+                    {canEditOwnedContent ? (
                       renderEditableTextField({
                         fieldKey: 'angle',
                         value: angleDraft,
@@ -752,7 +780,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Audience</span>
-                    {canManage ? (
+                    {canEditOwnedContent ? (
                       renderEditableTextField({
                         fieldKey: 'audience',
                         value: audienceDraft,
@@ -765,7 +793,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Landing Page URL</span>
-                    {canManage ? (
+                    {canEditOwnedContent ? (
                       renderEditableTextField({
                         fieldKey: 'landingPage',
                         value: landingPageDraft,
@@ -799,7 +827,7 @@ export function CardDetailPanel({
                 <div className="metadata-grid">
                   <label>
                     <span>Source Card</span>
-                    {canManage ? (
+                    {canEditOwnedContent ? (
                       <select
                         value={card.sourceCardId ?? ''}
                         onChange={(event) => {
@@ -1004,12 +1032,16 @@ export function CardDetailPanel({
           className="panel-section"
         >
           <div className="section-rule-title">Brief</div>
-          <RichTextEditor
-            value={briefDraft}
-            onChange={setBriefDraft}
-            onBlur={() => commitTextDraft('brief', briefDraft)}
-            readOnly={!canEditOwnedContent}
-          />
+          {canEditOwnedContent ? (
+            <RichTextEditor
+              value={briefDraft}
+              onChange={setBriefDraft}
+              onBlur={() => commitTextDraft('brief', briefDraft)}
+              readOnly={false}
+            />
+          ) : (
+            <div className="panel-textarea">{renderDisplayValue(card.brief)}</div>
+          )}
         </section>
 
         {creativeTask ? (
@@ -1122,17 +1154,48 @@ export function CardDetailPanel({
             <div className="frameio-row">
               <span className="frameio-label">Frame.io</span>
               {canEditFrameio ? (
-                renderEditableTextField({
-                  fieldKey: 'frameioLink',
-                  value: frameioLinkDraft,
-                  onChange: setFrameioLinkDraft,
-                  onCommit: () => commitTextDraft('frameioLink', frameioLinkDraft),
-                  placeholder: 'Paste Frame.io review link',
-                })
-              ) : card.frameioLink ? (
-                <a href={card.frameioLink} target="_blank" rel="noreferrer">
-                  {card.frameioLink}
-                </a>
+                <div className="multi-link-list">
+                  {frameioLinkDraft.map((link, index) => (
+                    <div key={`frameio-${index}`} className="multi-link-row">
+                      <input
+                        className="panel-input"
+                        value={link}
+                        onChange={(event) => updateFrameioDraft(index, event.target.value)}
+                        onBlur={commitFrameioLinks}
+                        placeholder="https://frame.io/..."
+                      />
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Remove Frame.io link ${index + 1}`}
+                        onClick={() => {
+                          removeFrameioDraftRow(index)
+                          setTimeout(commitFrameioLinks, 0)
+                        }}
+                      >
+                        x
+                      </button>
+                      {index === frameioLinkDraft.length - 1 ? (
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="Add Frame.io link"
+                          onClick={addFrameioDraftRow}
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : frameioLinks.length > 0 ? (
+                <div className="multi-link-list">
+                  {frameioLinks.map((link, index) => (
+                    <a key={`frameio-readonly-${index}`} href={link} target="_blank" rel="noreferrer">
+                      {link}
+                    </a>
+                  ))}
+                </div>
               ) : (
                 <span className="muted-copy">No review link yet.</span>
               )}

@@ -209,7 +209,7 @@ export interface Card {
   attachments: Attachment[]
   driveFolderUrl: string
   driveFolderCreated: boolean
-  frameioLink: string
+  frameioLink: string[] | string
   dateAssigned: string
   dateCreated: string
   positionInSection: number
@@ -379,8 +379,8 @@ export interface DevCard {
   sourceBacklogCardId: string | null
   brand: string
   taskDescription: string
-  loomVideoUrl: string
-  newUrlToUse: string
+  loomVideoUrl: string[] | string
+  newUrlToUse: string[] | string
   assigneeId: string | null
   dueDate: string | null
   changeRequestType: DevChangeRequestType
@@ -1819,7 +1819,7 @@ function inflateSeedCard(
     notes?: string
     comments?: CommentEntry[]
     attachments?: Attachment[]
-    frameioLink?: string
+    frameioLink?: string | string[]
     driveFolderUrl?: string
     generatedSheetName?: string
     generatedAdName?: string
@@ -1847,7 +1847,9 @@ function inflateSeedCard(
     )
   }
 
-  if (seed.frameioLink) {
+  const frameioLinks = coerceStringArrayField(seed.frameioLink)
+
+  if (frameioLinks.length > 0) {
     activityLog.unshift(
       createSeedActivity(
         seed.owner ?? 'Editor',
@@ -1906,7 +1908,7 @@ function inflateSeedCard(
     attachments: seed.attachments ?? [],
     driveFolderUrl: seed.driveFolderUrl ?? '',
     driveFolderCreated: Boolean(seed.driveFolderUrl),
-    frameioLink: seed.frameioLink ?? '',
+    frameioLink: frameioLinks,
     dateAssigned: seed.dateAssigned,
     dateCreated,
     positionInSection: 0,
@@ -1945,7 +1947,7 @@ interface ImportedCardSeed {
   driveFolderUrl?: string
   driveFolderCreated?: boolean
   reviewLink?: string
-  frameioLink?: string
+  frameioLink?: string | string[]
   briefDoc?: string
   comments?: CommentEntry[]
   attachments?: Attachment[]
@@ -1966,7 +1968,7 @@ function createImportedSeedCard(
   const attachments = [...(seed.attachments ?? [])]
   const stageEnteredAt = `${seed.dateAssigned}T00:00:00.000Z`
 
-  if (seed.reviewLink && !seed.frameioLink) {
+  if (seed.reviewLink && coerceStringArrayField(seed.frameioLink).length === 0) {
     attachments.unshift({
       label: seed.reviewLink.includes('figma.com')
         ? 'Design Review'
@@ -2003,7 +2005,7 @@ function createImportedSeedCard(
     brief: seed.briefDoc && !seed.briefDoc.startsWith('http') ? seed.briefDoc : '',
     comments: seed.comments ?? [],
     attachments,
-    frameioLink: seed.frameioLink ?? '',
+    frameioLink: coerceStringArrayField(seed.frameioLink),
     driveFolderUrl: seed.driveFolderUrl ?? '',
     generatedSheetName: seed.generatedSheetName,
     customStageHistory: buildCustomHistory([
@@ -2222,6 +2224,16 @@ function normalizeTeamMemberAccessEmail(value: unknown) {
 
   const normalized = value.trim().toLowerCase()
   return normalized || null
+}
+
+function coerceStringArrayField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string')
+  }
+  if (typeof value === 'string') {
+    return value ? [value] : []
+  }
+  return []
 }
 
 function normalizeRevisionReasons(raw: RevisionReason[] | undefined) {
@@ -2525,7 +2537,7 @@ function normalizePortfolio(
           attachments: Array.isArray(raw?.attachments) ? raw.attachments : [],
           driveFolderUrl: typeof raw?.driveFolderUrl === 'string' ? raw.driveFolderUrl : '',
           driveFolderCreated: raw?.driveFolderCreated === true,
-          frameioLink: typeof raw?.frameioLink === 'string' ? raw.frameioLink : '',
+          frameioLink: coerceStringArrayField(raw?.frameioLink),
           dateAssigned: typeof raw?.dateAssigned === 'string' ? raw.dateAssigned : fallbackDateCreated,
           dateCreated: fallbackDateCreated,
           positionInSection: typeof raw?.positionInSection === 'number' ? raw.positionInSection : 0,
@@ -2654,8 +2666,8 @@ export function coerceAppState(raw: unknown): AppState {
             sourceBacklogCardId: typeof card.sourceBacklogCardId === 'string' ? card.sourceBacklogCardId : null,
             brand: card.brand,
             taskDescription: typeof card.taskDescription === 'string' ? card.taskDescription : '',
-            loomVideoUrl: typeof card.loomVideoUrl === 'string' ? card.loomVideoUrl : '',
-            newUrlToUse: typeof card.newUrlToUse === 'string' ? card.newUrlToUse : '',
+            loomVideoUrl: coerceStringArrayField(card.loomVideoUrl),
+            newUrlToUse: coerceStringArrayField(card.newUrlToUse),
             assigneeId: typeof card.assigneeId === 'string' ? card.assigneeId : null,
             dueDate: typeof card.dueDate === 'string' ? card.dueDate : null,
             changeRequestType:
@@ -3000,8 +3012,8 @@ interface CreateDevCardInput {
   brand: string
   sourceBacklogCardId?: string | null
   taskDescription?: string
-  loomVideoUrl?: string
-  newUrlToUse?: string
+  loomVideoUrl?: string | string[]
+  newUrlToUse?: string | string[]
   assigneeId?: string | null
   dueDate?: string | null
   changeRequestType?: DevChangeRequestType
@@ -3016,8 +3028,8 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
     sourceBacklogCardId: input.sourceBacklogCardId ?? null,
     brand: input.brand.trim() || 'Unknown',
     taskDescription: input.taskDescription?.trim() ?? '',
-    loomVideoUrl: input.loomVideoUrl?.trim() ?? '',
-    newUrlToUse: input.newUrlToUse?.trim() ?? '',
+    loomVideoUrl: coerceStringArrayField(input.loomVideoUrl),
+    newUrlToUse: coerceStringArrayField(input.newUrlToUse),
     assigneeId: input.assigneeId ?? null,
     dueDate: input.dueDate ?? null,
     changeRequestType: input.changeRequestType ?? 'Bug Fix',
@@ -3482,7 +3494,7 @@ export function createCardFromQuickInput(
     attachments: [],
     driveFolderUrl: '',
     driveFolderCreated: false,
-    frameioLink: '',
+    frameioLink: [],
     dateAssigned: dateOnly,
     dateCreated: dateOnly,
     positionInSection: 0,
@@ -4909,7 +4921,11 @@ export function applyCardUpdates(
         )
       }
 
-      if (updates.frameioLink !== undefined && updates.frameioLink !== previous.frameioLink && updates.frameioLink) {
+      if (
+        updates.frameioLink !== undefined &&
+        updates.frameioLink !== previous.frameioLink &&
+        coerceStringArrayField(updates.frameioLink).length > 0
+      ) {
         nextCard = appendActivity(
           nextCard,
           createActivityEntry(actor, 'added Frame.io review link', 'frameio', timestamp),
