@@ -33,7 +33,7 @@ import {
   getRemoteStateSignature,
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
-  saveRemoteAppState,
+  saveRemoteAppStateWithRetryMerge,
 } from '../remoteAppState'
 import {
   getRemoteBacklogSignature,
@@ -48,7 +48,7 @@ type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
 const LOCAL_PERSIST_DEBOUNCE_MS = 200
-const REMOTE_SAVE_DEBOUNCE_MS = 800
+const REMOTE_SAVE_DEBOUNCE_MS = 2000
 const REMOTE_SAVE_RETRY_DELAYS_MS = [0, 1200, 3000]
 
 interface CopyState {
@@ -359,20 +359,25 @@ export function useAppEffects({
       remoteSaveTimerRef.current = null
 
       const attemptSave = (attemptIndex: number) => {
-        void saveRemoteAppState(state, lastSyncedAtRef.current)
-          .then((updatedAt) => {
+        void saveRemoteAppStateWithRetryMerge(state, lastSyncedAtRef.current, 3)
+          .then((result) => {
             if (cancelled) {
               return
             }
 
-            lastRemoteStateSignatureRef.current = currentRemoteStateSignature
-            setLastSyncedAt(updatedAt)
+            lastRemoteStateSignatureRef.current = getRemoteStateSignature(result.savedState)
+            if (result.merged) {
+              replaceStateRef.current(result.savedState)
+              showToastRef.current('Board synced with latest changes.', 'green')
+            }
+
+            setLastSyncedAt(result.updatedAt)
             persistSyncMetadata({
-              lastSyncedAt: updatedAt,
+              lastSyncedAt: result.updatedAt,
               pendingRemoteBaseUpdatedAt: null,
               pendingRemoteSignature: null,
             })
-            setSyncStatus(updatedAt ? 'synced' : 'local')
+            setSyncStatus(result.updatedAt ? 'synced' : 'local')
             setRemoteSyncErrorShown(false)
           })
           .catch((error) => {
@@ -381,18 +386,9 @@ export function useAppEffects({
             }
 
             if (error instanceof RemoteStateConflictError) {
-              replaceStateRef.current(error.latestState)
-              lastRemoteStateSignatureRef.current = getRemoteStateSignature(error.latestState)
-              setLastSyncedAt(error.latestUpdatedAt)
-              persistSyncMetadata({
-                lastSyncedAt: error.latestUpdatedAt,
-                pendingRemoteBaseUpdatedAt: null,
-                pendingRemoteSignature: null,
-              })
-              setSyncStatus('synced')
-              setRemoteSyncErrorShown(false)
+              setSyncStatus('error')
               showToastRef.current(
-                'Another session saved newer workspace changes. The latest shared version has been loaded.',
+                'Sync conflict — your changes are saved locally and will sync shortly.',
                 'amber',
               )
               return
