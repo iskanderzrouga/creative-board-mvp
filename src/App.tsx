@@ -1959,32 +1959,46 @@ function App() {
     return { ok: true }
   }
 
-  function handleBacklogToDev(card: BacklogCard): { ok: true; cardId: string } | { ok: false } {
+  function handleBacklogToDev(
+    card: BacklogCard,
+  ): { ok: true; cardId: string } | { ok: false; message: string } {
     let createdCardId: string | null = null
-    updateState((current) => {
-      const nextDevBoard = addDevCard(current.devBoard, {
-        title: card.name,
-        brand: card.brand,
-        sourceBacklogCardId: card.id,
-        taskDescription: card.taskDescription ?? '',
-        newUrlToUse: card.linkForChanges ?? '',
-        loomVideoUrl: card.linkForTest ?? '',
+    try {
+      updateState((current) => {
+        const nextDevBoard = addDevCard(current.devBoard, {
+          title: card.name,
+          brand: card.brand,
+          sourceBacklogCardId: card.id,
+          taskDescription: card.taskDescription ?? '',
+          newUrlToUse: card.linkForChanges ?? '',
+          loomVideoUrl: card.linkForTest ?? '',
+        })
+        createdCardId = nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null
+        return {
+          ...current,
+          devBoard: nextDevBoard,
+        }
       })
-      createdCardId = nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null
-      return {
-        ...current,
-        devBoard: nextDevBoard,
-      }
-    })
+    } catch (error) {
+      console.error('Failed to move backlog card to Dev board.', {
+        backlogCardId: card.id,
+        error,
+      })
+      return { ok: false, message: 'Could not create the Development card. Please try again.' }
+    }
 
-    return createdCardId ? { ok: true, cardId: createdCardId } : { ok: false }
+    return createdCardId
+      ? { ok: true, cardId: createdCardId }
+      : { ok: false, message: 'Could not create the Development card because no new card ID was generated.' }
   }
 
-  function handleBacklogToProduction(card: BacklogCard): { ok: true; cardId: string; portfolioId: string } | { ok: false } {
+  function handleBacklogToProduction(
+    card: BacklogCard,
+  ): { ok: true; cardId: string; portfolioId: string } | { ok: false; message: string } {
     if (card.taskType === 'dev-cro') {
       const devResult = handleBacklogToDev(card)
       if (!devResult.ok) {
-        return { ok: false }
+        return { ok: false, message: devResult.message }
       }
       return {
         ok: true,
@@ -2010,12 +2024,16 @@ function App() {
     })
 
     if (matchingPortfolioViews.length !== 1) {
-      console.log('[Backlog→Production] unable to resolve a unique target portfolio', {
+      const message =
+        matchingPortfolioViews.length === 0
+          ? `Could not find a Production portfolio for brand "${card.brand}".`
+          : `More than one Production portfolio matches brand "${card.brand}".`
+      console.error('[Backlog→Production] unable to resolve a unique target portfolio', {
         brand: card.brand,
         matchCount: matchingPortfolioViews.length,
       })
-      console.log('[Backlog→Production] returning', { ok: false })
-      return { ok: false }
+      console.log('[Backlog→Production] returning', { ok: false, message })
+      return { ok: false, message }
     }
 
     const portfolioView = matchingPortfolioViews[0]
@@ -2023,15 +2041,19 @@ function App() {
       state.portfolios.find((portfolio) => portfolio.id === portfolioView.id) ?? portfolioView ?? null
 
     if (!portfolioSource) {
-      console.log('[Backlog→Production] target portfolio source missing', {
+      const message = 'Could not find the destination portfolio in the current workspace.'
+      console.error('[Backlog→Production] target portfolio source missing', {
         portfolioId: portfolioView.id,
       })
-      console.log('[Backlog→Production] returning', { ok: false })
-      return { ok: false }
+      console.log('[Backlog→Production] returning', { ok: false, message })
+      return { ok: false, message }
     }
 
+    const quickCreateDefaults = getQuickCreateDefaults(portfolioSource, state.settings)
     const brand = portfolioSource.brands.find((item) => item.name === card.brand)
-    const product = brand?.products[0] ?? ''
+    const product = brand?.products[0] || quickCreateDefaults.product || ''
+    const taskTypeId =
+      card.productionTaskType?.trim() || quickCreateDefaults.taskTypeId || state.settings.taskLibrary[0]?.id || 'custom'
     const actor = getActorName(portfolioSource)
 
     console.log('[Backlog→Production] resolved target portfolio', {
@@ -2049,7 +2071,7 @@ function App() {
         {
           title: card.name,
           brand: card.brand,
-          taskTypeId: card.productionTaskType ?? '',
+          taskTypeId,
           product,
           angle: card.angleTheme ?? '',
           sourceCardId: null,
@@ -2063,11 +2085,17 @@ function App() {
         product: productionCard.product,
       })
     } catch (error) {
-      console.log('[Backlog→Production] createCardFromQuickInput failed', {
+      const message =
+        error instanceof Error
+          ? `Could not create the Production card: ${error.message}`
+          : 'Could not create the Production card because the card data was invalid.'
+      console.error('[Backlog→Production] createCardFromQuickInput failed', {
         error,
+        taskTypeId,
+        product,
       })
-      console.log('[Backlog→Production] returning', { ok: false })
-      return { ok: false }
+      console.log('[Backlog→Production] returning', { ok: false, message })
+      return { ok: false, message }
     }
 
     const referenceLinks = card.referenceLinks ?? ''
@@ -2089,26 +2117,41 @@ function App() {
 
     let createdCardId: string | null = null
     let createdPortfolioId: string | null = null
-    updatePortfolio(portfolioSource.id, (portfolio) => {
-      const nextPortfolio = addCardToPortfolio(portfolio, productionCard, viewerContext)
-      const insertedCard = nextPortfolio.cards.find((existingCard) => existingCard.id === productionCard.id) ?? null
+    try {
+      updatePortfolio(portfolioSource.id, (portfolio) => {
+        const nextPortfolio = addCardToPortfolio(portfolio, productionCard, viewerContext)
+        const insertedCard = nextPortfolio.cards.find((existingCard) => existingCard.id === productionCard.id) ?? null
 
-      console.log('[Backlog→Production] addCardToPortfolio result', {
-        portfolioId: portfolio.id,
-        samePortfolioReference: nextPortfolio === portfolio,
-        previousCardCount: portfolio.cards.length,
-        nextCardCount: nextPortfolio.cards.length,
-        insertedCardId: insertedCard?.id ?? null,
-        insertedCardStage: insertedCard?.stage ?? null,
+        console.log('[Backlog→Production] addCardToPortfolio result', {
+          portfolioId: portfolio.id,
+          samePortfolioReference: nextPortfolio === portfolio,
+          previousCardCount: portfolio.cards.length,
+          nextCardCount: nextPortfolio.cards.length,
+          insertedCardId: insertedCard?.id ?? null,
+          insertedCardStage: insertedCard?.stage ?? null,
+        })
+
+        if (insertedCard) {
+          createdCardId = insertedCard.id
+          createdPortfolioId = portfolio.id
+        }
+
+        return nextPortfolio
       })
-
-      if (insertedCard) {
-        createdCardId = insertedCard.id
-        createdPortfolioId = portfolio.id
+    } catch (error) {
+      console.error('[Backlog→Production] addCardToPortfolio failed', {
+        backlogCardId: card.id,
+        productionCardId: productionCard.id,
+        error,
+      })
+      return {
+        ok: false,
+        message:
+          error instanceof Error
+            ? `Could not move card to Production: ${error.message}`
+            : 'Could not move card to Production due to an unexpected error.',
       }
-
-      return nextPortfolio
-    })
+    }
 
     console.log('[Backlog→Production] post-updatePortfolio state', {
       createdCardId,
@@ -2120,8 +2163,14 @@ function App() {
     })
 
     if (!createdCardId || !createdPortfolioId) {
-      console.log('[Backlog→Production] returning', { ok: false })
-      return { ok: false }
+      const message =
+        'Could not confirm that the Production card was inserted. Please refresh and try again.'
+      console.error('[Backlog→Production] missing inserted card after updatePortfolio', {
+        backlogCardId: card.id,
+        productionCardId: productionCard.id,
+      })
+      console.log('[Backlog→Production] returning', { ok: false, message })
+      return { ok: false, message }
     }
 
     if (state.activePortfolioId !== createdPortfolioId) {
@@ -2588,35 +2637,61 @@ function App() {
   ) {
     const portfolio = state.portfolios.find((item) => item.id === portfolioId)
     if (!portfolio) {
+      console.error('Failed to move Production card because portfolio was not found.', {
+        portfolioId,
+        cardId,
+      })
+      showToast('Card move failed because the destination portfolio could not be found.', 'red')
       return
     }
     const actor = getActorName(portfolio)
     const card = portfolio.cards.find((item) => item.id === cardId)
     if (!card) {
+      console.error('Failed to move Production card because card was not found.', {
+        portfolioId,
+        cardId,
+      })
+      showToast('Card move failed because the selected card could not be found.', 'red')
       return
     }
     let moved = false
-    updatePortfolio(portfolioId, (currentPortfolio) => {
-      const nextPortfolio = moveCardInPortfolio(
-        currentPortfolio,
+    try {
+      updatePortfolio(portfolioId, (currentPortfolio) => {
+        const nextPortfolio = moveCardInPortfolio(
+          currentPortfolio,
+          cardId,
+          destinationStage,
+          destinationOwner,
+          destinationIndex,
+          movedAt,
+          actor,
+          viewerContext,
+          revisionReason,
+          revisionEstimatedHours,
+          revisionFeedback,
+          state.settings,
+        )
+        moved = nextPortfolio !== currentPortfolio
+        return nextPortfolio
+      })
+    } catch (error) {
+      console.error('Failed to move Production board card.', {
+        portfolioId,
         cardId,
         destinationStage,
         destinationOwner,
         destinationIndex,
-        movedAt,
-        actor,
-        viewerContext,
-        revisionReason,
-        revisionEstimatedHours,
-        revisionFeedback,
-        state.settings,
+        error,
+      })
+      showToast(
+        error instanceof Error ? `Card move failed: ${error.message}` : 'Card move failed due to an unexpected error.',
+        'red',
       )
-      moved = nextPortfolio !== currentPortfolio
-      return nextPortfolio
-    })
+      return
+    }
 
     if (!moved) {
-      showToast('That move is not allowed.', 'red')
+      showToast('This move is not allowed by the current board rules.', 'red')
       return
     }
 
