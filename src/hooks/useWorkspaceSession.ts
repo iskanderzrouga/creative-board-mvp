@@ -35,6 +35,7 @@ import {
 } from '../board'
 
 const EMAIL_RATE_LIMIT_COOLDOWN_MS = 60_000
+const ACCESS_REFETCH_COOLDOWN_MS = 30_000
 const ACCESS_CACHE_KEY = 'eb_workspace_access_cache'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
@@ -142,6 +143,7 @@ export function useWorkspaceSession({
   )
   const [passwordRecoveryPending, setPasswordRecoveryPending] = useState(false)
   const [passwordRecoveryErrorMessage, setPasswordRecoveryErrorMessage] = useState<string | null>(null)
+  const lastWorkspaceAccessFetchAtRef = useRef(0)
 
   const resetRemoteSessionRef = useRef(resetRemoteSession)
   const closeEditorMenuRef = useRef(closeEditorMenu)
@@ -299,6 +301,7 @@ export function useWorkspaceSession({
       )
     }, accessCheckTimeoutMs)
 
+    lastWorkspaceAccessFetchAtRef.current = Date.now()
     void getWorkspaceAccess()
       .then((access) => {
         if (cancelled || timedOut) {
@@ -393,6 +396,11 @@ export function useWorkspaceSession({
     }
 
     const handleFocus = () => {
+      const now = Date.now()
+      if (now - lastWorkspaceAccessFetchAtRef.current < ACCESS_REFETCH_COOLDOWN_MS) {
+        return
+      }
+      lastWorkspaceAccessFetchAtRef.current = now
       void getWorkspaceAccess()
         .then((access) => {
           if (!access) {

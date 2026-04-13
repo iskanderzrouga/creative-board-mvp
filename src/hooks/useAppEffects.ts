@@ -50,6 +50,7 @@ type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 const LOCAL_PERSIST_DEBOUNCE_MS = 200
 const REMOTE_SAVE_DEBOUNCE_MS = 2000
 const REMOTE_SAVE_RETRY_DELAYS_MS = [0, 1200, 3000]
+const REMOTE_VISIBILITY_REFRESH_COOLDOWN_MS = 30_000
 
 interface CopyState {
   key: string
@@ -171,6 +172,7 @@ export function useAppEffects({
   const lastSyncedAtRef = useRef(lastSyncedAt)
   const lastRemoteStateSignatureRef = useRef<string | null>(null)
   const localPersistTimerRef = useRef<number | null>(null)
+  const lastRemoteVisibilityRefreshAtRef = useRef(0)
   const backlogLastSyncedAtRef = useRef<string | null>(null)
   const backlogLastRemoteSignatureRef = useRef<string | null>(null)
   const backlogLocalPersistTimerRef = useRef<number | null>(null)
@@ -447,13 +449,16 @@ export function useAppEffects({
     let cancelled = false
 
     function handleVisibilityChange() {
+      const now = Date.now()
       if (
         document.visibilityState !== 'visible' ||
         syncStatus === 'syncing' ||
-        remoteSaveTimerRef.current !== null
+        remoteSaveTimerRef.current !== null ||
+        now - lastRemoteVisibilityRefreshAtRef.current < REMOTE_VISIBILITY_REFRESH_COOLDOWN_MS
       ) {
         return
       }
+      lastRemoteVisibilityRefreshAtRef.current = now
 
       const syncMetadata = loadSyncMetadata()
 
