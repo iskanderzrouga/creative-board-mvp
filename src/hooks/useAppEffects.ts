@@ -172,7 +172,8 @@ export function useAppEffects({
   const lastSyncedAtRef = useRef(lastSyncedAt)
   const lastRemoteStateSignatureRef = useRef<string | null>(null)
   const localPersistTimerRef = useRef<number | null>(null)
-  const lastRemoteVisibilityRefreshAtRef = useRef(0)
+  const lastFetchTimestampRef = useRef(0)
+  const localDirtyRef = useRef(false)
   const backlogLastSyncedAtRef = useRef<string | null>(null)
   const backlogLastRemoteSignatureRef = useRef<string | null>(null)
   const backlogLocalPersistTimerRef = useRef<number | null>(null)
@@ -357,10 +358,15 @@ export function useAppEffects({
       pendingRemoteBaseUpdatedAt: lastSyncedAtRef.current,
       pendingRemoteSignature: currentRemoteStateSignature,
     })
+    localDirtyRef.current = true
     remoteSaveTimerRef.current = window.setTimeout(() => {
       remoteSaveTimerRef.current = null
 
       const attemptSave = (attemptIndex: number) => {
+        console.log('[save] Saving to remote', {
+          roleMode,
+          cardCount: state.portfolios.reduce((count, portfolio) => count + portfolio.cards.length, 0),
+        })
         void saveRemoteAppStateWithRetryMerge(state, lastSyncedAtRef.current, 3)
           .then((result) => {
             if (cancelled) {
@@ -374,6 +380,8 @@ export function useAppEffects({
             }
 
             setLastSyncedAt(result.updatedAt)
+            localDirtyRef.current = false
+            console.log('[save] Remote save succeeded', { updatedAt: result.updatedAt })
             persistSyncMetadata({
               lastSyncedAt: result.updatedAt,
               pendingRemoteBaseUpdatedAt: null,
@@ -387,6 +395,7 @@ export function useAppEffects({
               return
             }
 
+            console.error('[save] Remote save failed', { error, attempt: attemptIndex + 1 })
             if (error instanceof RemoteStateConflictError) {
               setSyncStatus('error')
               showToastRef.current(
@@ -438,6 +447,7 @@ export function useAppEffects({
     setLastSyncedAt,
     setRemoteSyncErrorShown,
     setSyncStatus,
+    roleMode,
     state,
   ])
 
@@ -454,11 +464,10 @@ export function useAppEffects({
         document.visibilityState !== 'visible' ||
         syncStatus === 'syncing' ||
         remoteSaveTimerRef.current !== null ||
-        now - lastRemoteVisibilityRefreshAtRef.current < REMOTE_VISIBILITY_REFRESH_COOLDOWN_MS
+        now - lastFetchTimestampRef.current < REMOTE_VISIBILITY_REFRESH_COOLDOWN_MS
       ) {
         return
       }
-      lastRemoteVisibilityRefreshAtRef.current = now
 
       const syncMetadata = loadSyncMetadata()
 
@@ -467,10 +476,17 @@ export function useAppEffects({
         pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
       })
         .then((result) => {
+          lastFetchTimestampRef.current = Date.now()
           if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === lastSyncedAtRef.current) {
             return
           }
 
+          if (localDirtyRef.current) {
+            console.warn('[sync] Skipping remote replace — local changes pending')
+            return
+          }
+
+          console.log('[sync] Replacing local state from remote', { remoteUpdatedAt: result.lastSyncedAt })
           replaceStateRef.current(result.state)
           lastRemoteStateSignatureRef.current = result.remoteSignature
           setLastSyncedAt(result.lastSyncedAt)
