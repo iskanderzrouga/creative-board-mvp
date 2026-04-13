@@ -59,7 +59,11 @@ function getEffectiveScopeAssignments(access: AccessRecordLike | null) {
 }
 
 function getContributorIdentity(access: AccessRecordLike | null) {
-  return access?.editorName?.trim() || null
+  const identity = access?.editorName?.trim() || null
+  if (access?.roleMode === 'contributor' && identity === null) {
+    console.warn('[contributor-filter] editorName is null for contributor — cards will not be visible')
+  }
+  return identity
 }
 
 export function getAccessLevelLabel(roleMode: RoleMode) {
@@ -185,6 +189,12 @@ export function getScopedPortfolios(
   access: AccessRecordLike | null,
 ) {
   const visiblePortfolioIds = new Set(getVisiblePortfolioIds(portfolios, access))
+  if (access?.roleMode === 'contributor') {
+    const identity = getContributorIdentity(access)
+    console.log(
+      `[contributor-filter] identity=${identity ?? 'null'} checked=${portfolios.length} matched=${visiblePortfolioIds.size}`,
+    )
+  }
 
   return portfolios
     .filter((portfolio) => visiblePortfolioIds.has(portfolio.id))

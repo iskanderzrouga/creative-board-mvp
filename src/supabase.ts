@@ -48,7 +48,7 @@ let client: SupabaseClient | null | undefined
 
 interface LegacyWorkspaceAccessRow {
   email: string
-  role_mode: 'manager' | 'editor' | 'observer'
+  role_mode: 'manager' | 'editor' | 'observer' | 'contributor'
   editor_name: string | null
   created_at: string | null
   updated_at: string | null
@@ -603,7 +603,10 @@ function mapLegacyWorkspaceAccessRows(rows: LegacyWorkspaceAccessRow[]) {
   return rows.map((row) => ({
     email: row.email,
     roleMode: normalizeLegacyRoleMode(row.role_mode, row.email === ownerEmail),
-    editorName: row.role_mode === 'editor' ? row.editor_name ?? null : null,
+    editorName:
+      row.role_mode === 'editor' || row.role_mode === 'contributor'
+        ? row.editor_name ?? null
+        : null,
     scopeMode: 'all-portfolios' as const,
     scopeAssignments: [],
     updatedAt: row.updated_at,
