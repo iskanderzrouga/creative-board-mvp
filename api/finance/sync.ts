@@ -1,3 +1,5 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+
 function normalizeEnvelopeArray<T>(value: unknown, nestedKey?: string): T[] {
   if (Array.isArray(value)) {
     return value as T[]
@@ -33,32 +35,19 @@ function getErrorMessage(status: number) {
   return 'Slash request failed'
 }
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  })
-}
-
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    return jsonResponse({ transactions: [], accounts: [], error: 'Method not allowed' }, 405)
+    res.status(405).json({ transactions: [], accounts: [], error: 'Method not allowed' })
+    return
   }
 
   const apiKey = process.env.SLASH_API_KEY?.trim()
   if (!apiKey) {
-    return jsonResponse({ transactions: [], accounts: [], error: 'Slash API key missing' }, 500)
+    res.status(500).json({ transactions: [], accounts: [], error: 'Slash API key missing' })
+    return
   }
 
-  let body: { dateFrom?: number } = {}
-  try {
-    body = (await req.json()) as { dateFrom?: number }
-  } catch {
-    body = {}
-  }
-
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') as { dateFrom?: number } : req.body as { dateFrom?: number }
   const defaultDateFrom = Date.now() - 90 * 24 * 60 * 60 * 1000
   const dateFrom = Number.isFinite(body?.dateFrom) ? Number(body.dateFrom) : defaultDateFrom
 
@@ -71,22 +60,24 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!transactionsResponse.ok) {
       const errorMessage = getErrorMessage(transactionsResponse.status)
-      return jsonResponse({ transactions: [], accounts: [], error: errorMessage }, transactionsResponse.status)
+      res.status(transactionsResponse.status).json({ transactions: [], accounts: [], error: errorMessage })
+      return
     }
 
     if (!accountsResponse.ok) {
       const errorMessage = getErrorMessage(accountsResponse.status)
-      return jsonResponse({ transactions: [], accounts: [], error: errorMessage }, accountsResponse.status)
+      res.status(accountsResponse.status).json({ transactions: [], accounts: [], error: errorMessage })
+      return
     }
 
-    const transactionsPayload = (await transactionsResponse.json()) as unknown
-    const accountsPayload = (await accountsResponse.json()) as unknown
+    const transactionsPayload = await transactionsResponse.json() as unknown
+    const accountsPayload = await accountsResponse.json() as unknown
 
     const transactions = normalizeEnvelopeArray(transactionsPayload, 'transactions')
     const accounts = normalizeEnvelopeArray(accountsPayload, 'accounts')
 
-    return jsonResponse({ transactions, accounts })
+    res.status(200).json({ transactions, accounts })
   } catch {
-    return jsonResponse({ transactions: [], accounts: [], error: 'Cannot reach Slash' }, 502)
+    res.status(502).json({ transactions: [], accounts: [], error: 'Cannot reach Slash' })
   }
 }
