@@ -91,6 +91,14 @@ export interface FinanceDataBundle {
   patterns: FinancePattern[]
 }
 
+function getRequiredSupabase() {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('supabase-not-configured')
+  }
+  return supabase
+}
+
 function normalizeEnvelopeArray<T>(value: unknown, nestedKey?: string): T[] {
   if (Array.isArray(value)) {
     return value as T[]
@@ -214,10 +222,7 @@ export async function deleteFinanceTransaction(id: string) {
 }
 
 export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSyncSummary> {
-  const supabase = getSupabaseClient()
-  if (!supabase) {
-    throw new Error('Supabase is not configured')
-  }
+  const supabase = getRequiredSupabase()
 
   const response = await fetch('/api/finance/sync', {
     method: 'POST',
@@ -317,8 +322,8 @@ export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSy
     throw unclassifiedResult.error
   }
 
-  const accounts = rawAccounts.map((account) => ({
-    id: account.id || crypto.randomUUID(),
+  const accounts = rawAccounts.map((account, index) => ({
+    id: account.id || `account-${index + 1}`,
     name: account.name?.trim() || 'Account',
     availableBalance: Math.abs((account.availableBalance?.amountCents ?? 0) / 100),
     postedBalance: Math.abs((account.postedBalance?.amountCents ?? 0) / 100),
@@ -333,10 +338,7 @@ export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSy
 }
 
 export async function classifyTransaction(transactionId: string, category: FinanceCategory) {
-  const supabase = getSupabaseClient()
-  if (!supabase) {
-    throw new Error('Supabase is not configured')
-  }
+  const supabase = getRequiredSupabase()
 
   const targetResult = await supabase
     .from('finance_transactions')
@@ -408,10 +410,7 @@ export async function createSubscription(input: {
   frequency: SubscriptionFrequency
   platform: string
 }) {
-  const supabase = getSupabaseClient()
-  if (!supabase) {
-    throw new Error('Supabase is not configured')
-  }
+  const supabase = getRequiredSupabase()
 
   const { error } = await supabase.from('finance_subscriptions').insert({
     name: input.name.trim(),
@@ -430,10 +429,7 @@ export async function updateSubscription(
   id: string,
   updates: Partial<Pick<FinanceSubscription, 'name' | 'amount' | 'frequency' | 'platform' | 'active'>>,
 ) {
-  const supabase = getSupabaseClient()
-  if (!supabase) {
-    throw new Error('Supabase is not configured')
-  }
+  const supabase = getRequiredSupabase()
 
   const { error } = await supabase.from('finance_subscriptions').update(updates).eq('id', id)
   if (error) {
@@ -442,10 +438,7 @@ export async function updateSubscription(
 }
 
 export async function deleteSubscription(id: string) {
-  const supabase = getSupabaseClient()
-  if (!supabase) {
-    throw new Error('Supabase is not configured')
-  }
+  const supabase = getRequiredSupabase()
 
   const { error } = await supabase.from('finance_subscriptions').delete().eq('id', id)
   if (error) {
