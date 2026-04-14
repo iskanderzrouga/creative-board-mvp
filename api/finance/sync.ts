@@ -1,83 +1,48 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+export const config = { runtime: 'edge' };
 
-function normalizeEnvelopeArray<T>(value: unknown, nestedKey?: string): T[] {
-  if (Array.isArray(value)) {
-    return value as T[]
-  }
-
-  if (!value || typeof value !== 'object') {
-    return []
-  }
-
-  const record = value as Record<string, unknown>
-  if (Array.isArray(record.data)) {
-    return record.data as T[]
-  }
-
-  if (nestedKey && Array.isArray(record[nestedKey])) {
-    return record[nestedKey] as T[]
-  }
-
-  return []
-}
-
-function getErrorMessage(status: number) {
-  if (status === 401) {
-    return 'Invalid API key'
-  }
-  if (status === 429) {
-    return 'Rate limited'
-  }
-  if (status >= 500) {
-    return 'Slash API down'
-  }
-
-  return 'Slash request failed'
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    res.status(405).json({ transactions: [], accounts: [], error: 'Method not allowed' })
-    return
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  const apiKey = process.env.SLASH_API_KEY?.trim()
+  const apiKey = process.env.SLASH_API_KEY;
   if (!apiKey) {
-    res.status(500).json({ transactions: [], accounts: [], error: 'Slash API key missing' })
-    return
+    return new Response(JSON.stringify({ error: 'SLASH_API_KEY not configured' }), { status: 500 });
   }
-
-  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') as { dateFrom?: number } : req.body as { dateFrom?: number }
-  const defaultDateFrom = Date.now() - 90 * 24 * 60 * 60 * 1000
-  const dateFrom = Number.isFinite(body?.dateFrom) ? Number(body.dateFrom) : defaultDateFrom
 
   try {
-    const headers = { 'X-API-Key': apiKey }
-    const [transactionsResponse, accountsResponse] = await Promise.all([
-      fetch(`https://api.joinslash.com/transaction?dateFrom=${dateFrom}&limit=500`, { headers }),
-      fetch('https://api.joinslash.com/account', { headers }),
-    ])
+    const body = await req.json().catch(() => ({}));
+    const dateFrom = body.dateFrom || Date.now() - 90 * 24 * 60 * 60 * 1000;
 
-    if (!transactionsResponse.ok) {
-      const errorMessage = getErrorMessage(transactionsResponse.status)
-      res.status(transactionsResponse.status).json({ transactions: [], accounts: [], error: errorMessage })
-      return
+    const [txRes, accRes] = await Promise.all([
+      fetch(`https://api.joinslash.com/transaction?dateFrom=${dateFrom}&limit=500`, {
+        headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      }),
+      fetch('https://api.joinslash.com/account', {
+        headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+      }),
+    ]);
+
+    if (!txRes.ok) {
+      const status = txRes.status;
+      const msg = status === 401 ? 'Invalid API key' : status === 429 ? 'Rate limited' : `Slash API error ${status}`;
+      return new Response(JSON.stringify({ error: msg, transactions: [], accounts: [] }), { status: 200 });
     }
 
-    if (!accountsResponse.ok) {
-      const errorMessage = getErrorMessage(accountsResponse.status)
-      res.status(accountsResponse.status).json({ transactions: [], accounts: [], error: errorMessage })
-      return
-    }
+    const txData = await txRes.json();
+    const accData = await accRes.json().catch(() => []);
 
-    const transactionsPayload = await transactionsResponse.json() as unknown
-    const accountsPayload = await accountsResponse.json() as unknown
+    const transactions = Array.isArray(txData) ? txData : (txData.data || txData.transactions || []);
+    const accounts = Array.isArray(accData) ? accData : (accData.data || accData.accounts || []);
 
-    const transactions = normalizeEnvelopeArray(transactionsPayload, 'transactions')
-    const accounts = normalizeEnvelopeArray(accountsPayload, 'accounts')
-
-    res.status(200).json({ transactions, accounts })
-  } catch {
-    res.status(502).json({ transactions: [], accounts: [], error: 'Cannot reach Slash' })
+    return new Response(JSON.stringify({ transactions, accounts }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: 'Cannot reach Slash: ' + (err.message || ''), transactions: [], accounts: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
