@@ -54,6 +54,7 @@ export interface FinanceAccount {
 
 interface SlashTransactionRaw {
   id?: string
+  amountCents?: number | string
   amount?: number
   description?: string
   merchantName?: string
@@ -275,11 +276,13 @@ export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSy
 
   for (const item of rawTransactions) {
     const slashId = item.id?.trim() || null
-    const rawAmount = typeof item.amount === 'number' ? item.amount : 0
+    // Slash uses amountCents — negative = debit (out), positive = credit (in)
+    const rawCents = item.amountCents ?? item.amount ?? 0
+    const cents = typeof rawCents === 'number' ? rawCents : parseFloat(rawCents) || 0
     const description = normalizeDescription(item)
     const date = toIsoDate(item.postedAt || item.date || item.createdAt)
-    const amount = Math.abs(rawAmount) / 100
-    const direction: FinanceDirection = rawAmount < 0 ? 'out' : 'in'
+    const amount = Math.abs(cents) / 100
+    const direction: FinanceDirection = cents < 0 ? 'out' : 'in'
     const compositeKey = `${date}|${description.toLowerCase()}|${amount.toFixed(2)}`
 
     if ((slashId && existingBySlashId.has(slashId)) || existingComposite.has(compositeKey)) {
