@@ -7,7 +7,7 @@ import {
   WorkloadIcon,
 } from './icons/AppIcons'
 
-type ExtendedPage = AppPage | 'backlog' | 'dev' | 'strategy'
+type ExtendedPage = AppPage | 'backlog' | 'dev' | 'strategy' | 'finance'
 
 interface SidebarProps {
   expanded: boolean
@@ -137,6 +137,27 @@ function StrategyIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+
+function FinanceIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M12 3v18" />
+      <path d="M16.5 7.5c0-1.7-1.9-3-4.5-3s-4.5 1.3-4.5 3 1.9 3 4.5 3 4.5 1.3 4.5 3-1.9 3-4.5 3-4.5-1.3-4.5-3" />
+    </svg>
+  )
+}
+
 function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
@@ -146,6 +167,9 @@ function getPageLabel(page: ExtendedPage) {
   }
   if (page === 'strategy') {
     return 'Strategy'
+  }
+  if (page === 'finance') {
+    return 'Finance'
   }
 
   switch (page) {
@@ -173,6 +197,9 @@ function getPageIcon(page: ExtendedPage): PageIcon {
   }
   if (page === 'strategy') {
     return StrategyIcon
+  }
+  if (page === 'finance') {
+    return FinanceIcon
   }
 
   switch (page) {
@@ -237,6 +264,7 @@ function SidebarComponent({
         ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'strategy' as const, disabled: false }] : []),
+        ...(role.mode === 'owner' ? [{ page: 'finance' as const, disabled: false }] : []),
         { page: 'board', disabled: false },
         { page: 'pulse', disabled: false },
         ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),
