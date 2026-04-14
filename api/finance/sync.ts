@@ -14,19 +14,31 @@ export default async function handler(req: Request): Promise<Response> {
     const body = await req.json().catch(() => ({}));
     const dateFrom = body.dateFrom || Date.now() - 90 * 24 * 60 * 60 * 1000;
 
-    const [txRes, accRes] = await Promise.all([
-      fetch(`https://api.joinslash.com/transaction?dateFrom=${dateFrom}&limit=500`, {
+    let txRes = await fetch('https://api.joinslash.com/transaction', {
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+    });
+
+    // If that fails, try with just dateFrom
+    if (!txRes.ok) {
+      console.warn(`[finance/sync] Slash transaction request failed without params (${txRes.status}), retrying with dateFrom.`);
+      txRes = await fetch(`https://api.joinslash.com/transaction?dateFrom=${Math.floor(dateFrom)}`, {
         headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-      }),
-      fetch('https://api.joinslash.com/account', {
-        headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
-      }),
-    ]);
+      });
+    }
+
+    const accRes = await fetch('https://api.joinslash.com/account', {
+      headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
+    });
 
     if (!txRes.ok) {
-      const status = txRes.status;
-      const msg = status === 401 ? 'Invalid API key' : status === 429 ? 'Rate limited' : `Slash API error ${status}`;
-      return new Response(JSON.stringify({ error: msg, transactions: [], accounts: [] }), { status: 200 });
+      const errBody = await txRes.text().catch(() => '');
+      console.error(`[finance/sync] Slash transaction request failed after retries (${txRes.status}): ${errBody}`);
+      return new Response(JSON.stringify({
+        error: `Slash ${txRes.status}: ${errBody}`,
+        debug: { url: 'https://api.joinslash.com/transaction', status: txRes.status },
+        transactions: [],
+        accounts: [],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
     const txData = await txRes.json();
