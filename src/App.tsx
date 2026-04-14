@@ -58,6 +58,7 @@ import { SyncStatusPill } from './components/SyncStatusPill'
 import { ToastStack } from './components/ToastStack'
 import { DevBoardPage } from './components/DevBoardPage'
 import { DevCardDetailPanel } from './components/DevCardDetailPanel'
+import { FinancePage } from './components/FinancePage'
 import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
 import { useWorkspaceSession } from './hooks/useWorkspaceSession'
@@ -160,7 +161,7 @@ interface ToastState {
 }
 
 type SyncStatus = 'local' | 'loading' | 'syncing' | 'synced' | 'error'
-type ExtendedPage = ExtendedAppPage
+type ExtendedPage = ExtendedAppPage | 'finance'
 
 interface CopyState {
   key: string
@@ -228,6 +229,8 @@ function getPathForPage(page: ExtendedPage) {
       return '/scripts'
     case 'strategy':
       return '/strategy'
+    case 'finance':
+      return '/finance'
     case 'settings':
       return '/settings'
     case 'board':
@@ -252,6 +255,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
       return 'scripts'
     case '/strategy':
       return 'strategy'
+    case '/finance':
+      return 'finance'
     case '/settings':
       return 'settings'
     case '/board':
@@ -456,11 +461,12 @@ function App() {
     ? (routePage === 'settings' ? 'settings' : routePage === 'pulse' ? 'pulse' : 'board')
     : getCurrentPage(state)
   const currentPage: ExtendedPage = isDeveloperUser
-    ? getAllowedPageForDeveloper(routePage)
+    ? getAllowedPageForDeveloper(routePage === 'finance' ? 'board' : routePage)
     : routePage === 'backlog' ||
         routePage === 'dev' ||
         routePage === 'scripts' ||
         routePage === 'strategy' ||
+        routePage === 'finance' ||
         routePage === 'pulse'
       ? routePage
       : productionPage
@@ -995,7 +1001,7 @@ function App() {
       const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
 
       if (isDeveloperUser) {
-        const allowedPage = getAllowedPageForDeveloper(nextPage)
+        const allowedPage = getAllowedPageForDeveloper(nextPage === 'finance' ? 'board' : nextPage)
         setRoutePage(allowedPage)
         setState((current) => ({
           ...current,
@@ -1060,6 +1066,20 @@ function App() {
         return
       }
 
+      if (nextPage === 'finance') {
+        if (state.activeRole.mode === 'owner') {
+          setRoutePage('finance')
+        } else {
+          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
+          setRoutePage(fallbackPage)
+          setState((current) => ({
+            ...current,
+            activePage: fallbackPage,
+          }))
+        }
+        return
+      }
+
       const allowedPage = getAllowedPageForRole(nextPage, state.activeRole.mode)
       setRoutePage(allowedPage)
       setState((current) =>
@@ -1101,9 +1121,9 @@ function App() {
     }
 
     if (
-      (routePage === 'scripts' || routePage === 'strategy') &&
+      (routePage === 'scripts' || routePage === 'strategy' || routePage === 'finance') &&
       state.activeRole.mode !== 'owner' &&
-      state.activeRole.mode !== 'manager'
+      (routePage === 'finance' || state.activeRole.mode !== 'manager')
     ) {
       setRoutePage(productionPage)
     }
@@ -1414,7 +1434,7 @@ function App() {
 
   function setPage(page: ExtendedPage) {
     if (isDeveloperUser) {
-      const allowedPage = getAllowedPageForDeveloper(page)
+      const allowedPage = getAllowedPageForDeveloper(page === 'finance' ? 'board' : page)
       setRoutePage(allowedPage)
       setState((current) => ({
         ...current,
@@ -1461,6 +1481,16 @@ function App() {
         return
       }
       setRoutePage('strategy')
+      setSelectedCard(null)
+      setSelectedDevCard(null)
+      return
+    }
+
+    if (page === 'finance') {
+      if (state.activeRole.mode !== 'owner') {
+        return
+      }
+      setRoutePage('finance')
       setSelectedCard(null)
       setSelectedDevCard(null)
       return
@@ -3306,6 +3336,12 @@ function App() {
             headerUtilityContent={headerUtilityContent}
             onCreateCycle={handleCreateStrategyCycle}
             onUpdateCycle={handleUpdateStrategyCycle}
+          />
+        ) : null}
+
+        {currentPage === 'finance' ? (
+          <FinancePage
+            headerUtilityContent={headerUtilityContent}
           />
         ) : null}
 
