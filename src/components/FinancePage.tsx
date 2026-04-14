@@ -44,14 +44,17 @@ interface FinancePageProps {
   headerUtilityContent?: ReactNode
 }
 
-const cardStyle = {
+const moneyStyle = {
+  fontFamily: "'JetBrains Mono', monospace",
+}
+
+const cardBase = {
   background: '#12151B',
   border: '1px solid #1C2130',
   borderRadius: 8,
-  color: '#E2E8F2',
 }
 
-const labelStyle = {
+const labelMuted = {
   color: '#5E6E85',
 }
 
@@ -72,21 +75,16 @@ function formatMoney(value: number) {
 }
 
 function tabStyle(active: boolean) {
-  if (active) {
-    return {
-      background: '#3B82F6',
-      color: '#FFFFFF',
-      border: '1px solid #3B82F6',
-      borderRadius: 6,
-      padding: '8px 12px',
-    }
-  }
   return {
-    background: 'transparent',
-    color: '#5E6E85',
-    border: '1px solid #1C2130',
-    borderRadius: 6,
-    padding: '8px 12px',
+    background: active ? '#3B82F6' : 'transparent',
+    color: active ? '#FFFFFF' : '#5E6E85',
+    border: active ? '1px solid #3B82F6' : '1px solid #1C2130',
+    padding: '8px 16px',
+    fontSize: '13px',
+    fontWeight: 600,
+    borderRadius: '6px',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   }
 }
 
@@ -101,27 +99,40 @@ function TransactionRow({
 }) {
   const isOut = transaction.direction === 'out'
   return (
-    <div style={{ ...cardStyle, display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', gap: 12, alignItems: 'center', padding: 10 }}>
-      <span style={{ color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{isOut ? '↓' : '↑'}</span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: '#E2E8F2', overflow: 'hidden', textOverflow: 'ellipsis' }}>{transaction.description}</div>
-        <div style={{ ...labelStyle, fontSize: 12 }}>{transaction.date}</div>
+    <div style={{ ...cardBase, borderRadius: 7, padding: '12px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+        <span style={{ color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{isOut ? '↓' : '↑'}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: '#E2E8F2', overflow: 'hidden', textOverflow: 'ellipsis' }}>{transaction.description}</div>
+          <div style={{ ...labelMuted, fontSize: 12 }}>{transaction.date}</div>
+        </div>
       </div>
-      <span style={{
-        background: `${CATEGORY_COLORS[transaction.category]}26`,
-        color: CATEGORY_COLORS[transaction.category],
-        border: `1px solid ${CATEGORY_COLORS[transaction.category]}`,
-        borderRadius: 999,
-        padding: '3px 8px',
-        fontSize: 12,
-      }}>
-        {CATEGORY_LABELS[transaction.category]}
-      </span>
-      <span style={{ fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace', color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{formatMoney(transaction.amount)}</span>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{
+          background: `${CATEGORY_COLORS[transaction.category]}26`,
+          color: CATEGORY_COLORS[transaction.category],
+          border: `1px solid ${CATEGORY_COLORS[transaction.category]}`,
+          borderRadius: 999,
+          padding: '3px 8px',
+          fontSize: 12,
+          whiteSpace: 'nowrap',
+        }}>
+          {CATEGORY_LABELS[transaction.category]}
+        </span>
+        <span style={{ ...moneyStyle, color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{formatMoney(transaction.amount)}</span>
         {onClassify ? <button type="button" style={tabStyle(false)} onClick={() => onClassify(transaction.id)}>Classify</button> : null}
         {onDelete ? <button type="button" style={tabStyle(false)} onClick={() => onDelete(transaction.id)}>Delete</button> : null}
       </div>
+    </div>
+  )
+}
+
+function StatCard({ label, value, valueColor, subText }: { label: string; value: string; valueColor: string; subText?: string }) {
+  return (
+    <div style={{ ...cardBase, flex: '1 1 160px', minWidth: '0', padding: '16px 18px' }}>
+      <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#5E6E85', marginBottom: '6px' }}>{label}</div>
+      <div style={{ ...moneyStyle, fontSize: '22px', fontWeight: 700, color: valueColor }}>{value}</div>
+      {subText ? <div style={{ fontSize: '12px', color: '#5E6E85', marginTop: '4px' }}>{subText}</div> : null}
     </div>
   )
 }
@@ -133,8 +144,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [patterns, setPatterns] = useState<FinancePattern[]>([])
   const [accounts, setAccounts] = useState<FinanceAccount[]>([])
   const [syncing, setSyncing] = useState(false)
-  const [syncSummary, setSyncSummary] = useState('')
-  const [logLines, setLogLines] = useState<string[]>([])
+  const [syncSummary, setSyncSummary] = useState('Ready to sync')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [searchQuery, setSearchQuery] = useState('')
@@ -199,17 +209,14 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
   const syncNow = async () => {
     setSyncing(true)
-    setLogLines(['Starting sync…'])
-    setSyncSummary('')
-
+    setSyncSummary('Syncing…')
     try {
       const result = await syncFinanceFromSlash()
       setSyncSummary(`${result.imported} imported · ${result.duplicates} dupes skipped · ${result.needReview} need review`)
-      setLogLines((lines) => [...lines, 'Sync complete'])
       setAccounts(result.accounts)
       await reloadData()
     } catch (error) {
-      setLogLines((lines) => [...lines, error instanceof Error ? error.message : 'Sync failed'])
+      setSyncSummary(error instanceof Error ? error.message : 'Sync failed')
     } finally {
       setSyncing(false)
     }
@@ -225,220 +232,214 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   }
 
   return (
-    <div
-      style={{
-        background: '#0B0D11',
-        color: '#E2E8F2',
-        minHeight: '100vh',
-        padding: '24px',
-        marginLeft: '-24px',
-        marginRight: '-24px',
-        marginTop: '-24px',
-        marginBottom: '-24px',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ margin: 0, color: '#E2E8F2' }}>Finance</h1>
-        <div>{headerUtilityContent}</div>
-      </div>
+    <div style={{ background: '#0B0D11', minHeight: '100vh', marginLeft: '-24px', marginRight: '-24px', marginTop: '-24px', marginBottom: '-24px' }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px 20px', color: '#E2E8F2' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '20px', letterSpacing: '-0.02em', marginTop: 0, color: '#E2E8F2' }}>Finance</h1>
+          <div>{headerUtilityContent}</div>
+        </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {([
-          ['dashboard', 'Dashboard'],
-          ['ledger', 'Daily Ledger'],
-          ['subscriptions', 'Subscriptions'],
-          ['triage', 'Triage'],
-          ['search', 'Search'],
-        ] as const).map(([value, label]) => (
-          <button key={value} type="button" onClick={() => setTab(value)} style={tabStyle(tab === value)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {errorMessage ? <div style={{ ...cardStyle, padding: 12, marginBottom: 12, color: '#F59E0B' }}>{errorMessage}</div> : null}
-
-      {tab === 'dashboard' ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" onClick={syncNow} disabled={syncing} style={{ background: '#3B82F6', color: '#FFFFFF', borderRadius: 6, border: 'none', padding: '8px 12px' }}>
-              {syncing ? 'Syncing…' : '⚡ Sync Now'}
-            </button>
-            <span style={labelStyle}>{syncSummary}</span>
-          </div>
-
-          {logLines.length > 0 ? <div style={{ ...cardStyle, padding: 10 }}>{logLines.join(' · ')}</div> : null}
-
-          {accounts.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              {accounts.map((account) => (
-                <div key={account.id} style={{ ...cardStyle, padding: 12 }}>
-                  <div style={{ color: '#E2E8F2' }}>{account.name}</div>
-                  <div style={labelStyle}>Available</div>
-                  <div style={{ fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(account.availableBalance)}</div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {unclassified.length > 0 ? (
-            <div style={{ border: '1px solid #F59E0B', background: '#F59E0B26', borderRadius: 8, padding: 10, display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#F59E0B' }}>{unclassified.length} transactions need classification.</span>
-              <button type="button" style={tabStyle(false)} onClick={() => setTab('triage')}>Review →</button>
-            </div>
-          ) : null}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-            <div style={{ ...cardStyle, padding: 12 }}><div style={labelStyle}>Month In</div><div style={{ color: '#10B981', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(monthIn)}</div></div>
-            <div style={{ ...cardStyle, padding: 12 }}><div style={labelStyle}>Month Out</div><div style={{ color: '#EF4444', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(monthOut)}</div></div>
-            <div style={{ ...cardStyle, padding: 12 }}><div style={labelStyle}>Net Flow</div><div style={{ color: monthNet >= 0 ? '#10B981' : '#EF4444', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(monthNet)}</div></div>
-            <div style={{ ...cardStyle, padding: 12 }}><div style={labelStyle}>OpEx</div><div style={{ color: '#8B5CF6', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(opEx)}</div><div style={labelStyle}>Sal {formatMoney(salaryOpEx)} · Subs {formatMoney(subsOpEx)} · Ads {formatMoney(adsOpEx)}</div></div>
-            <div style={{ ...cardStyle, padding: 12 }}><div style={labelStyle}>Sub Burn /mo</div><div style={{ color: '#8B5CF6', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(subBurn)}</div><div style={labelStyle}>{activeSubscriptions.length} active</div></div>
-          </div>
-
-          <div style={{ display: 'grid', gap: 8 }}>
-            <h3 style={{ margin: 0, color: '#E2E8F2' }}>Today</h3>
-            {todaysTransactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} />)}
-          </div>
-        </section>
-      ) : null}
-
-      {tab === 'ledger' ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} style={inputStyle} />
-          <div style={{ ...cardStyle, padding: 10, display: 'flex', gap: 12 }}>
-            <span style={labelStyle}>In <strong style={{ color: '#10B981', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
-            <span style={labelStyle}>Out <strong style={{ color: '#EF4444', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
-          </div>
-          <div style={{ display: 'grid', gap: 8 }}>{selectedTransactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} />)}</div>
-          <div style={{ ...cardStyle, padding: 10, maxHeight: 260, overflowY: 'auto' }}>
-            {groupedByDate.map(([date, items]) => {
-              const dayIn = items.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0)
-              const dayOut = items.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0)
-              const hasUnclassified = items.some((t) => t.category === 'unclassified')
-              return (
-                <button key={date} type="button" style={{ ...tabStyle(false), width: '100%', display: 'flex', justifyContent: 'space-between', marginBottom: 6 }} onClick={() => setSelectedDate(date)}>
-                  <span>{date} {hasUnclassified ? <span style={{ color: '#F59E0B' }}>●</span> : null}</span>
-                  <span style={{ fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>+{formatMoney(dayIn)} / -{formatMoney(dayOut)}</span>
-                </button>
-              )
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {tab === 'subscriptions' ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <div style={{ ...cardStyle, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={labelStyle}>Monthly Burn</div>
-              <div style={{ color: '#8B5CF6', fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(subBurn)}</div>
-            </div>
-            <button type="button" style={tabStyle(true)} onClick={() => setSubscriptionModalOpen(true)}>+ Subscription</button>
-          </div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {subscriptions.map((subscription) => (
-              <div key={subscription.id} style={{ ...cardStyle, padding: 10, display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 10 }}>
-                <div>
-                  <div style={{ color: '#E2E8F2' }}>{subscription.name}</div>
-                  <div style={labelStyle}>{subscription.platform} · {subscription.frequency}</div>
-                </div>
-                <div style={{ fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace' }}>{formatMoney(subscription.amount)}</div>
-                <button type="button" style={tabStyle(false)} onClick={async () => { await updateSubscription(subscription.id, { active: !subscription.active }); await reloadData() }}>{subscription.active ? 'Active' : 'Off'}</button>
-                <button type="button" style={tabStyle(false)} onClick={async () => { await deleteSubscription(subscription.id); await reloadData() }}>Delete</button>
-              </div>
-            ))}
-          </div>
-          <div style={{ ...cardStyle, padding: 12 }}>
-            <h3 style={{ margin: '0 0 8px 0', color: '#E2E8F2' }}>Learned Patterns</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {patterns.map((pattern) => (
-                <span key={pattern.id} style={{ border: `1px solid ${CATEGORY_COLORS[pattern.category]}`, color: CATEGORY_COLORS[pattern.category], background: `${CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>
-                  {pattern.pattern}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {tab === 'triage' ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          {unclassified.length === 0 ? <div style={{ ...cardStyle, padding: 12, color: '#10B981' }}>✅ All Clear</div> : unclassified.map((transaction) => (
-            <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} onClassify={(id) => setTriageTarget(transactions.find((t) => t.id === id) ?? null)} />
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', overflowX: 'auto' }}>
+          {([
+            ['dashboard', 'Dashboard'],
+            ['ledger', 'Daily Ledger'],
+            ['subscriptions', 'Subscriptions'],
+            ['triage', 'Triage'],
+            ['search', 'Search'],
+          ] as const).map(([value, label]) => (
+            <button key={value} type="button" onClick={() => setTab(value)} style={tabStyle(tab === value)}>{label}</button>
           ))}
-        </section>
-      ) : null}
+        </div>
 
-      {tab === 'search' ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <input type="search" placeholder="Search descriptions..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} style={inputStyle} />
-          <div style={{ display: 'grid', gap: 8 }}>
-            {searchResults.map((transaction) => (
-              <div key={transaction.id} style={{ ...cardStyle, padding: 10 }}>
-                <span style={labelStyle}>{transaction.date} — </span>
-                <span style={{ color: '#E2E8F2' }}>{transaction.description}</span>
+        {errorMessage ? <div style={{ ...cardBase, color: '#F59E0B', padding: 12, marginBottom: 16 }}>{errorMessage}</div> : null}
+
+        {tab === 'dashboard' ? (
+          <section>
+            <div style={{ background: '#161B28', border: '1px solid #2A3040', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#5E6E85' }}>{syncSummary}</span>
+              <button type="button" onClick={syncNow} disabled={syncing} style={{ background: '#3B82F6', color: '#FFFFFF', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer' }}>
+                {syncing ? 'Syncing…' : '⚡ Sync Now'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
+              <StatCard label="Month In" value={formatMoney(monthIn)} valueColor="#10B981" />
+              <StatCard label="Month Out" value={formatMoney(monthOut)} valueColor="#EF4444" />
+              <StatCard label="Net Flow" value={formatMoney(monthNet)} valueColor={monthNet >= 0 ? '#10B981' : '#EF4444'} />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
+              <StatCard label="OpEx" value={formatMoney(opEx)} valueColor="#8B5CF6" subText={`Sal ${formatMoney(salaryOpEx)} · Subs ${formatMoney(subsOpEx)} · Ads ${formatMoney(adsOpEx)}`} />
+              <StatCard label="Sub Burn /mo" value={formatMoney(subBurn)} valueColor="#8B5CF6" subText={`${activeSubscriptions.length} active`} />
+            </div>
+
+            {accounts.length > 0 ? (
+              <div style={{ ...cardBase, padding: 12, marginBottom: 16 }}>
+                {accounts.map((account) => (
+                  <div key={account.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #1C2130' }}>
+                    <span>{account.name}</span>
+                    <span style={{ ...moneyStyle }}>{formatMoney(account.availableBalance)}</span>
+                  </div>
+                ))}
               </div>
+            ) : null}
+
+            <h3 style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#5E6E85', fontWeight: 700, marginBottom: '10px' }}>Today</h3>
+
+            {todaysTransactions.length === 0 ? (
+              <div style={{ ...cardBase, padding: '32px', textAlign: 'center', color: '#5E6E85' }}>No transactions for today yet.</div>
+            ) : (
+              todaysTransactions.map((transaction) => (
+                <TransactionRow
+                  key={transaction.id}
+                  transaction={transaction}
+                  onDelete={async (id) => {
+                    await deleteFinanceTransaction(id)
+                    await reloadData()
+                  }}
+                />
+              ))
+            )}
+          </section>
+        ) : null}
+
+        {tab === 'ledger' ? (
+          <section style={{ display: 'grid', gap: 12 }}>
+            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} style={inputStyle} />
+            <div style={{ ...cardBase, padding: 10, display: 'flex', gap: 12 }}>
+              <span style={labelMuted}>In <strong style={{ ...moneyStyle, color: '#10B981' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
+              <span style={labelMuted}>Out <strong style={{ ...moneyStyle, color: '#EF4444' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
+            </div>
+            <div>{selectedTransactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} />)}</div>
+            <div style={{ ...cardBase, padding: 10, maxHeight: 260, overflowY: 'auto' }}>
+              {groupedByDate.map(([date, items]) => {
+                const dayIn = items.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0)
+                const dayOut = items.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0)
+                const hasUnclassified = items.some((t) => t.category === 'unclassified')
+                return (
+                  <button key={date} type="button" style={{ ...tabStyle(false), width: '100%', display: 'flex', justifyContent: 'space-between', marginBottom: 6 }} onClick={() => setSelectedDate(date)}>
+                    <span>{date} {hasUnclassified ? <span style={{ color: '#F59E0B' }}>●</span> : null}</span>
+                    <span style={moneyStyle}>+{formatMoney(dayIn)} / -{formatMoney(dayOut)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {tab === 'subscriptions' ? (
+          <section style={{ display: 'grid', gap: 12 }}>
+            <div style={{ ...cardBase, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={labelMuted}>Monthly Burn</div>
+                <div style={{ ...moneyStyle, color: '#8B5CF6' }}>{formatMoney(subBurn)}</div>
+              </div>
+              <button type="button" style={tabStyle(true)} onClick={() => setSubscriptionModalOpen(true)}>+ Subscription</button>
+            </div>
+            <div>
+              {subscriptions.map((subscription) => (
+                <div key={subscription.id} style={{ ...cardBase, padding: 10, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div>{subscription.name}</div>
+                    <div style={labelMuted}>{subscription.platform} · {subscription.frequency}</div>
+                  </div>
+                  <div style={{ ...moneyStyle }}>{formatMoney(subscription.amount)}</div>
+                  <button type="button" style={tabStyle(false)} onClick={async () => { await updateSubscription(subscription.id, { active: !subscription.active }); await reloadData() }}>{subscription.active ? 'Active' : 'Off'}</button>
+                  <button type="button" style={tabStyle(false)} onClick={async () => { await deleteSubscription(subscription.id); await reloadData() }}>Delete</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ ...cardBase, padding: 12 }}>
+              <h3 style={{ margin: '0 0 8px 0', color: '#E2E8F2' }}>Learned Patterns</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {patterns.map((pattern) => (
+                  <span key={pattern.id} style={{ border: `1px solid ${CATEGORY_COLORS[pattern.category]}`, color: CATEGORY_COLORS[pattern.category], background: `${CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>
+                    {pattern.pattern}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {tab === 'triage' ? (
+          <section>
+            {unclassified.length === 0 ? <div style={{ ...cardBase, padding: 32, textAlign: 'center', color: '#5E6E85' }}>✅ All Clear</div> : unclassified.map((transaction) => (
+              <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} onClassify={(id) => setTriageTarget(transactions.find((t) => t.id === id) ?? null)} />
             ))}
-          </div>
-        </section>
-      ) : null}
+          </section>
+        ) : null}
 
-      {triageTarget ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.75)' }}>
-          <div className="modal-card" style={{ ...cardStyle, background: '#12151B', border: '1px solid #1C2130', maxWidth: 520 }}>
-            <h3 style={{ color: '#E2E8F2', marginTop: 0 }}>Classify transaction</h3>
-            <p style={{ color: '#E2E8F2' }}><strong>{triageTarget.description}</strong></p>
-            <p style={labelStyle}>{triageTarget.date} · {triageTarget.direction === 'out' ? 'Out' : 'In'} · <span style={{ fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace', color: triageTarget.direction === 'out' ? '#EF4444' : '#10B981' }}>{formatMoney(triageTarget.amount)}</span></p>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('subscription')}>🔄 Subscription (recurring tool/service)</button>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('salary')}>👤 Salary / Payroll</button>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('ad_spend')}>📢 Ad Spend (Meta, Google, etc.)</button>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('one_time')}>📌 One-Time Expense</button>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('cogs')}>📦 COGS / Product Cost</button>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('revenue')}>💰 Revenue</button>
-              <button type="button" style={tabStyle(false)} onClick={() => void onClassify('refund')}>↩️ Refund</button>
+        {tab === 'search' ? (
+          <section style={{ display: 'grid', gap: 12 }}>
+            <input type="search" placeholder="Search descriptions..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} style={inputStyle} />
+            <div>
+              {searchResults.map((transaction) => (
+                <div key={transaction.id} style={{ ...cardBase, padding: 10, marginBottom: 6 }}>
+                  <span style={labelMuted}>{transaction.date} — </span>
+                  <span style={{ color: '#E2E8F2' }}>{transaction.description}</span>
+                </div>
+              ))}
             </div>
-            <div style={{ marginTop: 12 }}>
-              <button type="button" style={tabStyle(false)} onClick={() => setTriageTarget(null)}>Close</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          </section>
+        ) : null}
 
-      {subscriptionModalOpen ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.75)' }}>
-          <div className="modal-card" style={{ ...cardStyle, background: '#12151B', border: '1px solid #1C2130', maxWidth: 460 }}>
-            <h3 style={{ marginTop: 0, color: '#E2E8F2' }}>New Subscription</h3>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <input style={inputStyle} placeholder="Name" value={subName} onChange={(event) => setSubName(event.target.value)} />
-              <input style={inputStyle} placeholder="Amount" inputMode="decimal" value={subAmount} onChange={(event) => setSubAmount(event.target.value)} />
-              <select style={inputStyle} value={subFrequency} onChange={(event) => setSubFrequency(event.target.value as SubscriptionFrequency)}>
-                <option value="weekly">weekly</option>
-                <option value="monthly">monthly</option>
-                <option value="yearly">yearly</option>
-              </select>
-              <input style={inputStyle} placeholder="Platform / Category" value={subPlatform} onChange={(event) => setSubPlatform(event.target.value)} />
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="button" style={tabStyle(true)} onClick={async () => {
-                const amount = Number(subAmount)
-                if (!subName.trim() || !Number.isFinite(amount) || amount <= 0) {
-                  return
-                }
-                await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform })
-                setSubName('')
-                setSubAmount('')
-                setSubFrequency('monthly')
-                setSubPlatform('')
-                setSubscriptionModalOpen(false)
-                await reloadData()
-              }}>Save</button>
-              <button type="button" style={tabStyle(false)} onClick={() => setSubscriptionModalOpen(false)}>Cancel</button>
+        {triageTarget ? (
+          <div className="modal-backdrop" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.75)' }}>
+            <div className="modal-card" style={{ ...cardBase, maxWidth: 520 }}>
+              <h3 style={{ color: '#E2E8F2', marginTop: 0 }}>Classify transaction</h3>
+              <p style={{ color: '#E2E8F2' }}><strong>{triageTarget.description}</strong></p>
+              <p style={labelMuted}>{triageTarget.date} · {triageTarget.direction === 'out' ? 'Out' : 'In'} · <span style={{ ...moneyStyle, color: triageTarget.direction === 'out' ? '#EF4444' : '#10B981' }}>{formatMoney(triageTarget.amount)}</span></p>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('subscription')}>🔄 Subscription (recurring tool/service)</button>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('salary')}>👤 Salary / Payroll</button>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('ad_spend')}>📢 Ad Spend (Meta, Google, etc.)</button>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('one_time')}>📌 One-Time Expense</button>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('cogs')}>📦 COGS / Product Cost</button>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('revenue')}>💰 Revenue</button>
+                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('refund')}>↩️ Refund</button>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <button type="button" style={tabStyle(false)} onClick={() => setTriageTarget(null)}>Close</button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+
+        {subscriptionModalOpen ? (
+          <div className="modal-backdrop" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.75)' }}>
+            <div className="modal-card" style={{ ...cardBase, maxWidth: 460 }}>
+              <h3 style={{ marginTop: 0, color: '#E2E8F2' }}>New Subscription</h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <input style={inputStyle} placeholder="Name" value={subName} onChange={(event) => setSubName(event.target.value)} />
+                <input style={inputStyle} placeholder="Amount" inputMode="decimal" value={subAmount} onChange={(event) => setSubAmount(event.target.value)} />
+                <select style={inputStyle} value={subFrequency} onChange={(event) => setSubFrequency(event.target.value as SubscriptionFrequency)}>
+                  <option value="weekly">weekly</option>
+                  <option value="monthly">monthly</option>
+                  <option value="yearly">yearly</option>
+                </select>
+                <input style={inputStyle} placeholder="Platform / Category" value={subPlatform} onChange={(event) => setSubPlatform(event.target.value)} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button type="button" style={tabStyle(true)} onClick={async () => {
+                  const amount = Number(subAmount)
+                  if (!subName.trim() || !Number.isFinite(amount) || amount <= 0) {
+                    return
+                  }
+                  await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform })
+                  setSubName('')
+                  setSubAmount('')
+                  setSubFrequency('monthly')
+                  setSubPlatform('')
+                  setSubscriptionModalOpen(false)
+                  await reloadData()
+                }}>Save</button>
+                <button type="button" style={tabStyle(false)} onClick={() => setSubscriptionModalOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
