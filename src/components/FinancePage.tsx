@@ -75,7 +75,7 @@ function tabStyle(active: boolean) {
   if (active) {
     return {
       background: '#3B82F6',
-      color: '#fff',
+      color: '#FFFFFF',
       border: '1px solid #3B82F6',
       borderRadius: 6,
       padding: '8px 12px',
@@ -104,7 +104,7 @@ function TransactionRow({
     <div style={{ ...cardStyle, display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', gap: 12, alignItems: 'center', padding: 10 }}>
       <span style={{ color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{isOut ? '↓' : '↑'}</span>
       <div style={{ minWidth: 0 }}>
-        <div style={{ color: '#E2E8F2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{transaction.description}</div>
+        <div style={{ color: '#E2E8F2', overflow: 'hidden', textOverflow: 'ellipsis' }}>{transaction.description}</div>
         <div style={{ ...labelStyle, fontSize: 12 }}>{transaction.date}</div>
       </div>
       <span style={{
@@ -114,7 +114,6 @@ function TransactionRow({
         borderRadius: 999,
         padding: '3px 8px',
         fontSize: 12,
-        whiteSpace: 'nowrap',
       }}>
         {CATEGORY_LABELS[transaction.category]}
       </span>
@@ -262,7 +261,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
       {tab === 'dashboard' ? (
         <section style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" onClick={syncNow} disabled={syncing} style={{ background: '#3B82F6', color: '#fff', borderRadius: 6, border: '1px solid #3B82F6', padding: '8px 12px' }}>
+            <button type="button" onClick={syncNow} disabled={syncing} style={{ background: '#3B82F6', color: '#FFFFFF', borderRadius: 6, border: 'none', padding: '8px 12px' }}>
               {syncing ? 'Syncing…' : '⚡ Sync Now'}
             </button>
             <span style={labelStyle}>{syncSummary}</span>
