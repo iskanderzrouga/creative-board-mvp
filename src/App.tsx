@@ -1067,7 +1067,7 @@ function App() {
       }
 
       if (nextPage === 'finance') {
-        if (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager') {
+        if (state.activeRole.mode === 'owner') {
           setRoutePage('finance')
         } else {
           const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
@@ -1123,7 +1123,7 @@ function App() {
     if (
       (routePage === 'scripts' || routePage === 'strategy' || routePage === 'finance') &&
       state.activeRole.mode !== 'owner' &&
-      state.activeRole.mode !== 'manager'
+      (routePage === 'finance' || state.activeRole.mode !== 'manager')
     ) {
       setRoutePage(productionPage)
     }
@@ -1487,7 +1487,7 @@ function App() {
     }
 
     if (page === 'finance') {
-      if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
+      if (state.activeRole.mode !== 'owner') {
         return
       }
       setRoutePage('finance')
