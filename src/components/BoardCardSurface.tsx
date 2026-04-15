@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import {
   formatDateShort,
@@ -35,6 +35,8 @@ interface BoardCardSurfaceProps {
   showEditorInProgress?: boolean
   canStartEditorTimer?: boolean
   onStartEditorTimer?: () => void
+  canEditTitle?: boolean
+  onSaveTitle?: (title: string) => void
 }
 
 function getPriorityBadgeTone(priority: CardPriority) {
@@ -64,6 +66,8 @@ function BoardCardSurfaceComponent({
   showEditorInProgress = false,
   canStartEditorTimer = false,
   onStartEditorTimer,
+  canEditTitle = false,
+  onSaveTitle,
 }: BoardCardSurfaceProps) {
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const ageMs = getCardAgeMs(card, nowMs)
@@ -76,6 +80,41 @@ function BoardCardSurfaceComponent({
   const priorityLabel = getPriorityLabel(card.priority)
   const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(card.title)
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
+  const skipOpenAfterDoubleClickRef = useRef(false)
+
+  useEffect(() => {
+    if (!isEditingTitle || !titleInputRef.current) {
+      return
+    }
+    titleInputRef.current.focus()
+    titleInputRef.current.select()
+  }, [isEditingTitle])
+
+  function handleOpenCard() {
+    if (skipOpenAfterDoubleClickRef.current || isEditingTitle) {
+      skipOpenAfterDoubleClickRef.current = false
+      return
+    }
+    onOpen()
+  }
+
+  function commitTitleEdit() {
+    const nextTitle = titleDraft.trim()
+    setIsEditingTitle(false)
+    if (!nextTitle || nextTitle === card.title) {
+      setTitleDraft(card.title)
+      return
+    }
+    onSaveTitle?.(nextTitle)
+  }
+
+  function cancelTitleEdit() {
+    setIsEditingTitle(false)
+    setTitleDraft(card.title)
+  }
 
   async function handleCopyCardLink(event: React.MouseEvent | React.KeyboardEvent) {
     event.stopPropagation()
@@ -100,7 +139,7 @@ function BoardCardSurfaceComponent({
         isInvalid ? 'is-invalid' : ''
       }`}
       aria-label={`Open card ${card.id}: ${card.title}`}
-      onClick={onOpen}
+      onClick={handleOpenCard}
       {...attributes}
       {...listeners}
     >
@@ -186,7 +225,45 @@ function BoardCardSurfaceComponent({
         {revisionCount > 0 && <span className="revision-badge">R{revisionCount}</span>}
       </div>
 
-      <p className="board-card-title">{card.title}</p>
+      {isEditingTitle ? (
+        <input
+          ref={titleInputRef}
+          className="board-card-title-input"
+          value={titleDraft}
+          aria-label={`Edit title for ${card.id}`}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onChange={(event) => setTitleDraft(event.target.value)}
+          onBlur={commitTitleEdit}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitTitleEdit()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              cancelTitleEdit()
+            }
+          }}
+        />
+      ) : (
+        <p
+          className={`board-card-title ${canEditTitle ? 'is-editable' : ''}`}
+          onDoubleClick={(event) => {
+            if (!canEditTitle) {
+              return
+            }
+            event.preventDefault()
+            event.stopPropagation()
+            skipOpenAfterDoubleClickRef.current = true
+            setTitleDraft(card.title)
+            setIsEditingTitle(true)
+          }}
+        >
+          {card.title}
+        </p>
+      )}
 
       <div className="board-card-tags">
         <span

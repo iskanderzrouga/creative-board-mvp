@@ -18,6 +18,8 @@ interface SortableBoardCardProps {
   showEditorInProgress?: boolean
   canStartEditorTimer?: boolean
   onStartEditorTimer?: () => void
+  canEditTitle?: boolean
+  onSaveTitle?: (title: string) => void
 }
 
 function SortableBoardCardComponent({
@@ -34,6 +36,8 @@ function SortableBoardCardComponent({
   showEditorInProgress,
   canStartEditorTimer,
   onStartEditorTimer,
+  canEditTitle,
+  onSaveTitle,
 }: SortableBoardCardProps) {
   const {
     attributes,
@@ -77,6 +81,8 @@ function SortableBoardCardComponent({
           showEditorInProgress={showEditorInProgress}
           canStartEditorTimer={canStartEditorTimer}
           onStartEditorTimer={onStartEditorTimer}
+          canEditTitle={canEditTitle}
+          onSaveTitle={onSaveTitle}
           cursorMode={cursorMode}
           isDragging={isDragging}
           isInvalid={isInvalid && isDragging}

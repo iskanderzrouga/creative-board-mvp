@@ -74,6 +74,7 @@ interface BoardPageProps {
   onDragCancel: () => void
   onDragEnd: (event: DragEndEvent) => void
   onStartEditorTimer: (portfolioId: string, cardId: string) => void
+  onSaveCardTitle: (portfolioId: string, cardId: string, title: string) => void
 }
 
 export function BoardPage({
@@ -112,6 +113,7 @@ export function BoardPage({
   onDragCancel,
   onDragEnd,
   onStartEditorTimer,
+  onSaveCardTitle,
 }: BoardPageProps) {
   const allBrandsSelected = boardFilters.brandNames.length === portfolio.brands.length
   const hasVisibleCards = columns.some((column) => column.count > 0)
@@ -481,6 +483,14 @@ export function BoardPage({
                                     showEditorInProgress={isEditorTimerInProgress}
                                     canStartEditorTimer={canStartEditorTimer}
                                     onStartEditorTimer={() => onStartEditorTimer(portfolio.id, card.id)}
+                                    canEditTitle={
+                                      activeRoleMode === 'owner' ||
+                                      activeRoleMode === 'manager' ||
+                                      (activeRoleMode === 'contributor' &&
+                                        activeViewerName !== null &&
+                                        activeViewerName === card.owner)
+                                    }
+                                    onSaveTitle={(title) => onSaveCardTitle(portfolio.id, card.id, title)}
                                   />
                                 )
                               })}
