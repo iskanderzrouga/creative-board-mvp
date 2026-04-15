@@ -2314,6 +2314,26 @@ function App() {
     setSelectedCard({ portfolioId, cardId })
   }
 
+  function handleSaveBoardCardTitle(portfolioId: string, cardId: string, title: string) {
+    const nextTitle = title.trim()
+    if (!nextTitle) {
+      return
+    }
+
+    const actor = getActorName(state.portfolios.find((portfolio) => portfolio.id === portfolioId) ?? null)
+    updatePortfolio(portfolioId, (portfolio) =>
+      applyCardUpdates(
+        portfolio,
+        state.settings,
+        cardId,
+        { title: nextTitle },
+        actor,
+        new Date().toISOString(),
+        viewerContext,
+      ),
+    )
+  }
+
   function requestCloseSelectedCard() {
     if (cardPanelCloseTimerRef.current !== null) {
       window.clearTimeout(cardPanelCloseTimerRef.current)
@@ -3279,6 +3299,7 @@ function App() {
             onDragCancel={clearBoardDragState}
             onDragEnd={handleBoardDragEnd}
             onStartEditorTimer={handleStartEditorTimer}
+            onSaveCardTitle={handleSaveBoardCardTitle}
           />
         ) : null}
 
@@ -3308,6 +3329,7 @@ function App() {
             onAddCard={handleAddDevCard}
             onMoveCard={handleMoveDevCard}
             onOpenCard={(cardId) => setSelectedDevCard({ cardId })}
+            onSaveCardTitle={(cardId, title) => handleSaveDevCard(cardId, { title })}
           />
         ) : null}
 

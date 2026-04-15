@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -34,6 +34,7 @@ interface DevBoardPageProps {
   onAddCard: () => void
   onMoveCard: (cardId: string, destinationColumn: DevBoardColumnId) => { ok: boolean; message?: string }
   onOpenCard: (cardId: string) => void
+  onSaveCardTitle: (cardId: string, title: string) => void
 }
 
 function getDropColumnId(value: string | null): DevBoardColumnId | null {
@@ -51,11 +52,15 @@ function DevCardItem({
   onOpen,
   canDrag,
   teamMembers,
+  canEditTitle,
+  onSaveTitle,
 }: {
   card: DevCard
   onOpen: () => void
   canDrag: boolean
   teamMembers: TeamMember[]
+  canEditTitle: boolean
+  onSaveTitle: (title: string) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card.id,
@@ -70,6 +75,33 @@ function DevCardItem({
         ? { backgroundColor: '#dcfce7', color: '#15803d' }
         : { backgroundColor: '#e5e7eb', color: '#374151' }
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(card.title)
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
+  const skipOpenAfterDoubleClickRef = useRef(false)
+
+  useEffect(() => {
+    if (!isEditingTitle || !titleInputRef.current) {
+      return
+    }
+    titleInputRef.current.focus()
+    titleInputRef.current.select()
+  }, [isEditingTitle])
+
+  function commitTitleEdit() {
+    const nextTitle = titleDraft.trim()
+    setIsEditingTitle(false)
+    if (!nextTitle || nextTitle === card.title) {
+      setTitleDraft(card.title)
+      return
+    }
+    onSaveTitle(nextTitle)
+  }
+
+  function cancelTitleEdit() {
+    setIsEditingTitle(false)
+    setTitleDraft(card.title)
+  }
 
   async function handleCopyCardLink(event: React.MouseEvent | React.KeyboardEvent) {
     event.stopPropagation()
@@ -95,7 +127,13 @@ function DevCardItem({
       style={{
         transform: CSS.Translate.toString(transform),
       }}
-      onClick={onOpen}
+      onClick={() => {
+        if (skipOpenAfterDoubleClickRef.current || isEditingTitle) {
+          skipOpenAfterDoubleClickRef.current = false
+          return
+        }
+        onOpen()
+      }}
       {...attributes}
       {...listeners}
     >
@@ -143,7 +181,45 @@ function DevCardItem({
           {statusLabel}
         </span>
       </div>
-      <p className="board-card-title">{card.title}</p>
+      {isEditingTitle ? (
+        <input
+          ref={titleInputRef}
+          className="board-card-title-input"
+          value={titleDraft}
+          aria-label={`Edit title for ${card.id}`}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onChange={(event) => setTitleDraft(event.target.value)}
+          onBlur={commitTitleEdit}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitTitleEdit()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              cancelTitleEdit()
+            }
+          }}
+        />
+      ) : (
+        <p
+          className={`board-card-title ${canEditTitle ? 'is-editable' : ''}`}
+          onDoubleClick={(event) => {
+            if (!canEditTitle) {
+              return
+            }
+            event.preventDefault()
+            event.stopPropagation()
+            skipOpenAfterDoubleClickRef.current = true
+            setTitleDraft(card.title)
+            setIsEditingTitle(true)
+          }}
+        >
+          {card.title}
+        </p>
+      )}
       <div className="board-card-tags">
         <span className="brand-pill">{card.brand}</span>
         <span className="task-type-pill">{card.changeRequestType}</span>
@@ -166,12 +242,14 @@ function DevDropColumn({
   canEdit,
   teamMembers,
   onOpenCard,
+  onSaveCardTitle,
 }: {
   column: DevBoardColumnId
   cards: DevCard[]
   canEdit: boolean
   teamMembers: TeamMember[]
   onOpenCard: (cardId: string) => void
+  onSaveCardTitle: (cardId: string, title: string) => void
 }) {
   const dropId = `dev-column:${column}`
   const { setNodeRef, isOver } = useDroppable({
@@ -196,6 +274,8 @@ function DevDropColumn({
               onOpen={() => onOpenCard(card.id)}
               canDrag={canEdit}
               teamMembers={teamMembers}
+              canEditTitle={canEdit}
+              onSaveTitle={(title) => onSaveCardTitle(card.id, title)}
             />
           ))}
         </div>
@@ -213,6 +293,7 @@ export function DevBoardPage({
   onAddCard,
   onMoveCard,
   onOpenCard,
+  onSaveCardTitle,
 }: DevBoardPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -304,6 +385,7 @@ export function DevBoardPage({
               canEdit={canEdit}
               teamMembers={teamMembers}
               onOpenCard={onOpenCard}
+              onSaveCardTitle={onSaveCardTitle}
             />
           ))}
         </div>

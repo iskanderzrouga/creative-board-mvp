@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { RichTextEditor } from './RichTextEditor'
 import { LinkifiedText } from './LinkifiedText'
 import { ImageAttachments } from './ImageAttachments'
@@ -151,7 +151,9 @@ export function CardDetailPanel({
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [trackingOpen, setTrackingOpen] = useState(false)
   const [activeTextField, setActiveTextField] = useState<string | null>(null)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
   const commentImageRef = useRef<HTMLInputElement | null>(null)
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
 
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
   const isOwnedEditor = viewerMode === 'contributor' && viewerName === card.owner
@@ -205,6 +207,13 @@ export function CardDetailPanel({
   ]
 
   useModalAccessibility(panelRef, isOpen)
+  useEffect(() => {
+    if (!isEditingTitle || !titleInputRef.current) {
+      return
+    }
+    titleInputRef.current.focus()
+    titleInputRef.current.select()
+  }, [isEditingTitle])
 
   function scrollToSection(sectionId: string) {
     const target = sectionRefs.current[sectionId]
@@ -391,6 +400,23 @@ export function CardDetailPanel({
 
   const canEditTitle = iterationTask ? false : canEditOwnedContent
 
+  function commitTitleEdit() {
+    const nextTitle = titleDraft.trim()
+    setIsEditingTitle(false)
+    setActiveTextField(null)
+    if (!nextTitle || nextTitle === card.title) {
+      setTitleDraft(card.title)
+      return
+    }
+    onSave({ title: nextTitle })
+  }
+
+  function cancelTitleEdit() {
+    setIsEditingTitle(false)
+    setActiveTextField(null)
+    setTitleDraft(card.title)
+  }
+
   return (
     <>
       <div
@@ -410,23 +436,54 @@ export function CardDetailPanel({
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
-            {canEditTitle ? (
+            {canEditTitle && isEditingTitle ? (
               <input
+                ref={titleInputRef}
                 id={titleId}
                 className="panel-title-input"
                 value={titleDraft}
                 aria-label={titleLabel}
-                onChange={(event) => {
-                  setActiveTextField('title')
-                  setTitleDraft(event.target.value)
-                }}
-                onBlur={() => {
-                  commitTextDraft('title', titleDraft)
-                  setActiveTextField(null)
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={commitTitleEdit}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    commitTitleEdit()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelTitleEdit()
+                  }
                 }}
               />
             ) : (
-              <h2 id={titleId} className="panel-title">
+              <h2
+                id={titleId}
+                className={`panel-title ${canEditTitle ? 'is-editable' : ''}`}
+                role={canEditTitle ? 'button' : undefined}
+                tabIndex={canEditTitle ? 0 : undefined}
+                onClick={() => {
+                  if (canEditTitle) {
+                    setTitleDraft(card.title)
+                    setIsEditingTitle(true)
+                    setActiveTextField('title')
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (!canEditTitle) {
+                    return
+                  }
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setTitleDraft(card.title)
+                    setIsEditingTitle(true)
+                    setActiveTextField('title')
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelTitleEdit()
+                  }
+                }}
+                title={canEditTitle ? `Click to edit ${titleLabel.toLowerCase()}` : undefined}
+              >
                 {card.title}
               </h2>
             )}
