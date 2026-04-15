@@ -452,7 +452,6 @@ function App() {
     () => allTeamMembers.filter((member) => hasDeveloperBoardRole(member.role)),
     [allTeamMembers],
   )
-  console.log('isDeveloperUser:', isDeveloperUser, 'activeRole:', state.activeRole)
   const devBoardCanEdit =
     state.activeRole.mode === 'owner' ||
     state.activeRole.mode === 'manager' ||
@@ -998,15 +997,20 @@ function App() {
     }
 
     const handlePopState = () => {
-      const nextPage = getPageFromPathname(window.location.pathname, getCurrentPage(state))
+      const nextPage = getPageFromPathname(window.location.pathname, state.activePage)
 
       if (isDeveloperUser) {
         const allowedPage = getAllowedPageForDeveloper(nextPage === 'finance' ? 'board' : nextPage)
+        const nextActivePage = allowedPage === 'settings' ? 'settings' : allowedPage === 'pulse' ? 'pulse' : 'board'
         setRoutePage(allowedPage)
-        setState((current) => ({
-          ...current,
-          activePage: allowedPage === 'settings' ? 'settings' : allowedPage === 'pulse' ? 'pulse' : 'board',
-        }))
+        setState((current) =>
+          current.activePage === nextActivePage
+            ? current
+            : {
+                ...current,
+                activePage: nextActivePage,
+              },
+        )
         return
       }
 
@@ -1098,7 +1102,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [canAccessBacklog, isDeveloperUser, state])
+  }, [canAccessBacklog, isDeveloperUser, state.activePage, state.activeRole.mode])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
