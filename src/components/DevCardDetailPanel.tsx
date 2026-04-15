@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { LinkifiedText } from './LinkifiedText'
 import { ImageAttachments } from './ImageAttachments'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
@@ -110,8 +110,18 @@ export function DevCardDetailPanel({
   const [customBlockerDraft, setCustomBlockerDraft] = useState(card.customBlocker)
   const [statusDraft, setStatusDraft] = useState<NonNullable<DevCard['status']>>(card.status ?? 'not-started')
   const [activeTextField, setActiveTextField] = useState<string | null>(null)
+  const [titleDraft, setTitleDraft] = useState(card.title)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
 
   useModalAccessibility(panelRef, isOpen)
+  useEffect(() => {
+    if (!isEditingTitle || !titleInputRef.current) {
+      return
+    }
+    titleInputRef.current.focus()
+    titleInputRef.current.select()
+  }, [isEditingTitle])
 
   const blockerDetails = useMemo(() => getDevCardBlockerReason(card), [card])
 
@@ -126,6 +136,21 @@ export function DevCardDetailPanel({
       blockerOption: blockerOptionDraft || null,
       customBlocker: customBlockerDraft,
     })
+  }
+
+  function commitTitleEdit() {
+    const nextTitle = titleDraft.trim()
+    setIsEditingTitle(false)
+    if (!nextTitle || nextTitle === card.title) {
+      setTitleDraft(card.title)
+      return
+    }
+    onSave(card.id, { title: nextTitle })
+  }
+
+  function cancelTitleEdit() {
+    setIsEditingTitle(false)
+    setTitleDraft(card.title)
   }
   function handleCloseWithSave() {
     commit()
@@ -306,9 +331,55 @@ export function DevCardDetailPanel({
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
-            <h2 id={titleId} className="panel-title">
-              {card.title}
-            </h2>
+            {canEditAssignedCard && isEditingTitle ? (
+              <input
+                ref={titleInputRef}
+                id={titleId}
+                className="panel-title-input"
+                value={titleDraft}
+                aria-label="Card title"
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={commitTitleEdit}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    commitTitleEdit()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelTitleEdit()
+                  }
+                }}
+              />
+            ) : (
+              <h2
+                id={titleId}
+                className={`panel-title ${canEditAssignedCard ? 'is-editable' : ''}`}
+                role={canEditAssignedCard ? 'button' : undefined}
+                tabIndex={canEditAssignedCard ? 0 : undefined}
+                onClick={() => {
+                  if (canEditAssignedCard) {
+                    setTitleDraft(card.title)
+                    setIsEditingTitle(true)
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (!canEditAssignedCard) {
+                    return
+                  }
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setTitleDraft(card.title)
+                    setIsEditingTitle(true)
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    cancelTitleEdit()
+                  }
+                }}
+                title={canEditAssignedCard ? 'Click to edit title' : undefined}
+              >
+                {card.title}
+              </h2>
+            )}
             <p className="muted-copy">Brand: {card.brand}</p>
           </div>
           <button type="button" className="icon-button" onClick={handleCloseWithSave} aria-label="Close card details">
