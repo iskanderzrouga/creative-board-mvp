@@ -1,17 +1,67 @@
+import { FINANCE_SEED_RULES } from './financeSeedRules'
 import { getSupabaseClient } from './supabase'
 
+export const CAT = {
+  UNCLASSIFIED: 'unclassified',
+  SUBSCRIPTION: 'subscription',
+  SALARY: 'salary',
+  ONE_TIME: 'one_time',
+  REVENUE: 'revenue',
+  REFUND: 'refund',
+  AD_SPEND: 'ad_spend',
+  COGS: 'cogs',
+  TAXES: 'taxes',
+  AFFILIATE: 'affiliate',
+  HR: 'hr',
+  INTERNAL_TRANSFER: 'internal_transfer',
+} as const
+
 export const FINANCE_CATEGORIES = [
-  'unclassified',
-  'subscription',
-  'salary',
-  'one_time',
-  'revenue',
-  'refund',
-  'ad_spend',
-  'cogs',
+  CAT.UNCLASSIFIED,
+  CAT.SUBSCRIPTION,
+  CAT.SALARY,
+  CAT.ONE_TIME,
+  CAT.REVENUE,
+  CAT.REFUND,
+  CAT.AD_SPEND,
+  CAT.COGS,
+  CAT.TAXES,
+  CAT.AFFILIATE,
+  CAT.HR,
+  CAT.INTERNAL_TRANSFER,
 ] as const
 
 export type FinanceCategory = (typeof FINANCE_CATEGORIES)[number]
+
+export const FINANCE_CATEGORY_LABELS: Record<FinanceCategory, string> = {
+  [CAT.UNCLASSIFIED]: 'Needs Review',
+  [CAT.SUBSCRIPTION]: 'Subscription',
+  [CAT.SALARY]: 'Salary',
+  [CAT.ONE_TIME]: 'One-Time',
+  [CAT.REVENUE]: 'Revenue',
+  [CAT.REFUND]: 'Refund',
+  [CAT.AD_SPEND]: 'Ad Spend',
+  [CAT.COGS]: 'COGS',
+  [CAT.TAXES]: 'Taxes',
+  [CAT.AFFILIATE]: 'Affiliate',
+  [CAT.HR]: 'HR',
+  [CAT.INTERNAL_TRANSFER]: 'Internal Transfer',
+}
+
+export const FINANCE_CATEGORY_COLORS: Record<FinanceCategory, string> = {
+  [CAT.UNCLASSIFIED]: '#F59E0B',
+  [CAT.SUBSCRIPTION]: '#8B5CF6',
+  [CAT.SALARY]: '#3B82F6',
+  [CAT.ONE_TIME]: '#EF4444',
+  [CAT.REVENUE]: '#10B981',
+  [CAT.REFUND]: '#06B6D4',
+  [CAT.AD_SPEND]: '#F97316',
+  [CAT.COGS]: '#EC4899',
+  [CAT.TAXES]: '#14B8A6',
+  [CAT.AFFILIATE]: '#F43F5E',
+  [CAT.HR]: '#6366F1',
+  [CAT.INTERNAL_TRANSFER]: '#64748B',
+}
 export type FinanceDirection = 'in' | 'out'
 export type SubscriptionFrequency = 'weekly' | 'monthly' | 'yearly'
 export const SUBSCRIPTION_BRANDS = [
@@ -193,6 +243,27 @@ function matchesPattern(description: string, pattern: string) {
   return description.toLowerCase().includes(pattern.toLowerCase())
 }
 
+function classifyWithRules(
+  description: string,
+  userPatterns: Record<string, FinanceCategory>,
+): FinanceCategory {
+  const descLower = description.toLowerCase()
+
+  for (const [pattern, category] of Object.entries(userPatterns)) {
+    if (descLower.includes(pattern)) {
+      return category
+    }
+  }
+
+  for (const rule of FINANCE_SEED_RULES) {
+    if (descLower.includes(rule.match)) {
+      return rule.category as FinanceCategory
+    }
+  }
+
+  return CAT.UNCLASSIFIED
+}
+
 function frequencyToMonthly(amount: number, frequency: SubscriptionFrequency) {
   if (frequency === 'weekly') {
     return amount * 52 / 12
@@ -351,7 +422,11 @@ export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSy
     ),
   )
 
-  const patterns = (patternsResult.data ?? []) as Array<{ pattern: string; category: FinanceCategory }>
+  const userPatterns = ((patternsResult.data ?? []) as Array<{ pattern: string; category: FinanceCategory }>)
+    .reduce<Record<string, FinanceCategory>>((acc, item) => {
+      acc[item.pattern.toLowerCase()] = item.category
+      return acc
+    }, {})
   const inserts: Array<Record<string, unknown>> = []
   let duplicates = 0
 
@@ -371,7 +446,7 @@ export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSy
       continue
     }
 
-    const matchedPattern = patterns.find((patternItem) => matchesPattern(description, patternItem.pattern))
+    const category = classifyWithRules(description, userPatterns)
 
     inserts.push({
       slash_id: slashId,
@@ -379,7 +454,7 @@ export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSy
       amount,
       direction,
       date,
-      category: matchedPattern?.category ?? 'unclassified',
+      category,
       source: 'slash',
       status: item.status || 'posted',
     })
@@ -486,6 +561,54 @@ export async function classifyTransaction(transactionId: string, category: Finan
   }
 
   return { updated: 1, pattern: '' }
+}
+
+export async function autoClassifyWithSeedRules() {
+  const supabase = getRequiredSupabase()
+
+  const unclassifiedRows = await supabase
+    .from('finance_transactions')
+    .select('id, description')
+    .eq('category', CAT.UNCLASSIFIED)
+
+  if (unclassifiedRows.error) {
+    throw unclassifiedRows.error
+  }
+
+  const categoryToIds = new Map<FinanceCategory, string[]>()
+
+  for (const row of unclassifiedRows.data ?? []) {
+    const descLower = row.description.toLowerCase()
+    const matched = FINANCE_SEED_RULES.find((rule) => descLower.includes(rule.match))
+    if (!matched) {
+      continue
+    }
+
+    const category = matched.category as FinanceCategory
+    const rows = categoryToIds.get(category) ?? []
+    rows.push(row.id)
+    categoryToIds.set(category, rows)
+  }
+
+  let updated = 0
+  for (const [category, ids] of categoryToIds.entries()) {
+    if (ids.length === 0) {
+      continue
+    }
+
+    const result = await supabase
+      .from('finance_transactions')
+      .update({ category })
+      .in('id', ids)
+
+    if (result.error) {
+      throw result.error
+    }
+
+    updated += ids.length
+  }
+
+  return updated
 }
 
 export async function createSubscription(input: {
