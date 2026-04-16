@@ -129,8 +129,14 @@ export function ScriptDetailPanel({
               <input
                 className="panel-input"
                 value={titleDraft}
-                onChange={(event) => setTitleDraft(event.target.value)}
-                onBlur={() => onUpdateScript(script.id, { title: titleDraft.trim() || script.title })}
+                onChange={(event) => {
+                  console.log('[input] draft update for field "scriptTitle" — not yet saved')
+                  setTitleDraft(event.target.value)
+                }}
+                onBlur={() => {
+                  console.log('[input] committing "scriptTitle" to app state')
+                  onUpdateScript(script.id, { title: titleDraft.trim() || script.title })
+                }}
                 disabled={!canManageScripts}
               />
             </label>
@@ -140,6 +146,7 @@ export function ScriptDetailPanel({
                 className="panel-input"
                 value={brandDraft}
                 onChange={(event) => {
+                  console.log('[input] committing "scriptBrand" to app state')
                   setBrandDraft(event.target.value)
                   onUpdateScript(script.id, { brand: event.target.value })
                 }}
@@ -161,8 +168,14 @@ export function ScriptDetailPanel({
                 type="url"
                 className="panel-input"
                 value={docDraft}
-                onChange={(event) => setDocDraft(event.target.value)}
-                onBlur={() => onUpdateScript(script.id, { googleDocUrl: docDraft.trim() || script.googleDocUrl })}
+                onChange={(event) => {
+                  console.log('[input] draft update for field "googleDocUrl" — not yet saved')
+                  setDocDraft(event.target.value)
+                }}
+                onBlur={() => {
+                  console.log('[input] committing "googleDocUrl" to app state')
+                  onUpdateScript(script.id, { googleDocUrl: docDraft.trim() || script.googleDocUrl })
+                }}
                 disabled={!canManageScripts}
               />
             </label>
