@@ -89,9 +89,6 @@ interface UseAppEffectsOptions {
   localFallbackStateRef: MutableRefObject<AppState>
   remoteHydratedRef: MutableRefObject<boolean>
   remoteSaveTimerRef: MutableRefObject<number | null>
-  mainDirtyRef: MutableRefObject<boolean>
-  backlogDirtyRef: MutableRefObject<boolean>
-  transferInProgressRef: MutableRefObject<boolean>
   syncStatus: SyncStatus
   lastSyncedAt: string | null
   remoteSyncErrorShown: boolean
@@ -138,9 +135,6 @@ export function useAppEffects({
   localFallbackStateRef,
   remoteHydratedRef,
   remoteSaveTimerRef,
-  mainDirtyRef,
-  backlogDirtyRef,
-  transferInProgressRef,
   syncStatus,
   lastSyncedAt,
   remoteSyncErrorShown,
@@ -179,6 +173,7 @@ export function useAppEffects({
   const lastRemoteStateSignatureRef = useRef<string | null>(null)
   const localPersistTimerRef = useRef<number | null>(null)
   const lastFetchTimestampRef = useRef(0)
+  const localDirtyRef = useRef(false)
   const backlogLastSyncedAtRef = useRef<string | null>(null)
   const backlogLastRemoteSignatureRef = useRef<string | null>(null)
   const backlogLocalPersistTimerRef = useRef<number | null>(null)
@@ -363,11 +358,7 @@ export function useAppEffects({
       pendingRemoteBaseUpdatedAt: lastSyncedAtRef.current,
       pendingRemoteSignature: currentRemoteStateSignature,
     })
-    mainDirtyRef.current = true
-    console.log('[main save] saving', {
-      count: state.portfolios.reduce((count, portfolio) => count + portfolio.cards.length, 0),
-      timestamp: new Date().toISOString(),
-    })
+    localDirtyRef.current = true
     remoteSaveTimerRef.current = window.setTimeout(() => {
       remoteSaveTimerRef.current = null
 
@@ -384,17 +375,13 @@ export function useAppEffects({
 
             lastRemoteStateSignatureRef.current = getRemoteStateSignature(result.savedState)
             if (result.merged) {
-              if (transferInProgressRef.current) {
-                console.warn('[main sync] skipping remote replace — transfer in progress')
-              } else {
               replaceStateRef.current(result.savedState)
               showToastRef.current('Board synced with latest changes.', 'green')
-              }
             }
 
             setLastSyncedAt(result.updatedAt)
-            mainDirtyRef.current = false
-            console.log('[main save] success', { updatedAt: result.updatedAt })
+            localDirtyRef.current = false
+            console.log('[save] Remote save succeeded', { updatedAt: result.updatedAt })
             persistSyncMetadata({
               lastSyncedAt: result.updatedAt,
               pendingRemoteBaseUpdatedAt: null,
@@ -494,13 +481,8 @@ export function useAppEffects({
             return
           }
 
-          if (mainDirtyRef.current) {
-            console.warn('[main sync] skipping remote replace — dirty')
-            return
-          }
-
-          if (transferInProgressRef.current) {
-            console.warn('[main sync] skipping remote replace — transfer in progress')
+          if (localDirtyRef.current) {
+            console.warn('[sync] Skipping remote replace — local changes pending')
             return
           }
 
@@ -633,15 +615,10 @@ export function useAppEffects({
       window.clearTimeout(backlogRemoteSaveTimerRef.current)
     }
 
-    backlogDirtyRef.current = true
     persistBacklogSyncMetadata({
       lastSyncedAt: backlogLastSyncedAtRef.current,
       pendingRemoteBaseUpdatedAt: backlogLastSyncedAtRef.current,
       pendingRemoteSignature: currentSignature,
-    })
-    console.log('[backlog save] saving', {
-      count: backlogState.cards.length,
-      timestamp: new Date().toISOString(),
     })
     backlogRemoteSaveTimerRef.current = window.setTimeout(() => {
       backlogRemoteSaveTimerRef.current = null
@@ -655,8 +632,6 @@ export function useAppEffects({
 
             backlogLastRemoteSignatureRef.current = currentSignature
             backlogLastSyncedAtRef.current = updatedAt
-            backlogDirtyRef.current = false
-            console.log('[backlog save] success', { updatedAt })
             persistBacklogSyncMetadata({
               lastSyncedAt: updatedAt,
               pendingRemoteBaseUpdatedAt: null,
@@ -669,14 +644,6 @@ export function useAppEffects({
             }
 
             if (error instanceof RemoteBacklogConflictError) {
-              if (backlogDirtyRef.current || transferInProgressRef.current) {
-                console.warn(
-                  backlogDirtyRef.current
-                    ? '[backlog sync] skipping remote replace — dirty'
-                    : '[backlog sync] skipping remote replace — transfer in progress',
-                )
-                return
-              }
               setBacklogState(error.latestState)
               // Use the REMOTE-ONLY signature (not the merged state's).
               // This ensures the save effect detects a difference between
@@ -750,16 +717,6 @@ export function useAppEffects({
       })
         .then((result) => {
           if (cancelled || !result.lastSyncedAt || result.lastSyncedAt === backlogLastSyncedAtRef.current) {
-            return
-          }
-
-          if (backlogDirtyRef.current) {
-            console.warn('[backlog sync] skipping remote replace — dirty')
-            return
-          }
-
-          if (transferInProgressRef.current) {
-            console.warn('[backlog sync] skipping remote replace — transfer in progress')
             return
           }
 
