@@ -233,6 +233,7 @@ export function CardDetailPanel({
   }
 
   function handleTaskTypeChange(taskTypeId: string) {
+    console.log('[input] committing "taskTypeId" to app state')
     const nextTaskType = getTaskTypeById(settings, taskTypeId)
     onSave({
       taskTypeId,
@@ -249,11 +250,13 @@ export function CardDetailPanel({
   function handleBlockedSave() {
     if (!blockedDraft.trim()) {
       if (canClearBlocked) {
+        console.log('[input] committing "blocked" to app state')
         onSave({ blocked: null })
       }
       return
     }
 
+    console.log('[input] committing "blocked" to app state')
     onSave({
       blocked: {
         reason: blockedDraft.trim(),
@@ -282,6 +285,7 @@ export function CardDetailPanel({
       return
     }
 
+    console.log(`[input] committing "${key}" to app state`)
     onSave({ [key]: value } as Pick<Card, typeof key>)
   }
 
@@ -290,6 +294,7 @@ export function CardDetailPanel({
     if (JSON.stringify(nextLinks) === JSON.stringify(frameioLinks)) {
       return
     }
+    console.log('[input] committing "frameioLink" to app state')
     onSave({ frameioLink: nextLinks })
   }
 
@@ -319,6 +324,7 @@ export function CardDetailPanel({
     if (JSON.stringify(nextLinks) === JSON.stringify(cardLinks)) {
       return
     }
+    console.log('[input] committing "links" to app state')
     onSave({ links: nextLinks })
   }
 
@@ -383,7 +389,10 @@ export function CardDetailPanel({
       className,
       value,
       placeholder,
-      onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      onChange: (event: { target: { value: string } }) => {
+        console.log(`[input] draft update for field "${fieldKey}" — not yet saved`)
+        onChange(event.target.value)
+      },
       onBlur: () => {
         onCommit()
         setActiveTextField(null)
@@ -408,6 +417,7 @@ export function CardDetailPanel({
       setTitleDraft(card.title)
       return
     }
+    console.log('[input] committing "title" to app state')
     onSave({ title: nextTitle })
   }
 

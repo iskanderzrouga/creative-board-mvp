@@ -46,6 +46,8 @@ interface BacklogPageProps {
   onMoveToProduction: (card: BacklogCard) =>
     | { ok: true; cardId: string; portfolioId: string }
     | { ok: false; message: string }
+  onTransferSourceDeleteConfirmed?: (payload: { path: 'backlog->production' | 'backlog->dev' }) => void
+  onTransferAborted?: (payload: { path: 'backlog->production' | 'backlog->dev' }) => void
 }
 
 interface BacklogQuickCreateForm {
@@ -333,6 +335,8 @@ export function BacklogPage({
   headerUtilityContent,
   onChange,
   onMoveToProduction,
+  onTransferSourceDeleteConfirmed,
+  onTransferAborted,
 }: BacklogPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -490,6 +494,13 @@ export function BacklogPage({
         productionResult,
       })
       if (!productionResult.ok) {
+        console.warn('[transfer] aborted — destination not confirmed, source preserved', {
+          path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+          backlogCardId: currentCard.id,
+        })
+        onTransferAborted?.({
+          path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+        })
         onChange((current) => moveBacklogCard(current, cardId, 'prioritized'))
         showToast(
           `${productionResult.message} The backlog card was returned to Prioritized so you can fix it and retry.`,
@@ -503,7 +514,18 @@ export function BacklogPage({
         productionCardId: productionResult.cardId,
         portfolioId: productionResult.portfolioId,
       })
+      console.log('[transfer] destination confirmed in state', {
+        path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+        destinationCardId: productionResult.cardId,
+      })
+      console.log('[transfer] deleting source card', {
+        path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+        sourceCardId: currentCard.id,
+      })
       onChange((current) => deleteBacklogCard(current, cardId))
+      onTransferSourceDeleteConfirmed?.({
+        path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+      })
       setSelectedCardId(null)
       showToast(
         currentCard.taskType === 'dev-cro'
