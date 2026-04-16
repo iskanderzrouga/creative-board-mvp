@@ -252,15 +252,27 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
   const subscriptionRows = useMemo(() => {
     const detectedByDescription = new Map<string, FinanceTransaction[]>()
+    const subscriptionTransactions = transactions.filter(
+      (transaction) => transaction.category === 'subscription' && transaction.direction === 'out',
+    )
 
-    transactions
-      .filter((transaction) => transaction.category === 'subscription' && transaction.direction === 'out')
-      .forEach((transaction) => {
+    subscriptionTransactions.forEach((transaction) => {
         const key = transaction.description.trim().toLowerCase()
         const rows = detectedByDescription.get(key) ?? []
         rows.push(transaction)
         detectedByDescription.set(key, rows)
       })
+
+    const groupedDebug = Array.from(detectedByDescription.entries()).map(([description, rows]) => ({
+      description,
+      count: rows.length,
+      dates: rows.map((row) => row.date),
+    }))
+    console.log('[subs debug]', {
+      totalTx: transactions.length,
+      subTx: transactions.filter((transaction) => transaction.category === 'subscription').length,
+      grouped: groupedDebug,
+    })
 
     const detectedRows = Array.from(detectedByDescription.entries()).map(([key, groupedTransactions]) => {
       const sorted = [...groupedTransactions].sort((a, b) => (a.date > b.date ? -1 : 1))
@@ -433,7 +445,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
             <div style={{ display: 'grid', gap: 8 }}>
               {subscriptionRows.length === 0 ? (
                 <div style={{ ...cardBase, borderRadius: 7, padding: '20px 14px', color: '#5E6E85', textAlign: 'center' }}>
-                  No subscriptions detected yet. Add one manually or classify transactions as subscription.
+                  <div style={{ marginBottom: 10 }}>No subscriptions yet. Go to Triage and classify recurring charges as Subscription.</div>
+                  <button type="button" style={tabStyle(false)} onClick={() => setTab('triage')}>Open Triage</button>
                 </div>
               ) : subscriptionRows.map((subscription) => (
                 <div key={subscription.id} style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 7, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
