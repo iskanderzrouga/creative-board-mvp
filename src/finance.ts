@@ -14,6 +14,23 @@ export const FINANCE_CATEGORIES = [
 export type FinanceCategory = (typeof FINANCE_CATEGORIES)[number]
 export type FinanceDirection = 'in' | 'out'
 export type SubscriptionFrequency = 'weekly' | 'monthly' | 'yearly'
+export const SUBSCRIPTION_BRANDS = [
+  'Unassigned',
+  'Blue Brands',
+  'BrandLab',
+  'Pluxy',
+  'TrueClean',
+  'Thaura',
+  'ViVi',
+  'Zura',
+] as const
+export const SUBSCRIPTION_STATUSES = [
+  { value: 'active', label: 'Active', color: '#10B981' },
+  { value: 'inactive', label: 'Inactive', color: '#F59E0B' },
+  { value: 'cancelled', label: 'Cancelled', color: '#EF4444' },
+] as const
+export type SubscriptionBrand = (typeof SUBSCRIPTION_BRANDS)[number]
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number]['value']
 
 export interface FinanceTransaction {
   id: string
@@ -35,6 +52,17 @@ export interface FinanceSubscription {
   frequency: SubscriptionFrequency
   platform: string
   active: boolean
+  brand: SubscriptionBrand
+  status: SubscriptionStatus
+  created_at: string
+}
+
+export interface FinanceSubscriptionMeta {
+  id: string
+  description_key: string
+  brand: SubscriptionBrand
+  status: SubscriptionStatus
+  updated_at: string
   created_at: string
 }
 
@@ -89,6 +117,7 @@ export interface FinanceDataBundle {
   transactions: FinanceTransaction[]
   subscriptions: FinanceSubscription[]
   patterns: FinancePattern[]
+  subscriptionMeta: Record<string, Pick<FinanceSubscriptionMeta, 'brand' | 'status'>>
 }
 
 function getRequiredSupabase() {
@@ -183,13 +212,14 @@ export function getSubscriptionMonthlyBurn(subscriptions: FinanceSubscription[])
 export async function loadFinanceData(): Promise<FinanceDataBundle> {
   const supabase = getSupabaseClient()
   if (!supabase) {
-    return { transactions: [], subscriptions: [], patterns: [] }
+    return { transactions: [], subscriptions: [], patterns: [], subscriptionMeta: {} }
   }
 
-  const [transactionsResult, subscriptionsResult, patternsResult] = await Promise.all([
+  const [transactionsResult, subscriptionsResult, patternsResult, subscriptionMeta] = await Promise.all([
     supabase.from('finance_transactions').select('*').order('date', { ascending: false }),
     supabase.from('finance_subscriptions').select('*').order('created_at', { ascending: false }),
     supabase.from('finance_patterns').select('*').order('created_at', { ascending: false }),
+    loadSubscriptionMeta(),
   ])
 
   if (transactionsResult.error) {
@@ -208,6 +238,56 @@ export async function loadFinanceData(): Promise<FinanceDataBundle> {
     transactions: (transactionsResult.data ?? []) as FinanceTransaction[],
     subscriptions: (subscriptionsResult.data ?? []) as FinanceSubscription[],
     patterns: (patternsResult.data ?? []) as FinancePattern[],
+    subscriptionMeta,
+  }
+}
+
+function normalizeDescriptionKey(descriptionKey: string) {
+  return descriptionKey.trim().toLowerCase()
+}
+
+export async function loadSubscriptionMeta() {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return {} as Record<string, Pick<FinanceSubscriptionMeta, 'brand' | 'status'>>
+  }
+
+  const result = await supabase
+    .from('finance_subscription_meta')
+    .select('description_key, brand, status')
+
+  if (result.error) {
+    throw result.error
+  }
+
+  return (result.data ?? []).reduce<Record<string, Pick<FinanceSubscriptionMeta, 'brand' | 'status'>>>((acc, row) => {
+    const key = normalizeDescriptionKey(row.description_key)
+    acc[key] = {
+      brand: (row.brand ?? 'Unassigned') as SubscriptionBrand,
+      status: (row.status ?? 'active') as SubscriptionStatus,
+    }
+    return acc
+  }, {})
+}
+
+export async function upsertSubscriptionMeta(
+  descriptionKey: string,
+  updates: { brand?: SubscriptionBrand; status?: SubscriptionStatus },
+) {
+  const supabase = getRequiredSupabase()
+  const payload = {
+    description_key: normalizeDescriptionKey(descriptionKey),
+    ...(updates.brand ? { brand: updates.brand } : {}),
+    ...(updates.status ? { status: updates.status } : {}),
+    updated_at: new Date().toISOString(),
+  }
+
+  const { error } = await supabase
+    .from('finance_subscription_meta')
+    .upsert(payload, { onConflict: 'description_key' })
+
+  if (error) {
+    throw error
   }
 }
 
@@ -413,6 +493,8 @@ export async function createSubscription(input: {
   amount: number
   frequency: SubscriptionFrequency
   platform: string
+  brand: SubscriptionBrand
+  status: SubscriptionStatus
 }) {
   const supabase = getRequiredSupabase()
 
@@ -421,7 +503,9 @@ export async function createSubscription(input: {
     amount: input.amount,
     frequency: input.frequency,
     platform: input.platform.trim(),
-    active: true,
+    active: input.status !== 'cancelled',
+    brand: input.brand,
+    status: input.status,
   })
 
   if (error) {
@@ -431,7 +515,7 @@ export async function createSubscription(input: {
 
 export async function updateSubscription(
   id: string,
-  updates: Partial<Pick<FinanceSubscription, 'name' | 'amount' | 'frequency' | 'platform' | 'active'>>,
+  updates: Partial<Pick<FinanceSubscription, 'name' | 'amount' | 'frequency' | 'platform' | 'active' | 'brand' | 'status'>>,
 ) {
   const supabase = getRequiredSupabase()
 
