@@ -2906,27 +2906,11 @@ export function isScriptReadyToLaunch(script: ScriptWorkshopItem) {
 }
 
 export function loadAppState() {
-  if (typeof window === 'undefined') {
-    return createSeedState()
-  }
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      return createSeedState()
-    }
-    return coerceAppState(JSON.parse(raw))
-  } catch {
-    return createSeedState()
-  }
+  return createSeedState()
 }
 
 export function persistAppState(state: AppState) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  void state
 }
 
 export function loadSyncMetadata(): SyncMetadata {
@@ -2958,7 +2942,11 @@ export function persistSyncMetadata(metadata: SyncMetadata) {
     return
   }
 
-  window.localStorage.setItem(SYNC_METADATA_KEY, JSON.stringify(metadata))
+  try {
+    window.localStorage.setItem(SYNC_METADATA_KEY, JSON.stringify(metadata))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', SYNC_METADATA_KEY)
+  }
 }
 
 export function createNotification(

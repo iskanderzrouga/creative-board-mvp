@@ -204,24 +204,11 @@ export function createBacklogSeedState(): BacklogState {
 }
 
 export function loadBacklogState() {
-  if (!hasBrowser()) {
-    return createBacklogSeedState()
-  }
-
-  try {
-    const raw = window.localStorage.getItem(BACKLOG_STORAGE_KEY)
-    return raw ? coerceBacklogState(JSON.parse(raw)) : createBacklogSeedState()
-  } catch {
-    return createBacklogSeedState()
-  }
+  return createBacklogSeedState()
 }
 
 export function persistBacklogState(state: BacklogState) {
-  if (!hasBrowser()) {
-    return
-  }
-
-  window.localStorage.setItem(BACKLOG_STORAGE_KEY, JSON.stringify(state))
+  void state
 }
 
 export function addBacklogCard(state: BacklogState, input: AddBacklogCardInput): BacklogState {
@@ -359,5 +346,9 @@ export function persistBacklogSyncMetadata(metadata: BacklogSyncMetadata) {
     return
   }
 
-  window.localStorage.setItem(BACKLOG_SYNC_METADATA_KEY, JSON.stringify(metadata))
+  try {
+    window.localStorage.setItem(BACKLOG_SYNC_METADATA_KEY, JSON.stringify(metadata))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', BACKLOG_SYNC_METADATA_KEY)
+  }
 }

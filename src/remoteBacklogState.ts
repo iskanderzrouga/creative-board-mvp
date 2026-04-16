@@ -117,7 +117,11 @@ function setStoredE2ERemoteBacklog(state: BacklogState, updatedAt: string) {
   }
 
   const payload: StoredRemoteBacklog = { state, updatedAt }
-  window.localStorage.setItem(E2E_BACKLOG_KEY, JSON.stringify(payload))
+  try {
+    window.localStorage.setItem(E2E_BACKLOG_KEY, JSON.stringify(payload))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', E2E_BACKLOG_KEY)
+  }
 }
 
 async function getRemoteBacklogRow() {

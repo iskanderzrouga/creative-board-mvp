@@ -241,7 +241,11 @@ function setStoredE2EAccessEntries(entries: WorkspaceAccessEntry[]) {
     return
   }
 
-  window.localStorage.setItem(E2E_ACCESS_ENTRIES_KEY, JSON.stringify(entries))
+  try {
+    window.localStorage.setItem(E2E_ACCESS_ENTRIES_KEY, JSON.stringify(entries))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', E2E_ACCESS_ENTRIES_KEY)
+  }
 }
 
 function getE2EWorkspaceAccessEntries() {
@@ -441,7 +445,11 @@ export async function signInWithMagicLink(email: string) {
   }
 
   if (isE2ESupabaseMode()) {
-    window.localStorage.setItem(E2E_AUTH_EMAIL_KEY, normalizedEmail)
+    try {
+      window.localStorage.setItem(E2E_AUTH_EMAIL_KEY, normalizedEmail)
+    } catch {
+      console.warn('[storage] Write failed, continuing:', E2E_AUTH_EMAIL_KEY)
+    }
     return { deliveredInstantly: true }
   }
 
@@ -548,7 +556,11 @@ export async function signInWithPassword(email: string, password: string) {
   }
 
   if (isE2ESupabaseMode()) {
-    window.localStorage.setItem(E2E_AUTH_EMAIL_KEY, normalizedEmail)
+    try {
+      window.localStorage.setItem(E2E_AUTH_EMAIL_KEY, normalizedEmail)
+    } catch {
+      console.warn('[storage] Write failed, continuing:', E2E_AUTH_EMAIL_KEY)
+    }
     return
   }
 
