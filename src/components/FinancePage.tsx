@@ -3,11 +3,8 @@ import {
   classifyTransaction,
   createSubscription,
   deleteFinanceTransaction,
-  deleteSubscription,
-  getSubscriptionMonthlyBurn,
   loadFinanceData,
   syncFinanceFromSlash,
-  updateSubscription,
   type FinanceAccount,
   type FinanceCategory,
   type FinancePattern,
@@ -72,6 +69,53 @@ function formatMoney(value: number) {
     currency: 'USD',
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+function formatShortDate(value: string) {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+type InferredSubscriptionFrequency = SubscriptionFrequency | 'biweekly' | '—'
+
+function projectToMonthly(amount: number, frequency: InferredSubscriptionFrequency) {
+  if (frequency === 'weekly') {
+    return amount * 52 / 12
+  }
+  if (frequency === 'biweekly') {
+    return amount * 26 / 12
+  }
+  if (frequency === 'yearly') {
+    return amount / 12
+  }
+  return amount
+}
+
+function inferFrequency(mostRecentDate: string, previousDate?: string): InferredSubscriptionFrequency {
+  if (!previousDate) {
+    return '—'
+  }
+
+  const newest = new Date(`${mostRecentDate}T00:00:00`)
+  const prior = new Date(`${previousDate}T00:00:00`)
+  const gapDays = Math.abs(newest.getTime() - prior.getTime()) / (1000 * 60 * 60 * 24)
+
+  if (gapDays < 10) {
+    return 'weekly'
+  }
+  if (gapDays <= 20) {
+    return 'biweekly'
+  }
+  if (gapDays <= 45) {
+    return 'monthly'
+  }
+  return 'yearly'
 }
 
 function tabStyle(active: boolean) {
@@ -182,7 +226,6 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const subsOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'subscription').reduce((sum, transaction) => sum + transaction.amount, 0)
   const adsOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'ad_spend').reduce((sum, transaction) => sum + transaction.amount, 0)
   const activeSubscriptions = subscriptions.filter((subscription) => subscription.active)
-  const subBurn = getSubscriptionMonthlyBurn(subscriptions)
 
   const today = new Date().toISOString().slice(0, 10)
   const todaysTransactions = transactions.filter((transaction) => transaction.date === today)
@@ -206,6 +249,68 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
     }
     return transactions.filter((transaction) => transaction.description.toLowerCase().includes(normalized))
   }, [searchQuery, transactions])
+
+  const subscriptionRows = useMemo(() => {
+    const detectedByDescription = new Map<string, FinanceTransaction[]>()
+    const subscriptionTransactions = transactions.filter(
+      (transaction) => transaction.category === 'subscription' && transaction.direction === 'out',
+    )
+
+    subscriptionTransactions.forEach((transaction) => {
+        const key = transaction.description.trim().toLowerCase()
+        const rows = detectedByDescription.get(key) ?? []
+        rows.push(transaction)
+        detectedByDescription.set(key, rows)
+      })
+
+    const groupedDebug = Array.from(detectedByDescription.entries()).map(([description, rows]) => ({
+      description,
+      count: rows.length,
+      dates: rows.map((row) => row.date),
+    }))
+    console.log('[subs debug]', {
+      totalTx: transactions.length,
+      subTx: transactions.filter((transaction) => transaction.category === 'subscription').length,
+      grouped: groupedDebug,
+    })
+
+    const detectedRows = Array.from(detectedByDescription.entries()).map(([key, groupedTransactions]) => {
+      const sorted = [...groupedTransactions].sort((a, b) => (a.date > b.date ? -1 : 1))
+      const mostRecent = sorted[0]
+      const previous = sorted[1]
+      const frequency = inferFrequency(mostRecent.date, previous?.date)
+      const totalThisMonth = sorted
+        .filter((transaction) => transaction.date.startsWith(monthPrefix))
+        .reduce((sum, transaction) => sum + transaction.amount, 0)
+
+      return {
+        id: `auto-${key}`,
+        name: mostRecent.description,
+        amount: mostRecent.amount,
+        frequency,
+        lastChargeDate: mostRecent.date,
+        totalThisMonth,
+        isManual: false,
+      }
+    })
+
+    const manualRows = activeSubscriptions.map((subscription) => ({
+      id: `manual-${subscription.id}`,
+      name: subscription.name,
+      amount: subscription.amount,
+      frequency: subscription.frequency as InferredSubscriptionFrequency,
+      lastChargeDate: null,
+      totalThisMonth: 0,
+      isManual: true,
+    }))
+
+    return [...detectedRows, ...manualRows].sort((a, b) => a.name.localeCompare(b.name))
+  }, [transactions, activeSubscriptions, monthPrefix])
+
+  const subscriptionsMonthlyBurn = useMemo(
+    () => subscriptionRows.reduce((sum, row) => sum + projectToMonthly(row.amount, row.frequency), 0),
+    [subscriptionRows],
+  )
 
   const syncNow = async () => {
     setSyncing(true)
@@ -270,7 +375,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
               <StatCard label="OpEx" value={formatMoney(opEx)} valueColor="#8B5CF6" subText={`Sal ${formatMoney(salaryOpEx)} · Subs ${formatMoney(subsOpEx)} · Ads ${formatMoney(adsOpEx)}`} />
-              <StatCard label="Sub Burn /mo" value={formatMoney(subBurn)} valueColor="#8B5CF6" subText={`${activeSubscriptions.length} active`} />
+              <StatCard label="Sub Burn /mo" value={formatMoney(subscriptionsMonthlyBurn)} valueColor="#8B5CF6" subText={`${subscriptionRows.length} tracked`} />
             </div>
 
             {accounts.length > 0 ? (
@@ -329,36 +434,51 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
         {tab === 'subscriptions' ? (
           <section style={{ display: 'grid', gap: 12 }}>
-            <div style={{ ...cardBase, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ ...cardBase, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={labelMuted}>Monthly Burn</div>
-                <div style={{ ...moneyStyle, color: '#8B5CF6' }}>{formatMoney(subBurn)}</div>
+                <div style={{ ...labelMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Monthly Burn</div>
+                <div style={{ ...moneyStyle, color: '#8B5CF6', fontSize: 30, fontWeight: 700 }}>{formatMoney(subscriptionsMonthlyBurn)}</div>
               </div>
               <button type="button" style={tabStyle(true)} onClick={() => setSubscriptionModalOpen(true)}>+ Subscription</button>
             </div>
-            <div>
-              {subscriptions.map((subscription) => (
-                <div key={subscription.id} style={{ ...cardBase, padding: 10, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div>{subscription.name}</div>
-                    <div style={labelMuted}>{subscription.platform} · {subscription.frequency}</div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              {subscriptionRows.length === 0 ? (
+                <div style={{ ...cardBase, borderRadius: 7, padding: '20px 14px', color: '#5E6E85', textAlign: 'center' }}>
+                  <div style={{ marginBottom: 10 }}>No subscriptions yet. Go to Triage and classify recurring charges as Subscription.</div>
+                  <button type="button" style={tabStyle(false)} onClick={() => setTab('triage')}>Open Triage</button>
+                </div>
+              ) : subscriptionRows.map((subscription) => (
+                <div key={subscription.id} style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 7, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: '#E2E8F2', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subscription.name}</div>
+                    <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#5E6E85', fontSize: 12 }}>{subscription.frequency}</span>
+                      {subscription.isManual ? (
+                        <span style={{ color: '#5E6E85', border: '1px solid #1C2130', borderRadius: 999, fontSize: 10, padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>manual</span>
+                      ) : null}
+                      <span style={{ color: '#5E6E85', fontSize: 12 }}>This month: {formatMoney(subscription.totalThisMonth)}</span>
+                    </div>
                   </div>
-                  <div style={{ ...moneyStyle }}>{formatMoney(subscription.amount)}</div>
-                  <button type="button" style={tabStyle(false)} onClick={async () => { await updateSubscription(subscription.id, { active: !subscription.active }); await reloadData() }}>{subscription.active ? 'Active' : 'Off'}</button>
-                  <button type="button" style={tabStyle(false)} onClick={async () => { await deleteSubscription(subscription.id); await reloadData() }}>Delete</button>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ ...moneyStyle, color: '#8B5CF6', fontWeight: 700 }}>{formatMoney(subscription.amount)}</div>
+                    <div style={{ color: '#5E6E85', fontSize: 12, marginTop: 4 }}>
+                      {subscription.lastChargeDate ? `Last: ${formatShortDate(subscription.lastChargeDate)}` : 'Last: —'}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-            <div style={{ ...cardBase, padding: 12 }}>
-              <h3 style={{ margin: '0 0 8px 0', color: '#E2E8F2' }}>Learned Patterns</h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <details style={{ ...cardBase, padding: 12 }}>
+              <summary style={{ color: '#5E6E85', cursor: 'pointer', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Learned Patterns (debug)</summary>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                 {patterns.map((pattern) => (
-                  <span key={pattern.id} style={{ border: `1px solid ${CATEGORY_COLORS[pattern.category]}`, color: CATEGORY_COLORS[pattern.category], background: `${CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 12 }}>
+                  <span key={pattern.id} style={{ border: `1px solid ${CATEGORY_COLORS[pattern.category]}`, color: CATEGORY_COLORS[pattern.category], background: `${CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 11 }}>
                     {pattern.pattern}
                   </span>
                 ))}
               </div>
-            </div>
+            </details>
           </section>
         ) : null}
 
