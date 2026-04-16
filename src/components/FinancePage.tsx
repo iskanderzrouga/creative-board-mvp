@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  SUBSCRIPTION_BRANDS,
+  SUBSCRIPTION_STATUSES,
   classifyTransaction,
   createSubscription,
   deleteFinanceTransaction,
   loadFinanceData,
   syncFinanceFromSlash,
+  updateSubscription,
+  upsertSubscriptionMeta,
   type FinanceAccount,
   type FinanceCategory,
   type FinancePattern,
   type FinanceSubscription,
   type FinanceTransaction,
+  type SubscriptionBrand,
   type SubscriptionFrequency,
+  type SubscriptionStatus,
 } from '../finance'
 
 const CATEGORY_LABELS: Record<FinanceCategory, string> = {
@@ -61,6 +67,15 @@ const inputStyle = {
   color: '#E2E8F2',
   borderRadius: 6,
   padding: '8px 10px',
+}
+const subscriptionSelectStyle = {
+  background: '#0B0D11',
+  border: '1px solid #1C2130',
+  color: '#E2E8F2',
+  borderRadius: 5,
+  padding: '5px 9px',
+  fontSize: 11,
+  cursor: 'pointer',
 }
 
 function formatMoney(value: number) {
@@ -186,6 +201,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([])
   const [subscriptions, setSubscriptions] = useState<FinanceSubscription[]>([])
   const [patterns, setPatterns] = useState<FinancePattern[]>([])
+  const [subscriptionMeta, setSubscriptionMeta] = useState<Record<string, { brand: SubscriptionBrand; status: SubscriptionStatus }>>({})
   const [accounts, setAccounts] = useState<FinanceAccount[]>([])
   const [syncing, setSyncing] = useState(false)
   const [syncSummary, setSyncSummary] = useState('Ready to sync')
@@ -198,6 +214,10 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [subAmount, setSubAmount] = useState('')
   const [subFrequency, setSubFrequency] = useState<SubscriptionFrequency>('monthly')
   const [subPlatform, setSubPlatform] = useState('')
+  const [subBrand, setSubBrand] = useState<SubscriptionBrand>('Unassigned')
+  const [subStatus, setSubStatus] = useState<SubscriptionStatus>('active')
+  const [subscriptionBrandFilter, setSubscriptionBrandFilter] = useState<'all' | SubscriptionBrand>('all')
+  const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState<'all' | SubscriptionStatus>('active')
 
   const reloadData = async () => {
     try {
@@ -205,6 +225,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
       setTransactions(data.transactions)
       setSubscriptions(data.subscriptions)
       setPatterns(data.patterns)
+      setSubscriptionMeta(data.subscriptionMeta)
       setErrorMessage(null)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not load finance data')
@@ -225,8 +246,6 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const salaryOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'salary').reduce((sum, transaction) => sum + transaction.amount, 0)
   const subsOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'subscription').reduce((sum, transaction) => sum + transaction.amount, 0)
   const adsOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'ad_spend').reduce((sum, transaction) => sum + transaction.amount, 0)
-  const activeSubscriptions = subscriptions.filter((subscription) => subscription.active)
-
   const today = new Date().toISOString().slice(0, 10)
   const todaysTransactions = transactions.filter((transaction) => transaction.date === today)
   const selectedTransactions = transactions.filter((transaction) => transaction.date === selectedDate)
@@ -285,31 +304,54 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
       return {
         id: `auto-${key}`,
+        descriptionKey: key,
+        subscriptionId: null,
         name: mostRecent.description,
         amount: mostRecent.amount,
         frequency,
         lastChargeDate: mostRecent.date,
         totalThisMonth,
         isManual: false,
+        brand: subscriptionMeta[key]?.brand ?? 'Unassigned',
+        status: subscriptionMeta[key]?.status ?? 'active',
       }
     })
 
-    const manualRows = activeSubscriptions.map((subscription) => ({
+    const manualRows = subscriptions.map((subscription) => ({
       id: `manual-${subscription.id}`,
+      descriptionKey: null,
+      subscriptionId: subscription.id,
       name: subscription.name,
       amount: subscription.amount,
       frequency: subscription.frequency as InferredSubscriptionFrequency,
       lastChargeDate: null,
       totalThisMonth: 0,
       isManual: true,
+      brand: subscription.brand ?? 'Unassigned',
+      status: subscription.status ?? (subscription.active ? 'active' : 'inactive'),
     }))
 
     return [...detectedRows, ...manualRows].sort((a, b) => a.name.localeCompare(b.name))
-  }, [transactions, activeSubscriptions, monthPrefix])
+  }, [transactions, subscriptions, monthPrefix, subscriptionMeta])
+
+  const filteredSubscriptionRows = useMemo(
+    () => subscriptionRows.filter((row) => {
+      if (subscriptionBrandFilter !== 'all' && row.brand !== subscriptionBrandFilter) {
+        return false
+      }
+      if (subscriptionStatusFilter !== 'all' && row.status !== subscriptionStatusFilter) {
+        return false
+      }
+      return true
+    }),
+    [subscriptionRows, subscriptionBrandFilter, subscriptionStatusFilter],
+  )
 
   const subscriptionsMonthlyBurn = useMemo(
-    () => subscriptionRows.reduce((sum, row) => sum + projectToMonthly(row.amount, row.frequency), 0),
-    [subscriptionRows],
+    () => filteredSubscriptionRows
+      .filter((row) => row.status === 'active')
+      .reduce((sum, row) => sum + projectToMonthly(row.amount, row.frequency), 0),
+    [filteredSubscriptionRows],
   )
 
   const syncNow = async () => {
@@ -439,17 +481,27 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                 <div style={{ ...labelMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Monthly Burn</div>
                 <div style={{ ...moneyStyle, color: '#8B5CF6', fontSize: 30, fontWeight: 700 }}>{formatMoney(subscriptionsMonthlyBurn)}</div>
               </div>
-              <button type="button" style={tabStyle(true)} onClick={() => setSubscriptionModalOpen(true)}>+ Subscription</button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <select style={subscriptionSelectStyle} value={subscriptionBrandFilter} onChange={(event) => setSubscriptionBrandFilter(event.target.value as 'all' | SubscriptionBrand)}>
+                  <option value="all">All brands</option>
+                  {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                </select>
+                <select style={subscriptionSelectStyle} value={subscriptionStatusFilter} onChange={(event) => setSubscriptionStatusFilter(event.target.value as 'all' | SubscriptionStatus)}>
+                  <option value="all">All statuses</option>
+                  {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+                <button type="button" style={tabStyle(true)} onClick={() => setSubscriptionModalOpen(true)}>+ Subscription</button>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gap: 8 }}>
-              {subscriptionRows.length === 0 ? (
+              {filteredSubscriptionRows.length === 0 ? (
                 <div style={{ ...cardBase, borderRadius: 7, padding: '20px 14px', color: '#5E6E85', textAlign: 'center' }}>
                   <div style={{ marginBottom: 10 }}>No subscriptions yet. Go to Triage and classify recurring charges as Subscription.</div>
                   <button type="button" style={tabStyle(false)} onClick={() => setTab('triage')}>Open Triage</button>
                 </div>
-              ) : subscriptionRows.map((subscription) => (
-                <div key={subscription.id} style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 7, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+              ) : filteredSubscriptionRows.map((subscription) => (
+                <div key={subscription.id} style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 7, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', opacity: subscription.status === 'cancelled' ? 0.5 : 1 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ color: '#E2E8F2', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subscription.name}</div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -460,8 +512,64 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                       <span style={{ color: '#5E6E85', fontSize: 12 }}>This month: {formatMoney(subscription.totalThisMonth)}</span>
                     </div>
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <select
+                      style={subscriptionSelectStyle}
+                      value={subscription.brand}
+                      onChange={async (event) => {
+                        const brand = event.target.value as SubscriptionBrand
+                        if (subscription.isManual && subscription.subscriptionId) {
+                          setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? { ...item, brand } : item))
+                          await updateSubscription(subscription.subscriptionId, { brand })
+                          return
+                        }
+                        if (subscription.descriptionKey) {
+                          setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand, status: subscription.status } }))
+                          await upsertSubscriptionMeta(subscription.descriptionKey, { brand })
+                        }
+                      }}
+                    >
+                      {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                    </select>
+                    <div style={{ position: 'relative' }}>
+                      <span
+                        style={{
+                          position: 'absolute',
+                          left: 8,
+                          top: '50%',
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          transform: 'translateY(-50%)',
+                          background: SUBSCRIPTION_STATUSES.find((status) => status.value === subscription.status)?.color ?? '#10B981',
+                        }}
+                      />
+                      <select
+                        style={{ ...subscriptionSelectStyle, paddingLeft: 20 }}
+                        value={subscription.status}
+                        onChange={async (event) => {
+                          const status = event.target.value as SubscriptionStatus
+                          if (subscription.isManual && subscription.subscriptionId) {
+                            setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? {
+                              ...item,
+                              status,
+                              active: status === 'active',
+                            } : item))
+                            await updateSubscription(subscription.subscriptionId, { status, active: status === 'active' })
+                            return
+                          }
+                          if (subscription.descriptionKey) {
+                            setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand: subscription.brand, status } }))
+                            await upsertSubscriptionMeta(subscription.descriptionKey, { status })
+                          }
+                        }}
+                      >
+                        {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ ...moneyStyle, color: '#8B5CF6', fontWeight: 700 }}>{formatMoney(subscription.amount)}</div>
+                    <div style={{ ...moneyStyle, color: '#8B5CF6', fontWeight: 700, textDecoration: subscription.status === 'cancelled' ? 'line-through' : 'none' }}>{formatMoney(subscription.amount)}</div>
                     <div style={{ color: '#5E6E85', fontSize: 12, marginTop: 4 }}>
                       {subscription.lastChargeDate ? `Last: ${formatShortDate(subscription.lastChargeDate)}` : 'Last: —'}
                     </div>
@@ -538,6 +646,12 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                   <option value="monthly">monthly</option>
                   <option value="yearly">yearly</option>
                 </select>
+                <select style={inputStyle} value={subBrand} onChange={(event) => setSubBrand(event.target.value as SubscriptionBrand)}>
+                  {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                </select>
+                <select style={inputStyle} value={subStatus} onChange={(event) => setSubStatus(event.target.value as SubscriptionStatus)}>
+                  {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
                 <input style={inputStyle} placeholder="Platform / Category" value={subPlatform} onChange={(event) => setSubPlatform(event.target.value)} />
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -546,10 +660,12 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                   if (!subName.trim() || !Number.isFinite(amount) || amount <= 0) {
                     return
                   }
-                  await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform })
+                  await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform, brand: subBrand, status: subStatus })
                   setSubName('')
                   setSubAmount('')
                   setSubFrequency('monthly')
+                  setSubBrand('Unassigned')
+                  setSubStatus('active')
                   setSubPlatform('')
                   setSubscriptionModalOpen(false)
                   await reloadData()
