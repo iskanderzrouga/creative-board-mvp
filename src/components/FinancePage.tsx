@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  CAT,
+  FINANCE_CATEGORY_COLORS,
+  FINANCE_CATEGORY_LABELS,
   SUBSCRIPTION_BRANDS,
   SUBSCRIPTION_STATUSES,
+  autoClassifyWithSeedRules,
   classifyTransaction,
   createSubscription,
   deleteFinanceTransaction,
@@ -19,29 +23,21 @@ import {
   type SubscriptionStatus,
 } from '../finance'
 
-const CATEGORY_LABELS: Record<FinanceCategory, string> = {
-  unclassified: 'Needs Review',
-  subscription: 'Subscription',
-  salary: 'Salary',
-  one_time: 'One-Time',
-  revenue: 'Revenue',
-  refund: 'Refund',
-  ad_spend: 'Ad Spend',
-  cogs: 'COGS',
-}
-
-const CATEGORY_COLORS: Record<FinanceCategory, string> = {
-  unclassified: '#F59E0B',
-  subscription: '#8B5CF6',
-  salary: '#3B82F6',
-  one_time: '#EF4444',
-  revenue: '#10B981',
-  refund: '#06B6D4',
-  ad_spend: '#F97316',
-  cogs: '#EC4899',
-}
-
 type FinanceTab = 'dashboard' | 'ledger' | 'subscriptions' | 'triage' | 'search'
+
+const TRIAGE_OPTIONS: Array<{ c: FinanceCategory; i: string; l: string }> = [
+  { c: CAT.SUBSCRIPTION, i: '🔄', l: 'Subscription (recurring tool/service)' },
+  { c: CAT.SALARY, i: '👤', l: 'Salary / Payroll' },
+  { c: CAT.AD_SPEND, i: '📢', l: 'Ad Spend (Meta, Google, etc.)' },
+  { c: CAT.ONE_TIME, i: '📌', l: 'One-Time Expense' },
+  { c: CAT.COGS, i: '📦', l: 'COGS / Product Cost' },
+  { c: CAT.REVENUE, i: '💰', l: 'Revenue' },
+  { c: CAT.REFUND, i: '↩️', l: 'Refund' },
+  { c: CAT.TAXES, i: '🏛️', l: 'Taxes (state, federal, sales tax)' },
+  { c: CAT.AFFILIATE, i: '🤝', l: 'Affiliate payout' },
+  { c: CAT.HR, i: '👔', l: 'HR (recruiting, benefits)' },
+  { c: CAT.INTERNAL_TRANSFER, i: '🔄', l: 'Internal Transfer (between accounts)' },
+]
 
 interface FinancePageProps {
   headerUtilityContent?: ReactNode
@@ -168,15 +164,15 @@ function TransactionRow({
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
-          background: `${CATEGORY_COLORS[transaction.category]}26`,
-          color: CATEGORY_COLORS[transaction.category],
-          border: `1px solid ${CATEGORY_COLORS[transaction.category]}`,
+          background: `${FINANCE_CATEGORY_COLORS[transaction.category]}26`,
+          color: FINANCE_CATEGORY_COLORS[transaction.category],
+          border: `1px solid ${FINANCE_CATEGORY_COLORS[transaction.category]}`,
           borderRadius: 999,
           padding: '3px 8px',
           fontSize: 12,
           whiteSpace: 'nowrap',
         }}>
-          {CATEGORY_LABELS[transaction.category]}
+          {FINANCE_CATEGORY_LABELS[transaction.category]}
         </span>
         <span style={{ ...moneyStyle, color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{formatMoney(transaction.amount)}</span>
         {onClassify ? <button type="button" style={tabStyle(false)} onClick={() => onClassify(transaction.id)}>Classify</button> : null}
@@ -186,7 +182,7 @@ function TransactionRow({
   )
 }
 
-function StatCard({ label, value, valueColor, subText }: { label: string; value: string; valueColor: string; subText?: string }) {
+function StatCard({ label, value, valueColor, subText }: { label: string; value: string; valueColor: string; subText?: ReactNode }) {
   return (
     <div style={{ ...cardBase, flex: '1 1 160px', minWidth: '0', padding: '16px 18px' }}>
       <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#5E6E85', marginBottom: '6px' }}>{label}</div>
@@ -218,6 +214,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [subStatus, setSubStatus] = useState<SubscriptionStatus>('active')
   const [subscriptionBrandFilter, setSubscriptionBrandFilter] = useState<'all' | SubscriptionBrand>('all')
   const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState<'all' | SubscriptionStatus>('active')
+  const [seedClassifyMessage, setSeedClassifyMessage] = useState('')
 
   const reloadData = async () => {
     try {
@@ -242,14 +239,56 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const monthIn = monthTx.filter((transaction) => transaction.direction === 'in').reduce((sum, transaction) => sum + transaction.amount, 0)
   const monthOut = monthTx.filter((transaction) => transaction.direction === 'out').reduce((sum, transaction) => sum + transaction.amount, 0)
   const monthNet = monthIn - monthOut
-  const opEx = monthTx.filter((transaction) => transaction.direction === 'out' && ['salary', 'subscription', 'ad_spend', 'cogs', 'one_time'].includes(transaction.category)).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const salaryOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'salary').reduce((sum, transaction) => sum + transaction.amount, 0)
-  const subsOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'subscription').reduce((sum, transaction) => sum + transaction.amount, 0)
-  const adsOpEx = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === 'ad_spend').reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mSal = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.SALARY).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mSub = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.SUBSCRIPTION).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mAds = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.AD_SPEND).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mCogs = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.COGS).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mOne = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.ONE_TIME).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mTax = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.TAXES).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mAff = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.AFFILIATE).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const mHR = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.HR).reduce((sum, transaction) => sum + transaction.amount, 0)
+  const opEx = mSal + mSub + mAds + mCogs + mOne + mTax + mAff + mHR
   const today = new Date().toISOString().slice(0, 10)
   const todaysTransactions = transactions.filter((transaction) => transaction.date === today)
   const selectedTransactions = transactions.filter((transaction) => transaction.date === selectedDate)
-  const unclassified = transactions.filter((transaction) => transaction.category === 'unclassified')
+  const unclassified = transactions.filter((transaction) => transaction.category === CAT.UNCLASSIFIED)
+
+  const monthOutflowBreakdown = useMemo(() => {
+    const totals = new Map<FinanceCategory, number>()
+
+    monthTx
+      .filter((transaction) => transaction.direction === 'out')
+      .forEach((transaction) => {
+        totals.set(transaction.category, (totals.get(transaction.category) ?? 0) + transaction.amount)
+      })
+
+    const totalOutflow = Array.from(totals.values()).reduce((sum, amount) => sum + amount, 0)
+    const icons: Record<FinanceCategory, string> = {
+      [CAT.UNCLASSIFIED]: '❓',
+      [CAT.SUBSCRIPTION]: '🔄',
+      [CAT.SALARY]: '👤',
+      [CAT.ONE_TIME]: '📌',
+      [CAT.REVENUE]: '💰',
+      [CAT.REFUND]: '↩️',
+      [CAT.AD_SPEND]: '📢',
+      [CAT.COGS]: '📦',
+      [CAT.TAXES]: '🏛️',
+      [CAT.AFFILIATE]: '🤝',
+      [CAT.HR]: '👔',
+      [CAT.INTERNAL_TRANSFER]: '🔄',
+    }
+
+    return Array.from(totals.entries())
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, amount]) => ({
+        category,
+        icon: icons[category],
+        label: FINANCE_CATEGORY_LABELS[category],
+        amount,
+        percentage: totalOutflow > 0 ? (amount / totalOutflow) * 100 : 0,
+      }))
+  }, [monthTx])
 
   const groupedByDate = useMemo(() => {
     const map = new Map<string, FinanceTransaction[]>()
@@ -378,6 +417,12 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
     setTriageTarget(null)
   }
 
+  const onAutoClassifySeedRules = async () => {
+    const updated = await autoClassifyWithSeedRules()
+    await reloadData()
+    setSeedClassifyMessage(`Auto-classified ${updated} transactions using seed rules`)
+  }
+
   return (
     <div style={{ background: '#0B0D11', minHeight: '100vh', marginLeft: '-24px', marginRight: '-24px', marginTop: '-24px', marginBottom: '-24px' }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px 20px', color: '#E2E8F2' }}>
@@ -416,8 +461,36 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              <StatCard label="OpEx" value={formatMoney(opEx)} valueColor="#8B5CF6" subText={`Sal ${formatMoney(salaryOpEx)} · Subs ${formatMoney(subsOpEx)} · Ads ${formatMoney(adsOpEx)}`} />
+              <StatCard
+                label="OpEx"
+                value={formatMoney(opEx)}
+                valueColor="#8B5CF6"
+                subText={(
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    <div>{`Sal ${formatMoney(mSal)} · Subs ${formatMoney(mSub)} · Ads ${formatMoney(mAds)} · Tax ${formatMoney(mTax)} · COGS ${formatMoney(mCogs)}`}</div>
+                    <div>{`HR ${formatMoney(mHR)} · Affiliate ${formatMoney(mAff)} · One-Time ${formatMoney(mOne)}`}</div>
+                  </div>
+                )}
+              />
               <StatCard label="Sub Burn /mo" value={formatMoney(subscriptionsMonthlyBurn)} valueColor="#8B5CF6" subText={`${subscriptionRows.length} tracked`} />
+            </div>
+
+            <div style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 8, padding: '14px 16px', marginBottom: '24px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#E2E8F2', marginBottom: 10 }}>This Month — Outflows by Category</div>
+              {monthOutflowBreakdown.length === 0 ? (
+                <div style={{ color: '#5E6E85', fontSize: 12 }}>No outflow categories this month.</div>
+              ) : monthOutflowBreakdown.map((row) => (
+                <div key={row.category} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #1C2130' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>{row.icon}</span>
+                    <span style={{ color: '#E2E8F2' }}>{row.label}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ ...moneyStyle, color: '#E2E8F2' }}>{formatMoney(row.amount)}</span>
+                    <span style={{ color: '#5E6E85', minWidth: 42, textAlign: 'right', fontSize: 12 }}>{row.percentage.toFixed(0)}%</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {accounts.length > 0 ? (
@@ -581,7 +654,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
               <summary style={{ color: '#5E6E85', cursor: 'pointer', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Learned Patterns (debug)</summary>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                 {patterns.map((pattern) => (
-                  <span key={pattern.id} style={{ border: `1px solid ${CATEGORY_COLORS[pattern.category]}`, color: CATEGORY_COLORS[pattern.category], background: `${CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 11 }}>
+                  <span key={pattern.id} style={{ border: `1px solid ${FINANCE_CATEGORY_COLORS[pattern.category]}`, color: FINANCE_CATEGORY_COLORS[pattern.category], background: `${FINANCE_CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 11 }}>
                     {pattern.pattern}
                   </span>
                 ))}
@@ -592,6 +665,16 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
         {tab === 'triage' ? (
           <section>
+            <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                style={{ background: '#10B981', color: '#fff', padding: '8px 14px', borderRadius: 5, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                onClick={() => void onAutoClassifySeedRules()}
+              >
+                Auto-classify using seed rules
+              </button>
+              {seedClassifyMessage ? <span style={{ color: '#5E6E85', fontSize: 12 }}>{seedClassifyMessage}</span> : null}
+            </div>
             {unclassified.length === 0 ? <div style={{ ...cardBase, padding: 32, textAlign: 'center', color: '#5E6E85' }}>✅ All Clear</div> : unclassified.map((transaction) => (
               <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} onClassify={(id) => setTriageTarget(transactions.find((t) => t.id === id) ?? null)} />
             ))}
@@ -619,13 +702,11 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
               <p style={{ color: '#E2E8F2' }}><strong>{triageTarget.description}</strong></p>
               <p style={labelMuted}>{triageTarget.date} · {triageTarget.direction === 'out' ? 'Out' : 'In'} · <span style={{ ...moneyStyle, color: triageTarget.direction === 'out' ? '#EF4444' : '#10B981' }}>{formatMoney(triageTarget.amount)}</span></p>
               <div style={{ display: 'grid', gap: 8 }}>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('subscription')}>🔄 Subscription (recurring tool/service)</button>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('salary')}>👤 Salary / Payroll</button>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('ad_spend')}>📢 Ad Spend (Meta, Google, etc.)</button>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('one_time')}>📌 One-Time Expense</button>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('cogs')}>📦 COGS / Product Cost</button>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('revenue')}>💰 Revenue</button>
-                <button type="button" style={tabStyle(false)} onClick={() => void onClassify('refund')}>↩️ Refund</button>
+                {TRIAGE_OPTIONS.map((option) => (
+                  <button key={option.c} type="button" style={tabStyle(false)} onClick={() => void onClassify(option.c)}>
+                    {`${option.i} ${option.l}`}
+                  </button>
+                ))}
               </div>
               <div style={{ marginTop: 12 }}>
                 <button type="button" style={tabStyle(false)} onClick={() => setTriageTarget(null)}>Close</button>
