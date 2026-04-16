@@ -126,7 +126,6 @@ export function DevCardDetailPanel({
   const blockerDetails = useMemo(() => getDevCardBlockerReason(card), [card])
 
   function commit() {
-    console.log('[input] committing "dev-card-fields" to app state')
     onSave(card.id, {
       taskDescription: taskDescriptionDraft,
       loomVideoUrl: loomVideoUrlDraft.map((link) => link.trim()).filter(Boolean),
@@ -205,10 +204,7 @@ export function DevCardDetailPanel({
         <textarea
           className="panel-textarea"
           value={value}
-          onChange={(event) => {
-            console.log(`[input] draft update for field "${fieldKey}" — not yet saved`)
-            onChange(event.target.value)
-          }}
+          onChange={(event) => onChange(event.target.value)}
           onBlur={() => {
             setActiveTextField(null)
             commit()
@@ -224,10 +220,7 @@ export function DevCardDetailPanel({
       <input
         className="panel-input"
         value={value}
-        onChange={(event) => {
-          console.log(`[input] draft update for field "${fieldKey}" — not yet saved`)
-          onChange(event.target.value)
-        }}
+        onChange={(event) => onChange(event.target.value)}
         onBlur={() => {
           setActiveTextField(null)
           commit()
@@ -400,7 +393,7 @@ export function DevCardDetailPanel({
             {renderEditableField({
               fieldKey: 'taskDescription',
               value: taskDescriptionDraft,
-                onChange: setTaskDescriptionDraft,
+              onChange: setTaskDescriptionDraft,
               editable: canEditAssignedCard,
               multiline: true,
               rows: 6,
@@ -436,7 +429,6 @@ export function DevCardDetailPanel({
                 disabled={!canEditAssignedCard}
                 onChange={(event) => {
                   setAssigneeIdDraft(event.target.value)
-                  console.log('[input] committing "assigneeId" to app state')
                   onSave(card.id, { assigneeId: event.target.value || null })
                 }}
               >
@@ -458,7 +450,6 @@ export function DevCardDetailPanel({
                 disabled={!canEditAssignedCard}
                 onChange={(event) => {
                   setDueDateDraft(event.target.value)
-                  console.log('[input] committing "dueDate" to app state')
                   onSave(card.id, { dueDate: event.target.value || null })
                 }}
               />
@@ -475,7 +466,6 @@ export function DevCardDetailPanel({
                 onChange={(event) => {
                   const value = event.target.value as DevChangeRequestType
                   setChangeRequestTypeDraft(value)
-                  console.log('[input] committing "changeRequestType" to app state')
                   onSave(card.id, { changeRequestType: value })
                 }}
               >
@@ -498,7 +488,6 @@ export function DevCardDetailPanel({
                 onChange={(event) => {
                   const value = event.target.value as NonNullable<DevCard['status']>
                   setStatusDraft(value)
-                  console.log('[input] committing "status" to app state')
                   onSave(card.id, { status: value })
                 }}
               >
@@ -519,7 +508,6 @@ export function DevCardDetailPanel({
                 onChange={(event) => {
                   const nextOption = (event.target.value || '') as DevBlockerOption | ''
                   setBlockerOptionDraft(nextOption)
-                  console.log('[input] committing "blockerOption" to app state')
                   onSave(card.id, {
                     blockerOption: nextOption || null,
                     customBlocker: nextOption === 'Custom…' ? customBlockerDraft : '',

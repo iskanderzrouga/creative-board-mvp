@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   CAT,
   FINANCE_CATEGORY_COLORS,
@@ -215,24 +215,10 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [subscriptionBrandFilter, setSubscriptionBrandFilter] = useState<'all' | SubscriptionBrand>('all')
   const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState<'all' | SubscriptionStatus>('active')
   const [seedClassifyMessage, setSeedClassifyMessage] = useState('')
-  const financeDirtyRef = useRef(false)
-  const financePendingWritesRef = useRef(0)
-  const financeLoadSeqRef = useRef(0)
-  const latestMutationSeqRef = useRef(0)
 
   const reloadData = async () => {
-    const loadSeq = financeLoadSeqRef.current + 1
-    financeLoadSeqRef.current = loadSeq
     try {
       const data = await loadFinanceData()
-      if (financeDirtyRef.current) {
-        console.warn('[finance sync] skipping remote replace — dirty')
-        return
-      }
-      if (loadSeq < latestMutationSeqRef.current) {
-        console.warn('[finance sync] skipping remote replace — stale load')
-        return
-      }
       setTransactions(data.transactions)
       setSubscriptions(data.subscriptions)
       setPatterns(data.patterns)
@@ -240,26 +226,6 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
       setErrorMessage(null)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not load finance data')
-    }
-  }
-
-  const runFinanceMutation = async (label: string, action: () => Promise<void>) => {
-    financePendingWritesRef.current += 1
-    financeDirtyRef.current = true
-    latestMutationSeqRef.current += 1
-    console.log('[finance save] saving', {
-      label,
-      count: financePendingWritesRef.current,
-      timestamp: new Date().toISOString(),
-    })
-    try {
-      await action()
-      console.log('[finance save] success', { label })
-    } finally {
-      financePendingWritesRef.current = Math.max(0, financePendingWritesRef.current - 1)
-      if (financePendingWritesRef.current === 0) {
-        financeDirtyRef.current = false
-      }
     }
   }
 
@@ -446,22 +412,14 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
     if (!triageTarget) {
       return
     }
-    await runFinanceMutation('classify-transaction', async () => {
-      await classifyTransaction(triageTarget.id, category)
-      await reloadData()
-    })
+    await classifyTransaction(triageTarget.id, category)
+    await reloadData()
     setTriageTarget(null)
   }
 
   const onAutoClassifySeedRules = async () => {
-    const updated = await (async () => {
-      let nextUpdated = 0
-      await runFinanceMutation('auto-classify-seed-rules', async () => {
-        nextUpdated = await autoClassifyWithSeedRules()
-        await reloadData()
-      })
-      return nextUpdated
-    })()
+    const updated = await autoClassifyWithSeedRules()
+    await reloadData()
     setSeedClassifyMessage(`Auto-classified ${updated} transactions using seed rules`)
   }
 
@@ -556,10 +514,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                   key={transaction.id}
                   transaction={transaction}
                   onDelete={async (id) => {
-                    await runFinanceMutation('delete-transaction', async () => {
-                      await deleteFinanceTransaction(id)
-                      await reloadData()
-                    })
+                    await deleteFinanceTransaction(id)
+                    await reloadData()
                   }}
                 />
               ))
@@ -574,12 +530,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
               <span style={labelMuted}>In <strong style={{ ...moneyStyle, color: '#10B981' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
               <span style={labelMuted}>Out <strong style={{ ...moneyStyle, color: '#EF4444' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
             </div>
-            <div>{selectedTransactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => {
-              await runFinanceMutation('delete-transaction', async () => {
-                await deleteFinanceTransaction(id)
-                await reloadData()
-              })
-            }} />)}</div>
+            <div>{selectedTransactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} />)}</div>
             <div style={{ ...cardBase, padding: 10, maxHeight: 260, overflowY: 'auto' }}>
               {groupedByDate.map(([date, items]) => {
                 const dayIn = items.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0)
@@ -640,20 +591,16 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                       value={subscription.brand}
                       onChange={async (event) => {
                         const brand = event.target.value as SubscriptionBrand
-                            if (subscription.isManual && subscription.subscriptionId) {
-                              setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? { ...item, brand } : item))
-                              await runFinanceMutation('update-subscription-brand', async () => {
-                                await updateSubscription(subscription.subscriptionId!, { brand })
-                              })
-                              return
-                            }
-                            if (subscription.descriptionKey) {
-                              setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand, status: subscription.status } }))
-                              await runFinanceMutation('upsert-subscription-meta-brand', async () => {
-                                await upsertSubscriptionMeta(subscription.descriptionKey!, { brand })
-                              })
-                            }
-                          }}
+                        if (subscription.isManual && subscription.subscriptionId) {
+                          setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? { ...item, brand } : item))
+                          await updateSubscription(subscription.subscriptionId, { brand })
+                          return
+                        }
+                        if (subscription.descriptionKey) {
+                          setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand, status: subscription.status } }))
+                          await upsertSubscriptionMeta(subscription.descriptionKey, { brand })
+                        }
+                      }}
                     >
                       {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
                     </select>
@@ -675,24 +622,20 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                         value={subscription.status}
                         onChange={async (event) => {
                           const status = event.target.value as SubscriptionStatus
-                            if (subscription.isManual && subscription.subscriptionId) {
-                              setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? {
-                                ...item,
-                                status,
-                                active: status === 'active',
-                              } : item))
-                              await runFinanceMutation('update-subscription-status', async () => {
-                                await updateSubscription(subscription.subscriptionId!, { status, active: status === 'active' })
-                              })
-                              return
-                            }
-                            if (subscription.descriptionKey) {
-                              setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand: subscription.brand, status } }))
-                              await runFinanceMutation('upsert-subscription-meta-status', async () => {
-                                await upsertSubscriptionMeta(subscription.descriptionKey!, { status })
-                              })
-                            }
-                          }}
+                          if (subscription.isManual && subscription.subscriptionId) {
+                            setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? {
+                              ...item,
+                              status,
+                              active: status === 'active',
+                            } : item))
+                            await updateSubscription(subscription.subscriptionId, { status, active: status === 'active' })
+                            return
+                          }
+                          if (subscription.descriptionKey) {
+                            setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand: subscription.brand, status } }))
+                            await upsertSubscriptionMeta(subscription.descriptionKey, { status })
+                          }
+                        }}
                       >
                         {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
                       </select>
@@ -733,12 +676,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
               {seedClassifyMessage ? <span style={{ color: '#5E6E85', fontSize: 12 }}>{seedClassifyMessage}</span> : null}
             </div>
             {unclassified.length === 0 ? <div style={{ ...cardBase, padding: 32, textAlign: 'center', color: '#5E6E85' }}>✅ All Clear</div> : unclassified.map((transaction) => (
-              <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => {
-                await runFinanceMutation('delete-transaction', async () => {
-                  await deleteFinanceTransaction(id)
-                  await reloadData()
-                })
-              }} onClassify={(id) => setTriageTarget(transactions.find((t) => t.id === id) ?? null)} />
+              <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => { await deleteFinanceTransaction(id); await reloadData() }} onClassify={(id) => setTriageTarget(transactions.find((t) => t.id === id) ?? null)} />
             ))}
           </section>
         ) : null}
@@ -803,17 +741,15 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                   if (!subName.trim() || !Number.isFinite(amount) || amount <= 0) {
                     return
                   }
-                  await runFinanceMutation('create-subscription', async () => {
-                    await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform, brand: subBrand, status: subStatus })
-                    setSubName('')
-                    setSubAmount('')
-                    setSubFrequency('monthly')
-                    setSubBrand('Unassigned')
-                    setSubStatus('active')
-                    setSubPlatform('')
-                    setSubscriptionModalOpen(false)
-                    await reloadData()
-                  })
+                  await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform, brand: subBrand, status: subStatus })
+                  setSubName('')
+                  setSubAmount('')
+                  setSubFrequency('monthly')
+                  setSubBrand('Unassigned')
+                  setSubStatus('active')
+                  setSubPlatform('')
+                  setSubscriptionModalOpen(false)
+                  await reloadData()
                 }}>Save</button>
                 <button type="button" style={tabStyle(false)} onClick={() => setSubscriptionModalOpen(false)}>Cancel</button>
               </div>

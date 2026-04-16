@@ -340,10 +340,6 @@ function App() {
   const localFallbackStateRef = useRef(state)
   const remoteHydratedRef = useRef(!authEnabled)
   const remoteSaveTimerRef = useRef<number | null>(null)
-  const mainDirtyRef = useRef(false)
-  const backlogDirtyRef = useRef(false)
-  const transferInProgressRef = useRef(false)
-  const transferTimeoutRef = useRef<number | null>(null)
   const cardPanelCloseTimerRef = useRef<number | null>(null)
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
@@ -903,9 +899,6 @@ function App() {
     localFallbackStateRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
-    mainDirtyRef,
-    backlogDirtyRef,
-    transferInProgressRef,
     syncStatus,
     lastSyncedAt,
     remoteSyncErrorShown,
@@ -1363,43 +1356,6 @@ function App() {
     }, tone === 'red' ? 5000 : 3000)
   }
 
-  function markMainDirty(reason: string) {
-    mainDirtyRef.current = true
-    console.log('[main save] marked dirty', { reason, timestamp: new Date().toISOString() })
-  }
-
-  function markBacklogDirty(reason: string) {
-    backlogDirtyRef.current = true
-    console.log('[backlog save] marked dirty', { reason, timestamp: new Date().toISOString() })
-  }
-
-  function clearTransferTimeout() {
-    if (transferTimeoutRef.current !== null) {
-      window.clearTimeout(transferTimeoutRef.current)
-      transferTimeoutRef.current = null
-    }
-  }
-
-  function beginTransferWindow(context: string) {
-    transferInProgressRef.current = true
-    clearTransferTimeout()
-    transferTimeoutRef.current = window.setTimeout(() => {
-      transferInProgressRef.current = false
-      transferTimeoutRef.current = null
-      console.warn('[transfer] WARNING: transfer window auto-cleared by timeout — this should not happen in normal flow', {
-        context,
-        timestamp: new Date().toISOString(),
-      })
-    }, 1500)
-    console.log('[transfer] creating destination card', { context, timestamp: new Date().toISOString() })
-  }
-
-  function endTransferWindow(context: string) {
-    clearTransferTimeout()
-    transferInProgressRef.current = false
-    console.log('[transfer] transfer window closed', { context, timestamp: new Date().toISOString() })
-  }
-
   function syncStateControls(nextState: AppState) {
     const nextPortfolio =
       nextState.portfolios.find((portfolio) => portfolio.id === nextState.activePortfolioId) ??
@@ -1433,7 +1389,6 @@ function App() {
   }
 
   function updateState(updater: (state: AppState) => AppState) {
-    markMainDirty('local mutation')
     replaceState(updater(localFallbackStateRef.current))
   }
 
@@ -2041,7 +1996,6 @@ function App() {
   function handleBacklogToDev(
     card: BacklogCard,
   ): { ok: true; cardId: string } | { ok: false; message: string } {
-    beginTransferWindow('backlog->dev')
     let createdCardId: string | null = null
     try {
       updateState((current) => {
@@ -2075,7 +2029,6 @@ function App() {
   function handleBacklogToProduction(
     card: BacklogCard,
   ): { ok: true; cardId: string; portfolioId: string } | { ok: false; message: string } {
-    beginTransferWindow('backlog->production')
     if (card.taskType === 'dev-cro') {
       const devResult = handleBacklogToDev(card)
       if (!devResult.ok) {
@@ -3365,17 +3318,8 @@ function App() {
             canCreate={canAccessBacklog}
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
-            onChange={(updater) => {
-              markBacklogDirty('local mutation')
-              setBacklogState(updater)
-            }}
+            onChange={setBacklogState}
             onMoveToProduction={handleBacklogToProduction}
-            onTransferSourceDeleteConfirmed={({ path }) => {
-              endTransferWindow(path)
-            }}
-            onTransferAborted={({ path }) => {
-              endTransferWindow(path)
-            }}
           />
         ) : null}
 
