@@ -208,6 +208,26 @@ const STRATEGY_LEADERS = [
   { name: 'Nicolas', email: 'nicolas@creativeboard.local' },
 ] as const
 
+if (typeof window !== 'undefined') {
+  try {
+    const state = window.localStorage.getItem('creative-board-state')
+    if (state && state.length > 50000) {
+      window.localStorage.removeItem('creative-board-state')
+      window.localStorage.removeItem('backlog-state')
+      window.localStorage.removeItem('creative-board-sync-metadata')
+      window.localStorage.removeItem('backlog-sync-metadata')
+      console.warn('[boot] Cleared bloated localStorage cache — app will load fresh from Supabase')
+    }
+  } catch {
+    try {
+      window.localStorage.clear()
+    } catch {
+      // noop
+    }
+    console.warn('[boot] localStorage corrupted — cleared all')
+  }
+}
+
 function hasDeveloperBoardRole(role: string | null | undefined) {
   const normalizedRole = role?.trim().toLowerCase() ?? null
   return normalizedRole === 'developer' || isDeveloperRole(role ?? null)
@@ -3120,7 +3140,11 @@ function App() {
   function dismissOnboardingBanner() {
     setOnboardingDismissed(true)
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
+      try {
+        window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
+      } catch {
+        console.warn('[storage] Write failed, continuing:', ONBOARDING_DISMISSED_KEY)
+      }
     }
   }
 
