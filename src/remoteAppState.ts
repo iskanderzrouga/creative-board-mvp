@@ -264,7 +264,11 @@ function setStoredE2ERemoteState(state: AppState, updatedAt: string) {
     updatedAt,
   }
 
-  window.localStorage.setItem(E2E_REMOTE_STATE_KEY, JSON.stringify(payload))
+  try {
+    window.localStorage.setItem(E2E_REMOTE_STATE_KEY, JSON.stringify(payload))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', E2E_REMOTE_STATE_KEY)
+  }
 }
 
 async function getRemoteWorkspaceStateRow() {

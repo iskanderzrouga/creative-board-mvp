@@ -208,6 +208,26 @@ const STRATEGY_LEADERS = [
   { name: 'Nicolas', email: 'nicolas@creativeboard.local' },
 ] as const
 
+if (typeof window !== 'undefined') {
+  try {
+    const state = window.localStorage.getItem('creative-board-state')
+    if (state && state.length > 50000) {
+      window.localStorage.removeItem('creative-board-state')
+      window.localStorage.removeItem('backlog-state')
+      window.localStorage.removeItem('creative-board-sync-metadata')
+      window.localStorage.removeItem('backlog-sync-metadata')
+      console.warn('[boot] Cleared bloated localStorage cache — app will load fresh from Supabase')
+    }
+  } catch {
+    try {
+      window.localStorage.clear()
+    } catch {
+      // noop
+    }
+    console.warn('[boot] localStorage corrupted — cleared all')
+  }
+}
+
 function hasDeveloperBoardRole(role: string | null | undefined) {
   const normalizedRole = role?.trim().toLowerCase() ?? null
   return normalizedRole === 'developer' || isDeveloperRole(role ?? null)
@@ -340,6 +360,10 @@ function App() {
   const localFallbackStateRef = useRef(state)
   const remoteHydratedRef = useRef(!authEnabled)
   const remoteSaveTimerRef = useRef<number | null>(null)
+  const mainDirtyRef = useRef(false)
+  const backlogDirtyRef = useRef(false)
+  const transferInProgressRef = useRef(false)
+  const transferTimeoutRef = useRef<number | null>(null)
   const cardPanelCloseTimerRef = useRef<number | null>(null)
   const nextToastIdRef = useRef(0)
   const toastTimerIdsRef = useRef<Record<number, number>>({})
@@ -899,6 +923,9 @@ function App() {
     localFallbackStateRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
+    mainDirtyRef,
+    backlogDirtyRef,
+    transferInProgressRef,
     syncStatus,
     lastSyncedAt,
     remoteSyncErrorShown,
@@ -1356,6 +1383,43 @@ function App() {
     }, tone === 'red' ? 5000 : 3000)
   }
 
+  function markMainDirty(reason: string) {
+    mainDirtyRef.current = true
+    console.log('[main save] marked dirty', { reason, timestamp: new Date().toISOString() })
+  }
+
+  function markBacklogDirty(reason: string) {
+    backlogDirtyRef.current = true
+    console.log('[backlog save] marked dirty', { reason, timestamp: new Date().toISOString() })
+  }
+
+  function clearTransferTimeout() {
+    if (transferTimeoutRef.current !== null) {
+      window.clearTimeout(transferTimeoutRef.current)
+      transferTimeoutRef.current = null
+    }
+  }
+
+  function beginTransferWindow(context: string) {
+    transferInProgressRef.current = true
+    clearTransferTimeout()
+    transferTimeoutRef.current = window.setTimeout(() => {
+      transferInProgressRef.current = false
+      transferTimeoutRef.current = null
+      console.warn('[transfer] WARNING: transfer window auto-cleared by timeout — this should not happen in normal flow', {
+        context,
+        timestamp: new Date().toISOString(),
+      })
+    }, 1500)
+    console.log('[transfer] creating destination card', { context, timestamp: new Date().toISOString() })
+  }
+
+  function endTransferWindow(context: string) {
+    clearTransferTimeout()
+    transferInProgressRef.current = false
+    console.log('[transfer] transfer window closed', { context, timestamp: new Date().toISOString() })
+  }
+
   function syncStateControls(nextState: AppState) {
     const nextPortfolio =
       nextState.portfolios.find((portfolio) => portfolio.id === nextState.activePortfolioId) ??
@@ -1389,6 +1453,7 @@ function App() {
   }
 
   function updateState(updater: (state: AppState) => AppState) {
+    markMainDirty('local mutation')
     replaceState(updater(localFallbackStateRef.current))
   }
 
@@ -1996,6 +2061,7 @@ function App() {
   function handleBacklogToDev(
     card: BacklogCard,
   ): { ok: true; cardId: string } | { ok: false; message: string } {
+    beginTransferWindow('backlog->dev')
     let createdCardId: string | null = null
     try {
       updateState((current) => {
@@ -2029,6 +2095,7 @@ function App() {
   function handleBacklogToProduction(
     card: BacklogCard,
   ): { ok: true; cardId: string; portfolioId: string } | { ok: false; message: string } {
+    beginTransferWindow('backlog->production')
     if (card.taskType === 'dev-cro') {
       const devResult = handleBacklogToDev(card)
       if (!devResult.ok) {
@@ -3073,7 +3140,11 @@ function App() {
   function dismissOnboardingBanner() {
     setOnboardingDismissed(true)
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
+      try {
+        window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, '1')
+      } catch {
+        console.warn('[storage] Write failed, continuing:', ONBOARDING_DISMISSED_KEY)
+      }
     }
   }
 
@@ -3318,8 +3389,17 @@ function App() {
             canCreate={canAccessBacklog}
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
-            onChange={setBacklogState}
+            onChange={(updater) => {
+              markBacklogDirty('local mutation')
+              setBacklogState(updater)
+            }}
             onMoveToProduction={handleBacklogToProduction}
+            onTransferSourceDeleteConfirmed={({ path }) => {
+              endTransferWindow(path)
+            }}
+            onTransferAborted={({ path }) => {
+              endTransferWindow(path)
+            }}
           />
         ) : null}
 

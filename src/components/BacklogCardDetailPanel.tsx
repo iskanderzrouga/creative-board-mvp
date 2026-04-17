@@ -187,6 +187,7 @@ export function BacklogCardDetailPanel({
     const pendingUpdates = getPendingDraftUpdates(card, nextDrafts)
     clearDebounce()
     if (pendingUpdates) {
+      console.log('[input] committing "backlog-drafts" to app state')
       onSave(pendingUpdates)
     }
   }
@@ -269,10 +270,13 @@ export function BacklogCardDetailPanel({
   }
 
   function updateDraftField(field: keyof TextDrafts, value: string) {
+    console.log(`[input] draft update for field "${field}" — not yet saved`)
     setDrafts((current) => (current ? { ...current, [field]: value } : current))
   }
 
   function handleImmediateSave(updates: Partial<BacklogCard>) {
+    const fieldName = Object.keys(updates).join(',') || 'unknown'
+    console.log(`[input] committing "${fieldName}" to app state`)
     clearDebounce()
     onSave(updates)
   }

@@ -48,7 +48,11 @@ describe('remote app state sync', () => {
       configurable: true,
       writable: true,
     })
-    window.localStorage.setItem(E2E_AUTH_MODE_KEY, 'enabled')
+    try {
+      window.localStorage.setItem(E2E_AUTH_MODE_KEY, 'enabled')
+    } catch {
+      console.warn('[storage] Write failed, continuing:', E2E_AUTH_MODE_KEY)
+    }
   })
 
   afterEach(() => {
@@ -101,13 +105,17 @@ describe('remote app state sync', () => {
       },
     }
 
-    window.localStorage.setItem(
-      E2E_REMOTE_STATE_KEY,
-      JSON.stringify({
-        state: otherSessionState,
-        updatedAt: '2099-01-01T00:00:00.000Z',
-      }),
-    )
+    try {
+      window.localStorage.setItem(
+        E2E_REMOTE_STATE_KEY,
+        JSON.stringify({
+          state: otherSessionState,
+          updatedAt: '2099-01-01T00:00:00.000Z',
+        }),
+      )
+    } catch {
+      console.warn('[storage] Write failed, continuing:', E2E_REMOTE_STATE_KEY)
+    }
 
     try {
       await saveRemoteAppState(
