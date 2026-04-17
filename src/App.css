@@ -1153,7 +1153,7 @@ button {
   right: 0;
   bottom: 0;
   z-index: 70;
-  width: min(560px, calc(100vw - 12px));
+  width: min(720px, calc(100vw - 60px));
   max-width: 100vw;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1585,6 +1585,9 @@ button {
 .rich-text-editor {
   display: grid;
   gap: 8px;
+  max-width: 100%;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .rich-text-toolbar {
@@ -1616,6 +1619,9 @@ button {
   font-size: 13px;
   line-height: 1.5;
   outline: none;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  overflow-x: hidden;
 }
 
 .rich-text-surface:empty::before {
