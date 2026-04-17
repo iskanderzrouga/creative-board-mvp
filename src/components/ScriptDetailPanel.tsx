@@ -27,6 +27,19 @@ const CONFIDENCE_OPTIONS: Array<{ value: ScriptConfidenceLevel; label: string }>
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
 ]
+const panelOverflowStyle = {
+  overflowY: 'auto' as const,
+  overflowX: 'hidden' as const,
+  maxWidth: '100%',
+  boxSizing: 'border-box' as const,
+}
+const panelTextOverflowStyle = {
+  wordWrap: 'break-word' as const,
+  overflowWrap: 'break-word' as const,
+  whiteSpace: 'pre-wrap' as const,
+  maxWidth: '100%',
+  overflowX: 'hidden' as const,
+}
 
 function formatTimestamp(timestamp: string) {
   const date = new Date(timestamp)
@@ -110,6 +123,7 @@ export function ScriptDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        style={panelOverflowStyle}
       >
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
@@ -198,7 +212,7 @@ export function ScriptDetailPanel({
                     {latest ? (
                       <div className="script-review-latest">
                         <span className={`script-confidence-badge is-${latest.confidence}`}>{latest.confidence}</span>
-                        <p>{latest.comment}</p>
+                        <p style={panelTextOverflowStyle}>{latest.comment}</p>
                         <time dateTime={latest.timestamp}>{formatTimestamp(latest.timestamp)}</time>
                       </div>
                     ) : (
@@ -229,7 +243,7 @@ export function ScriptDetailPanel({
                           {review ? (
                             <>
                               <span className={`script-confidence-badge is-${review.confidence}`}>{review.confidence}</span>
-                              <p>{review.comment}</p>
+                              <p style={panelTextOverflowStyle}>{review.comment}</p>
                               <time dateTime={review.timestamp}>{formatTimestamp(review.timestamp)}</time>
                             </>
                           ) : (
@@ -271,6 +285,7 @@ export function ScriptDetailPanel({
                 <span>Comment</span>
                 <textarea
                   className="panel-textarea"
+                  style={panelTextOverflowStyle}
                   rows={4}
                   value={reviewComment}
                   onChange={(event) => setReviewComment(event.target.value)}
@@ -300,7 +315,7 @@ export function ScriptDetailPanel({
                     <strong>{comment.author}</strong>
                     <time dateTime={comment.timestamp}>{formatTimestamp(comment.timestamp)}</time>
                   </div>
-                  <p>{comment.text}</p>
+                  <p style={panelTextOverflowStyle}>{comment.text}</p>
                 </li>
               ))}
               {script.comments.length === 0 ? <li className="script-workshop-empty-text">No comments yet.</li> : null}
@@ -309,6 +324,7 @@ export function ScriptDetailPanel({
               <span>Add Comment</span>
               <textarea
                 className="panel-textarea"
+                style={panelTextOverflowStyle}
                 rows={3}
                 value={threadComment}
                 onChange={(event) => setThreadComment(event.target.value)}

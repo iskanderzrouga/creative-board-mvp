@@ -14,6 +14,21 @@ import {
   type TeamMember,
 } from '../board'
 
+const panelOverflowStyle = {
+  overflowY: 'auto' as const,
+  overflowX: 'hidden' as const,
+  maxWidth: '100%',
+  boxSizing: 'border-box' as const,
+}
+
+const panelTextOverflowStyle = {
+  wordWrap: 'break-word' as const,
+  overflowWrap: 'break-word' as const,
+  whiteSpace: 'pre-wrap' as const,
+  maxWidth: '100%',
+  overflowX: 'hidden' as const,
+}
+
 function coerceStringArrayField(value: string[] | string | null | undefined) {
   if (Array.isArray(value)) {
     return value
@@ -183,6 +198,7 @@ export function DevCardDetailPanel({
           role={editable ? 'button' : undefined}
           tabIndex={editable ? 0 : -1}
           className={multiline ? 'panel-textarea' : 'panel-input'}
+          style={multiline ? panelTextOverflowStyle : undefined}
           onClick={() => {
             if (editable) {
               setActiveTextField(fieldKey)
@@ -204,6 +220,7 @@ export function DevCardDetailPanel({
       return (
         <textarea
           className="panel-textarea"
+          style={panelTextOverflowStyle}
           value={value}
           onChange={(event) => {
             console.log(`[input] draft update for field "${fieldKey}" — not yet saved`)
@@ -334,6 +351,7 @@ export function DevCardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        style={panelOverflowStyle}
       >
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">

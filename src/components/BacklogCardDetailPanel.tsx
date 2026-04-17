@@ -34,6 +34,19 @@ const DEV_REQUIRED_FIELDS = ['productionTaskType', 'taskDescription', 'linkForTe
 
 const PLATFORM_OPTIONS = ['Meta', 'TikTok', 'AppLovin', 'YouTube', 'Google', 'Other'] as const
 const FUNNEL_STAGE_OPTIONS = ['Cold', 'Warm', 'Hot'] as const
+const panelOverflowStyle = {
+  overflowY: 'auto' as const,
+  overflowX: 'hidden' as const,
+  maxWidth: '100%',
+  boxSizing: 'border-box' as const,
+}
+const panelTextOverflowStyle = {
+  wordWrap: 'break-word' as const,
+  overflowWrap: 'break-word' as const,
+  whiteSpace: 'pre-wrap' as const,
+  maxWidth: '100%',
+  overflowX: 'hidden' as const,
+}
 
 type TextDrafts = {
   name: string
@@ -291,6 +304,7 @@ export function BacklogCardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        style={panelOverflowStyle}
       >
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
@@ -332,6 +346,7 @@ export function BacklogCardDetailPanel({
                 <label className="backlog-panel-field backlog-panel-field-full">
                   <span>Description</span>
                   <textarea
+                      style={panelTextOverflowStyle}
                     value={drafts.description}
                     onChange={(event) => updateDraftField('description', event.target.value)}
                     onBlur={() => flushDrafts(drafts)}
@@ -343,6 +358,7 @@ export function BacklogCardDetailPanel({
                     Why should we prioritize this?
                   </span>
                   <textarea
+                      style={panelTextOverflowStyle}
                     value={drafts.hypothesis}
                     onChange={(event) => updateDraftField('hypothesis', event.target.value)}
                     onBlur={() => flushDrafts(drafts)}
@@ -410,7 +426,7 @@ export function BacklogCardDetailPanel({
                       Brief
                       <em className="backlog-panel-required">*</em>
                     </span>
-                    <div className="backlog-rich-field" onBlur={() => flushDrafts(drafts)}>
+                    <div className="backlog-rich-field" style={panelTextOverflowStyle} onBlur={() => flushDrafts(drafts)}>
                       <RichTextEditor value={drafts.brief} onChange={(nextValue) => updateDraftField('brief', nextValue)} />
                     </div>
                   </label>
@@ -439,6 +455,7 @@ export function BacklogCardDetailPanel({
                       <em className="backlog-panel-required">*</em>
                     </span>
                     <textarea
+                      style={panelTextOverflowStyle}
                       value={drafts.visualDirection}
                       onChange={(event) => updateDraftField('visualDirection', event.target.value)}
                       onBlur={() => flushDrafts(drafts)}
@@ -501,6 +518,7 @@ export function BacklogCardDetailPanel({
                       <em className="backlog-panel-required">*</em>
                     </span>
                     <textarea
+                      style={panelTextOverflowStyle}
                       value={drafts.referenceLinks}
                       onChange={(event) => updateDraftField('referenceLinks', event.target.value)}
                       onBlur={() => flushDrafts(drafts)}
@@ -510,6 +528,7 @@ export function BacklogCardDetailPanel({
                   <label className="backlog-panel-field backlog-panel-field-full">
                     <span>Ad Copy</span>
                     <textarea
+                      style={panelTextOverflowStyle}
                       value={drafts.adCopy}
                       onChange={(event) => updateDraftField('adCopy', event.target.value)}
                       onBlur={() => flushDrafts(drafts)}
@@ -519,6 +538,7 @@ export function BacklogCardDetailPanel({
                   <label className="backlog-panel-field backlog-panel-field-full">
                     <span>Notes</span>
                     <textarea
+                      style={panelTextOverflowStyle}
                       value={drafts.notes}
                       onChange={(event) => updateDraftField('notes', event.target.value)}
                       onBlur={() => flushDrafts(drafts)}
@@ -559,6 +579,7 @@ export function BacklogCardDetailPanel({
                       <em className="backlog-panel-required">*</em>
                     </span>
                     <textarea
+                      style={panelTextOverflowStyle}
                       value={drafts.taskDescription}
                       onChange={(event) => updateDraftField('taskDescription', event.target.value)}
                       onBlur={() => flushDrafts(drafts)}
