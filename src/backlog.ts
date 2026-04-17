@@ -209,7 +209,6 @@ export function loadBacklogState() {
 
 export function persistBacklogState(state: BacklogState) {
   void state
-  return
 }
 
 export function addBacklogCard(state: BacklogState, input: AddBacklogCardInput): BacklogState {

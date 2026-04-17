@@ -2911,7 +2911,6 @@ export function loadAppState() {
 
 export function persistAppState(state: AppState) {
   void state
-  return
 }
 
 export function loadSyncMetadata(): SyncMetadata {
