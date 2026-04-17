@@ -306,7 +306,7 @@ export function BacklogCardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        style={{ ...panelOverflowStyle, width: panelWidth, position: 'relative' }}
+        style={{ ...panelOverflowStyle, width: panelWidth }}
       >
         <div {...dragHandleProps} style={dragHandleStyle} />
         <div className="slide-panel-header">
