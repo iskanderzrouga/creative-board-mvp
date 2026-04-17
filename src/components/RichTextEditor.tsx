@@ -107,7 +107,10 @@ export function RichTextEditor({
   }
 
   return (
-    <div className={`rich-text-editor ${readOnly ? 'is-readonly' : ''}`}>
+    <div
+      className={`rich-text-editor ${readOnly ? 'is-readonly' : ''}`}
+      style={{ overflowX: 'hidden', maxWidth: '100%', wordBreak: 'break-word' }}
+    >
       {!readOnly ? (
         <div className="rich-text-toolbar" role="toolbar" aria-label="Brief formatting">
           <button
@@ -170,6 +173,7 @@ export function RichTextEditor({
       <div
         ref={editorRef}
         className="rich-text-surface"
+        style={{ overflowX: 'hidden', maxWidth: '100%', wordBreak: 'break-word' }}
         data-placeholder="Write brief here…"
         contentEditable={!readOnly}
         suppressContentEditableWarning

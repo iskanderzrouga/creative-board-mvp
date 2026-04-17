@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetSta
 import { LinkifiedText } from './LinkifiedText'
 import { ImageAttachments } from './ImageAttachments'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
-import { useResizablePanel } from '../hooks/useResizablePanel'
 import { getSupabaseClient, isSupabaseConfigured } from '../supabase'
 import {
   DEV_BLOCKER_OPTIONS,
@@ -129,7 +128,6 @@ export function DevCardDetailPanel({
   const [titleDraft, setTitleDraft] = useState(card.title)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
-  const { panelWidth, dragHandleProps, dragHandleStyle } = useResizablePanel({ defaultWidth: 560 })
 
   useModalAccessibility(panelRef, isOpen)
   useEffect(() => {
@@ -353,9 +351,8 @@ export function DevCardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        style={{ ...panelOverflowStyle, width: panelWidth, position: 'relative' }}
+        style={panelOverflowStyle}
       >
-        <div {...dragHandleProps} style={dragHandleStyle} />
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
