@@ -5,6 +5,7 @@ import { RichTextEditor } from './RichTextEditor'
 import { ConfirmDialog } from './ConfirmDialog'
 import { XIcon } from './icons/AppIcons'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { useResizablePanel } from '../hooks/useResizablePanel'
 
 interface BacklogCardDetailPanelProps {
   card: BacklogCard | null
@@ -186,6 +187,7 @@ export function BacklogCardDetailPanel({
   const titleId = useId()
   const [drafts, setDrafts] = useState<TextDrafts>(() => (card ? getInitialDrafts(card) : EMPTY_TEXT_DRAFTS))
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const { panelWidth, dragHandleProps, dragHandleStyle } = useResizablePanel({ defaultWidth: 560 })
 
   useModalAccessibility(panelRef, isOpen)
 
@@ -304,8 +306,9 @@ export function BacklogCardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        style={panelOverflowStyle}
+        style={{ ...panelOverflowStyle, width: panelWidth }}
       >
+        <div {...dragHandleProps} style={dragHandleStyle} />
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
