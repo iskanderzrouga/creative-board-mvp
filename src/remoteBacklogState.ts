@@ -112,6 +112,9 @@ function getStoredE2ERemoteBacklog(): StoredRemoteBacklog | null {
 }
 
 function setStoredE2ERemoteBacklog(state: BacklogState, updatedAt: string) {
+  void state
+  void updatedAt
+  return
   if (!hasBrowser()) {
     return
   }
