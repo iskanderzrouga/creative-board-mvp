@@ -3,7 +3,6 @@ import { RichTextEditor } from './RichTextEditor'
 import { LinkifiedText } from './LinkifiedText'
 import { ImageAttachments } from './ImageAttachments'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
-import { useResizablePanel } from '../hooks/useResizablePanel'
 import { getSupabaseClient, isSupabaseConfigured } from '../supabase'
 import {
   DESIGN_TYPES,
@@ -168,7 +167,6 @@ export function CardDetailPanel({
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const commentImageRef = useRef<HTMLInputElement | null>(null)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
-  const { panelWidth, dragHandleProps, dragHandleStyle } = useResizablePanel({ defaultWidth: 560 })
 
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
   const isOwnedEditor = viewerMode === 'contributor' && viewerName === card.owner
@@ -458,9 +456,8 @@ export function CardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        style={{ ...panelOverflowStyle, width: panelWidth }}
+        style={panelOverflowStyle}
       >
-        <div {...dragHandleProps} style={dragHandleStyle} />
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">{card.id}</div>
