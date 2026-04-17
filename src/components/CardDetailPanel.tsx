@@ -75,6 +75,19 @@ interface CardDetailPanelProps {
 const COMMENT_PREVIEW_COUNT = 10
 const ACTIVITY_PREVIEW_COUNT = 5
 const COMMENT_MAX_LENGTH = 2000
+const panelOverflowStyle = {
+  overflowY: 'auto' as const,
+  overflowX: 'hidden' as const,
+  maxWidth: '100%',
+  boxSizing: 'border-box' as const,
+}
+const panelTextOverflowStyle = {
+  wordWrap: 'break-word' as const,
+  overflowWrap: 'break-word' as const,
+  whiteSpace: 'pre-wrap' as const,
+  maxWidth: '100%',
+  overflowX: 'hidden' as const,
+}
 
 function renderDisplayValue(value: string) {
   if (!value.trim()) {
@@ -372,6 +385,7 @@ export function CardDetailPanel({
           role="button"
           tabIndex={0}
           className={className}
+          style={multiline ? panelTextOverflowStyle : undefined}
           onClick={() => setActiveTextField(fieldKey)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -401,7 +415,7 @@ export function CardDetailPanel({
     }
 
     if (multiline) {
-      return <textarea {...sharedProps} rows={rows} />
+      return <textarea {...sharedProps} rows={rows} style={panelTextOverflowStyle} />
     }
 
     return <input {...sharedProps} />
@@ -442,6 +456,7 @@ export function CardDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        style={panelOverflowStyle}
       >
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
@@ -1080,14 +1095,18 @@ export function CardDetailPanel({
         >
           <div className="section-rule-title">Brief</div>
           {canEditOwnedContent ? (
-            <RichTextEditor
-              value={briefDraft}
-              onChange={setBriefDraft}
-              onBlur={() => commitTextDraft('brief', briefDraft)}
-              readOnly={false}
-            />
+            <div style={panelTextOverflowStyle}>
+              <RichTextEditor
+                value={briefDraft}
+                onChange={setBriefDraft}
+                onBlur={() => commitTextDraft('brief', briefDraft)}
+                readOnly={false}
+              />
+            </div>
           ) : (
-            <div className="panel-textarea">{renderDisplayValue(card.brief)}</div>
+            <div className="panel-textarea" style={panelTextOverflowStyle}>
+              {renderDisplayValue(card.brief)}
+            </div>
           )}
         </section>
 
@@ -1344,7 +1363,7 @@ export function CardDetailPanel({
                     <strong>{comment.author}</strong>
                     <span title={formatDateTime(comment.timestamp)}>{formatRelativeTime(comment.timestamp, nowMs)}</span>
                   </div>
-                  <p>{comment.text}</p>
+                  <p style={panelTextOverflowStyle}>{comment.text}</p>
                   {comment.imageDataUrl ? (
                     <img src={comment.imageDataUrl} alt="Comment attachment" className="comment-image" />
                   ) : null}
@@ -1364,6 +1383,7 @@ export function CardDetailPanel({
           {canComment ? (
             <div className="comment-composer">
               <textarea
+                style={panelTextOverflowStyle}
                 value={commentDraft}
                 maxLength={COMMENT_MAX_LENGTH}
                 onChange={(event) => setCommentDraft(event.target.value)}
@@ -1489,7 +1509,7 @@ export function CardDetailPanel({
                     <strong>{activity.actor}</strong>
                     <span title={formatDateTime(activity.timestamp)}>{formatRelativeTime(activity.timestamp, nowMs)}</span>
                   </div>
-                  <p>{activity.message}</p>
+                  <p style={panelTextOverflowStyle}>{activity.message}</p>
                 </div>
               ))
             )}
