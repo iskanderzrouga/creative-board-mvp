@@ -255,16 +255,9 @@ function getStoredE2ERemoteState() {
 }
 
 function setStoredE2ERemoteState(state: AppState, updatedAt: string) {
-  if (!hasBrowser()) {
-    return
-  }
-
-  const payload: StoredRemoteState = {
-    state: createRemoteStateSnapshot(state),
-    updatedAt,
-  }
-
-  window.localStorage.setItem(E2E_REMOTE_STATE_KEY, JSON.stringify(payload))
+  void state
+  void updatedAt
+  return
 }
 
 async function getRemoteWorkspaceStateRow() {

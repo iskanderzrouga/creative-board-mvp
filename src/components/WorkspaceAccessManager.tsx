@@ -728,7 +728,11 @@ export function WorkspaceAccessManager({
       return
     }
 
-    window.localStorage.setItem(ACCESS_HELP_DISMISSED_KEY, 'true')
+    try {
+      window.localStorage.setItem(ACCESS_HELP_DISMISSED_KEY, 'true')
+    } catch {
+      console.warn('[storage] Write failed, continuing:', ACCESS_HELP_DISMISSED_KEY)
+    }
   }, [entries.length])
 
   const helpDismissed = dismissedHelpOnce || entries.length > 0
@@ -889,7 +893,11 @@ export function WorkspaceAccessManager({
             className="clear-link"
             onClick={() => {
               if (hasBrowser()) {
-                window.localStorage.setItem(ACCESS_HELP_DISMISSED_KEY, 'true')
+                try {
+                  window.localStorage.setItem(ACCESS_HELP_DISMISSED_KEY, 'true')
+                } catch {
+                  console.warn('[storage] Write failed, continuing:', ACCESS_HELP_DISMISSED_KEY)
+                }
               }
               setDismissedHelpOnce(true)
             }}

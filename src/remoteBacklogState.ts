@@ -112,12 +112,9 @@ function getStoredE2ERemoteBacklog(): StoredRemoteBacklog | null {
 }
 
 function setStoredE2ERemoteBacklog(state: BacklogState, updatedAt: string) {
-  if (!hasBrowser()) {
-    return
-  }
-
-  const payload: StoredRemoteBacklog = { state, updatedAt }
-  window.localStorage.setItem(E2E_BACKLOG_KEY, JSON.stringify(payload))
+  void state
+  void updatedAt
+  return
 }
 
 async function getRemoteBacklogRow() {
