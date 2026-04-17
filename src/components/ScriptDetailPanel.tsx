@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { useModalAccessibility } from '../hooks/useModalAccessibility'
+import { useResizablePanel } from '../hooks/useResizablePanel'
 import {
   SCRIPT_REVIEWERS,
   getLatestScriptReview,
@@ -81,6 +82,7 @@ export function ScriptDetailPanel({
   const [reviewComment, setReviewComment] = useState('')
   const [reviewAttempted, setReviewAttempted] = useState(false)
   const [threadComment, setThreadComment] = useState('')
+  const { panelWidth, dragHandleProps, dragHandleStyle } = useResizablePanel({ defaultWidth: 560 })
 
   useModalAccessibility(panelRef, isOpen)
 
@@ -123,8 +125,9 @@ export function ScriptDetailPanel({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        style={panelOverflowStyle}
+        style={{ ...panelOverflowStyle, width: panelWidth, position: 'relative' }}
       >
+        <div {...dragHandleProps} style={dragHandleStyle} />
         <div className="slide-panel-header">
           <div className="slide-panel-header-main">
             <div className="panel-card-id">Script</div>
