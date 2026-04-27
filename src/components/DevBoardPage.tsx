@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { PageHeader } from './PageHeader'
-import { BlockedIcon } from './icons/AppIcons'
+import { BlockedIcon, LinkIcon } from './icons/AppIcons'
 import {
   DEV_BOARD_COLUMNS,
   getDevBoardStats,
@@ -47,6 +47,10 @@ function getDropColumnId(value: string | null): DevBoardColumnId | null {
   return null
 }
 
+function getSlugClassName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
 function DevCardItem({
   card,
   onOpen,
@@ -68,12 +72,6 @@ function DevCardItem({
   })
   const status = card.status ?? 'not-started'
   const statusLabel = status === 'in-progress' ? 'In Progress' : status === 'done' ? 'Done' : 'Not Started'
-  const statusStyles =
-    status === 'in-progress'
-      ? { backgroundColor: '#dbeafe', color: '#1d4ed8' }
-      : status === 'done'
-        ? { backgroundColor: '#dcfce7', color: '#15803d' }
-        : { backgroundColor: '#e5e7eb', color: '#374151' }
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(card.title)
@@ -121,9 +119,9 @@ function DevCardItem({
     <button
       ref={setNodeRef}
       type="button"
-      className={`board-card dev-card status-${status} cursor-${canDrag ? 'drag' : 'pointer'} ${
-        isDragging ? 'is-dragging' : ''
-      } ${
+      className={`board-card dev-card dev-card-column-${getSlugClassName(card.column)} status-${status} cursor-${
+        canDrag ? 'drag' : 'pointer'
+      } ${isDragging ? 'is-dragging' : ''} ${
         hasActiveDevBlocker(card) ? 'is-flagged' : ''
       }`}
       style={{
@@ -151,6 +149,7 @@ function DevCardItem({
         <span
           role="button"
           tabIndex={0}
+          className="board-card-copy-action"
           aria-label={`Copy link for ${card.id}`}
           title="Copy card link"
           onMouseDown={(event) => event.stopPropagation()}
@@ -160,28 +159,13 @@ function DevCardItem({
               void handleCopyCardLink(event)
             }
           }}
-          style={{ marginLeft: 'auto', fontSize: '0.85rem', opacity: 0.7 }}
         >
-          🔗
+          <LinkIcon />
         </span>
         {copyFeedbackVisible ? <span className="card-progress-chip">Link copied</span> : null}
       </div>
-      <div>
-        <span
-          style={{
-            display: 'inline-block',
-            borderRadius: 999,
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            letterSpacing: '0.02em',
-            lineHeight: 1.2,
-            padding: '0.2rem 0.5rem',
-            marginBottom: '0.45rem',
-            ...statusStyles,
-          }}
-        >
-          {statusLabel}
-        </span>
+      <div className="dev-card-status-row">
+        <span className={`dev-status-pill status-${status}`}>{statusLabel}</span>
       </div>
       {isEditingTitle ? (
         <input
@@ -223,8 +207,10 @@ function DevCardItem({
         </p>
       )}
       <div className="board-card-tags">
-        <span className="brand-pill">{card.brand}</span>
-        <span className="task-type-pill">{card.changeRequestType}</span>
+        <span className={`brand-pill dev-brand-pill brand-${getSlugClassName(card.brand)}`}>{card.brand}</span>
+        <span className={`task-type-pill dev-task-type-pill type-${getSlugClassName(card.changeRequestType)}`}>
+          {card.changeRequestType}
+        </span>
       </div>
       <div className="board-card-footer">
         <span className="card-owner">{card.assigneeId ? teamMemberNameById(card.assigneeId, teamMembers) : 'Unassigned'}</span>
@@ -259,7 +245,7 @@ function DevDropColumn({
   })
 
   return (
-    <article className="board-column">
+    <article className={`board-column dev-board-column dev-column-${getSlugClassName(column)}`}>
       <header className="board-column-header">
         <div>
           <h2>{column}</h2>
@@ -340,7 +326,7 @@ export function DevBoardPage({
   }
 
   return (
-    <div className="page-shell">
+    <div className="page-shell dev-board-shell">
       <PageHeader
         title="Development Board"
         rightContent={
@@ -394,7 +380,7 @@ export function DevBoardPage({
 
         <DragOverlay>
           {activeDragCard ? (
-            <div className="board-card is-overlay">
+            <div className={`board-card dev-card dev-card-column-${getSlugClassName(activeDragCard.column)} is-overlay`}>
               <div className="board-card-top">
                 <span className="board-card-id">{activeDragCard.id}</span>
               </div>
