@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS finance_subscription_meta (
 );
 
 ALTER TABLE finance_subscription_meta ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "auth_select" ON finance_subscription_meta;
+DROP POLICY IF EXISTS "auth_insert" ON finance_subscription_meta;
+DROP POLICY IF EXISTS "auth_update" ON finance_subscription_meta;
+DROP POLICY IF EXISTS "auth_delete" ON finance_subscription_meta;
+
 CREATE POLICY "auth_select" ON finance_subscription_meta FOR SELECT TO authenticated USING (true);
 CREATE POLICY "auth_insert" ON finance_subscription_meta FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "auth_update" ON finance_subscription_meta FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
