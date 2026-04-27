@@ -129,6 +129,20 @@ function formatEstDateTime(value: string) {
   })} EST`
 }
 
+function getTodayInEst() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+
+  return `${year}-${month}-${day}`
+}
+
 function toIsoDate(date: Date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -423,9 +437,10 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
       const data = showRefresh
         ? await syncBrandDailyPerformance(range ?? { days: 60 })
         : await loadBrandDailyPerformance(range ?? { days: 60 })
+      const sourceErrors = data.sync?.errors ?? []
       setRows(data.rows)
       setGeneratedAt(data.generatedAt)
-      setErrorMessage(data.error ?? null)
+      setErrorMessage(data.error ?? (sourceErrors.length > 0 ? sourceErrors.slice(0, 3).join(' · ') : null))
       setSyncSummary(data.sync ? `${data.sync.rowsWritten} live rows refreshed${data.sync.errors.length > 0 ? ` · ${data.sync.errors.length} source error(s)` : ''}` : null)
     } finally {
       setLoading(false)
@@ -437,7 +452,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
     void loadPerformance(null)
   }, [])
 
-  const anchorDate = latestDate(rows) || toIsoDate(new Date())
+  const anchorDate = getTodayInEst()
   const activeRange = useMemo(() => {
     if (datePreset === 'custom' && customRange) {
       return customRange

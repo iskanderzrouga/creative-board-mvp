@@ -136,6 +136,20 @@ function getRequestUrl(req: HandlerRequest) {
   return new URL(req.url || '/', 'https://editors-board.local')
 }
 
+function getTodayInTimezone(timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+
+  return `${year}-${month}-${day}`
+}
+
 function getSupabaseUrl() {
   return process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 }
@@ -184,8 +198,7 @@ async function requireAllowedUser(req: HandlerRequest) {
 
 function getRequestRange(req: HandlerRequest) {
   const url = getRequestUrl(req)
-  const today = new Date()
-  const to = url.searchParams.get('to') || new Date(today.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const to = url.searchParams.get('to') || getTodayInTimezone('America/New_York')
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days') || 30)))
   const fromDate = new Date(`${to}T00:00:00`)
   fromDate.setDate(fromDate.getDate() - (days - 1))
@@ -311,8 +324,11 @@ async function readRows(from: string, to: string, auth: string, useServiceRole =
 
 async function metaDaily(brand: BrandConfig, since: string, until: string) {
   const meta = brand.platforms?.meta
-  if (!meta?.enabled || !meta.access_token || !meta.ad_account_id) {
+  if (!meta || meta.enabled === false) {
     return new Map<string, PlatformDay>()
+  }
+  if (!meta.access_token || !meta.ad_account_id) {
+    throw new Error(`${brand.slug} Meta config missing access_token or ad_account_id`)
   }
 
   const params = new URLSearchParams({
@@ -352,8 +368,11 @@ async function metaDaily(brand: BrandConfig, since: string, until: string) {
 
 async function shopifyToken(brand: BrandConfig) {
   const shopify = brand.platforms?.shopify
-  if (!shopify?.enabled || !shopify.store || !shopify.client_id || !shopify.client_secret) {
+  if (!shopify || shopify.enabled === false) {
     return null
+  }
+  if (!shopify.store || !shopify.client_id || !shopify.client_secret) {
+    throw new Error(`${brand.slug} Shopify config missing store, client_id, or client_secret`)
   }
 
   const body = new URLSearchParams({
@@ -373,7 +392,11 @@ async function shopifyToken(brand: BrandConfig) {
   }
 
   const payload = response.data
-  return payload.access_token ?? null
+  if (!payload.access_token) {
+    throw new Error(`${brand.slug} Shopify token response did not include access_token`)
+  }
+
+  return payload.access_token
 }
 
 async function shopifyql(brand: BrandConfig, token: string, query: string) {
@@ -435,8 +458,11 @@ async function shopifyDaily(brand: BrandConfig, since: string, until: string) {
 
 async function axonDaily(brand: BrandConfig, since: string, until: string) {
   const axon = brand.platforms?.axon
-  if (!axon?.enabled || !axon.report_key) {
+  if (!axon || axon.enabled === false) {
     return new Map<string, PlatformDay>()
+  }
+  if (!axon.report_key) {
+    throw new Error(`${brand.slug} AppLovin config missing report_key`)
   }
 
   const timezone = brand.timezone || 'America/New_York'
@@ -576,13 +602,19 @@ async function googleToken() {
 async function googleDaily(brand: BrandConfig, since: string, until: string) {
   const google = brand.platforms?.google_ads
   const developerToken = getServerEnv('GOOGLE_DEVELOPER_TOKEN')
-  if (!google?.enabled || !google.customer_id || !developerToken) {
+  if (!google || google.enabled === false) {
     return new Map<string, PlatformDay>()
+  }
+  if (!google.customer_id) {
+    throw new Error(`${brand.slug} Google Ads config missing customer_id`)
+  }
+  if (!developerToken) {
+    throw new Error('Google Ads config missing GOOGLE_DEVELOPER_TOKEN')
   }
 
   const accessToken = await googleToken()
   if (!accessToken) {
-    return new Map<string, PlatformDay>()
+    throw new Error('Google Ads config missing GOOGLE_REFRESH_TOKEN')
   }
 
   const customerId = google.customer_id.replace(/[^0-9]/g, '')
