@@ -398,8 +398,17 @@ function BrandCard({
 }
 
 function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
-  const dailyRows = rows
-    .slice()
+  const dailyRows = Object.values(
+    rows.reduce<Record<string, { date: string; revenue: number; totalAdSpend: number }>>((acc, row) => {
+      const current = acc[row.date] ?? { date: row.date, revenue: 0, totalAdSpend: 0 }
+      acc[row.date] = {
+        date: row.date,
+        revenue: current.revenue + row.revenue,
+        totalAdSpend: current.totalAdSpend + row.totalAdSpend,
+      }
+      return acc
+    }, {}),
+  )
     .sort((left, right) => left.date.localeCompare(right.date))
     .slice(-30)
   const values = dailyRows.flatMap((row) => [row.revenue, row.totalAdSpend])
@@ -412,7 +421,7 @@ function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
 
   const pointsFor = (key: 'revenue' | 'totalAdSpend') => dailyRows
     .map((row, index) => {
-      const x = dailyRows.length === 1 ? 0 : (index / (dailyRows.length - 1)) * width
+      const x = dailyRows.length === 1 ? width / 2 : (index / (dailyRows.length - 1)) * width
       const y = topPadding + chartHeight - (row[key] / maxValue) * chartHeight
       return `${x},${y}`
     })
@@ -438,9 +447,15 @@ function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
           })}
           <polyline points={pointsFor('revenue')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           <polyline points={pointsFor('totalAdSpend')} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          {dailyRows.length === 1 ? (
+            <>
+              <circle cx={width / 2} cy={topPadding + chartHeight - (dailyRows[0].revenue / maxValue) * chartHeight} r="4" fill="#2563eb" />
+              <circle cx={width / 2} cy={topPadding + chartHeight - (dailyRows[0].totalAdSpend / maxValue) * chartHeight} r="4" fill="#f97316" />
+            </>
+          ) : null}
           {dailyRows.map((row, index) => {
             if (dailyRows.length <= 8 || index % Math.ceil(dailyRows.length / 6) === 0 || index === dailyRows.length - 1) {
-              const x = dailyRows.length === 1 ? 0 : (index / (dailyRows.length - 1)) * width
+              const x = dailyRows.length === 1 ? width / 2 : (index / (dailyRows.length - 1)) * width
               return (
                 <text key={row.date} x={x} y={height - 9} textAnchor={index === 0 ? 'start' : index === dailyRows.length - 1 ? 'end' : 'middle'} fill="#697386" fontSize="11">
                   {formatDate(row.date)}
