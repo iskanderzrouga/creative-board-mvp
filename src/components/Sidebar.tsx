@@ -17,6 +17,7 @@ interface SidebarProps {
   role: ActiveRole
   isDeveloperUser: boolean
   canAccessBacklog: boolean
+  canAccessPerformance: boolean
   userName: string
   userSecondaryLabel: string | null
   signOutPending?: boolean
@@ -169,7 +170,7 @@ function getPageLabel(page: ExtendedPage) {
     return 'Strategy'
   }
   if (page === 'finance') {
-    return 'Finance'
+    return 'Performance'
   }
 
   switch (page) {
@@ -239,6 +240,7 @@ function SidebarComponent({
   role,
   isDeveloperUser,
   canAccessBacklog,
+  canAccessPerformance,
   userName,
   userSecondaryLabel,
   signOutPending = false,
@@ -264,7 +266,7 @@ function SidebarComponent({
         ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'strategy' as const, disabled: false }] : []),
-        ...(role.mode === 'owner' ? [{ page: 'finance' as const, disabled: false }] : []),
+        ...(canAccessPerformance ? [{ page: 'finance' as const, disabled: false }] : []),
         { page: 'board', disabled: false },
         { page: 'pulse', disabled: false },
         ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),

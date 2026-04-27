@@ -1,821 +1,855 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  CAT,
-  FINANCE_CATEGORY_COLORS,
-  FINANCE_CATEGORY_LABELS,
-  SUBSCRIPTION_BRANDS,
-  SUBSCRIPTION_STATUSES,
-  autoClassifyWithSeedRules,
-  classifyTransaction,
-  createSubscription,
-  deleteFinanceTransaction,
-  loadFinanceData,
-  syncFinanceFromSlash,
-  updateSubscription,
-  upsertSubscriptionMeta,
-  type FinanceAccount,
-  type FinanceCategory,
-  type FinancePattern,
-  type FinanceSubscription,
-  type FinanceTransaction,
-  type SubscriptionBrand,
-  type SubscriptionFrequency,
-  type SubscriptionStatus,
-} from '../finance'
-
-type FinanceTab = 'dashboard' | 'ledger' | 'subscriptions' | 'triage' | 'search'
-
-const TRIAGE_OPTIONS: Array<{ c: FinanceCategory; i: string; l: string }> = [
-  { c: CAT.SUBSCRIPTION, i: '🔄', l: 'Subscription (recurring tool/service)' },
-  { c: CAT.SALARY, i: '👤', l: 'Salary / Payroll' },
-  { c: CAT.AD_SPEND, i: '📢', l: 'Ad Spend (Meta, Google, etc.)' },
-  { c: CAT.ONE_TIME, i: '📌', l: 'One-Time Expense' },
-  { c: CAT.COGS, i: '📦', l: 'COGS / Product Cost' },
-  { c: CAT.REVENUE, i: '💰', l: 'Revenue' },
-  { c: CAT.REFUND, i: '↩️', l: 'Refund' },
-  { c: CAT.TAXES, i: '🏛️', l: 'Taxes (state, federal, sales tax)' },
-  { c: CAT.AFFILIATE, i: '🤝', l: 'Affiliate payout' },
-  { c: CAT.HR, i: '👔', l: 'HR (recruiting, benefits)' },
-  { c: CAT.INTERNAL_TRANSFER, i: '🔄', l: 'Internal Transfer (between accounts)' },
-]
+  PERFORMANCE_BRANDS,
+  loadBrandDailyPerformance,
+  type BrandDailyPerformanceRow,
+  type PerformanceBrandSlug,
+} from '../financePerformance'
 
 interface FinancePageProps {
   headerUtilityContent?: ReactNode
 }
 
-const moneyStyle = {
-  fontFamily: "'JetBrains Mono', monospace",
+type BrandFilter = PerformanceBrandSlug | 'all'
+type DatePreset =
+  | 'today'
+  | 'yesterday'
+  | 'last7'
+  | 'last14'
+  | 'last28'
+  | 'last30'
+  | 'thisWeek'
+  | 'lastWeek'
+  | 'thisMonth'
+  | 'lastMonth'
+  | 'custom'
+
+interface DateRange {
+  from: string
+  to: string
 }
 
-const cardBase = {
-  background: '#12151B',
-  border: '1px solid #1C2130',
+const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last7', label: 'Last 7 days' },
+  { value: 'last14', label: 'Last 14 days' },
+  { value: 'last28', label: 'Last 28 days' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'thisWeek', label: 'This week' },
+  { value: 'lastWeek', label: 'Last week' },
+  { value: 'thisMonth', label: 'This month' },
+  { value: 'lastMonth', label: 'Last month' },
+  { value: 'custom', label: 'Custom' },
+]
+
+const brandColor = new Map(PERFORMANCE_BRANDS.map((brand) => [brand.slug, brand.color]))
+const brandTint = new Map(PERFORMANCE_BRANDS.map((brand) => [brand.slug, brand.tint]))
+const brandName = new Map(PERFORMANCE_BRANDS.map((brand) => [brand.slug, brand.name]))
+
+const pageShell = {
+  background: '#f7f8fb',
+  minHeight: '100vh',
+  margin: '-24px',
+  color: '#172033',
+}
+
+const pageInner = {
+  maxWidth: 1280,
+  margin: '0 auto',
+  padding: '28px 24px 40px',
+}
+
+const panelStyle = {
+  background: '#ffffff',
+  border: '1px solid #e4e8f0',
   borderRadius: 8,
+  boxShadow: '0 18px 40px rgba(28, 38, 62, 0.06)',
 }
 
-const labelMuted = {
-  color: '#5E6E85',
+const mutedText = {
+  color: '#697386',
 }
 
-const inputStyle = {
-  background: '#0B0D11',
-  border: '1px solid #1C2130',
-  color: '#E2E8F2',
-  borderRadius: 6,
-  padding: '8px 10px',
-}
-const subscriptionSelectStyle = {
-  background: '#0B0D11',
-  border: '1px solid #1C2130',
-  color: '#E2E8F2',
-  borderRadius: 5,
-  padding: '5px 9px',
-  fontSize: 11,
-  cursor: 'pointer',
+const mono = {
+  fontFamily: "'JetBrains Mono', 'SFMono-Regular', Consolas, monospace",
+  letterSpacing: 0,
 }
 
-function formatMoney(value: number) {
+function formatMoney(value: number, maximumFractionDigits = 0) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 2,
+    maximumFractionDigits,
   }).format(value)
 }
 
-function formatShortDate(value: string) {
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('en-US').format(value)
+}
+
+function formatMetric(value: number) {
+  return Number.isFinite(value) && value > 0 ? `${value.toFixed(2)}x` : '—'
+}
+
+function formatDate(value: string) {
   const parsed = new Date(`${value}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) {
     return value
   }
-  return parsed.toLocaleDateString('en-US', {
-    month: 'short',
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function formatLongDate(value: string) {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+  return parsed.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function formatEstDateTime(value: string) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return `${parsed.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'numeric',
     day: 'numeric',
-  })
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })} EST`
 }
 
-type InferredSubscriptionFrequency = SubscriptionFrequency | 'biweekly' | '—'
-
-function projectToMonthly(amount: number, frequency: InferredSubscriptionFrequency) {
-  if (frequency === 'weekly') {
-    return amount * 52 / 12
-  }
-  if (frequency === 'biweekly') {
-    return amount * 26 / 12
-  }
-  if (frequency === 'yearly') {
-    return amount / 12
-  }
-  return amount
+function toIsoDate(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-function inferFrequency(mostRecentDate: string, previousDate?: string): InferredSubscriptionFrequency {
-  if (!previousDate) {
-    return '—'
-  }
-
-  const newest = new Date(`${mostRecentDate}T00:00:00`)
-  const prior = new Date(`${previousDate}T00:00:00`)
-  const gapDays = Math.abs(newest.getTime() - prior.getTime()) / (1000 * 60 * 60 * 24)
-
-  if (gapDays < 10) {
-    return 'weekly'
-  }
-  if (gapDays <= 20) {
-    return 'biweekly'
-  }
-  if (gapDays <= 45) {
-    return 'monthly'
-  }
-  return 'yearly'
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(date.getDate() + days)
+  return toIsoDate(date)
 }
 
-function tabStyle(active: boolean) {
+function monthStart(value: string) {
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(1)
+  return toIsoDate(date)
+}
+
+function getPresetRange(preset: DatePreset, anchorDate: string): DateRange {
+  const date = new Date(`${anchorDate}T00:00:00`)
+  const day = date.getDay()
+  const month = date.getMonth()
+  const year = date.getFullYear()
+
+  switch (preset) {
+    case 'today':
+      return { from: anchorDate, to: anchorDate }
+    case 'yesterday': {
+      const yesterday = addDays(anchorDate, -1)
+      return { from: yesterday, to: yesterday }
+    }
+    case 'last7':
+      return { from: addDays(anchorDate, -6), to: anchorDate }
+    case 'last14':
+      return { from: addDays(anchorDate, -13), to: anchorDate }
+    case 'last28':
+      return { from: addDays(anchorDate, -27), to: anchorDate }
+    case 'last30':
+      return { from: addDays(anchorDate, -29), to: anchorDate }
+    case 'thisWeek':
+      return { from: addDays(anchorDate, -day), to: anchorDate }
+    case 'lastWeek': {
+      const end = addDays(anchorDate, -(day + 1))
+      return { from: addDays(end, -6), to: end }
+    }
+    case 'thisMonth':
+      return { from: monthStart(anchorDate), to: anchorDate }
+    case 'lastMonth': {
+      const firstOfThisMonth = new Date(year, month, 1)
+      const lastOfPreviousMonth = new Date(firstOfThisMonth)
+      lastOfPreviousMonth.setDate(0)
+      const firstOfPreviousMonth = new Date(lastOfPreviousMonth)
+      firstOfPreviousMonth.setDate(1)
+      return { from: toIsoDate(firstOfPreviousMonth), to: toIsoDate(lastOfPreviousMonth) }
+    }
+    case 'custom':
+      return { from: anchorDate, to: anchorDate }
+    default:
+      return { from: addDays(anchorDate, -29), to: anchorDate }
+  }
+}
+
+function getPresetLabel(preset: DatePreset) {
+  return DATE_PRESETS.find((item) => item.value === preset)?.label ?? 'Custom'
+}
+
+function getRangeLabel(range: DateRange) {
+  return `${formatDate(range.from)} - ${formatDate(range.to)}`
+}
+
+function getChange(current: number, prior: number) {
+  if (!Number.isFinite(prior) || prior === 0) {
+    return null
+  }
+  return ((current - prior) / prior) * 100
+}
+
+function sumRows(rows: BrandDailyPerformanceRow[]) {
+  const totals = rows.reduce(
+    (acc, row) => ({
+      revenue: acc.revenue + row.revenue,
+      orders: acc.orders + row.orders,
+      metaSpend: acc.metaSpend + row.metaSpend,
+      axonSpend: acc.axonSpend + row.axonSpend,
+      googleSpend: acc.googleSpend + row.googleSpend,
+      totalAdSpend: acc.totalAdSpend + row.totalAdSpend,
+      platformAttributedRevenue: acc.platformAttributedRevenue + row.platformAttributedRevenue,
+      refunds: acc.refunds + row.refunds,
+      cogs: acc.cogs + row.cogs,
+      contributionAfterAds: acc.contributionAfterAds + row.contributionAfterAds,
+      netProfit: acc.netProfit + row.netProfit,
+    }),
+    {
+      revenue: 0,
+      orders: 0,
+      metaSpend: 0,
+      axonSpend: 0,
+      googleSpend: 0,
+      totalAdSpend: 0,
+      platformAttributedRevenue: 0,
+      refunds: 0,
+      cogs: 0,
+      contributionAfterAds: 0,
+      netProfit: 0,
+    },
+  )
+
   return {
-    background: active ? '#3B82F6' : 'transparent',
-    color: active ? '#FFFFFF' : '#5E6E85',
-    border: active ? '1px solid #3B82F6' : '1px solid #1C2130',
-    padding: '8px 16px',
-    fontSize: '13px',
-    fontWeight: 600,
-    borderRadius: '6px',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
+    ...totals,
+    platformRoas: totals.totalAdSpend > 0 ? totals.platformAttributedRevenue / totals.totalAdSpend : 0,
+    blendedMer: totals.totalAdSpend > 0 ? totals.revenue / totals.totalAdSpend : 0,
+    cpa: totals.orders > 0 ? totals.totalAdSpend / totals.orders : 0,
+    contributionMargin: totals.revenue > 0 ? totals.contributionAfterAds / totals.revenue : 0,
   }
 }
 
-function TransactionRow({
-  transaction,
-  onDelete,
-  onClassify,
+function latestDate(rows: BrandDailyPerformanceRow[]) {
+  return rows.reduce((latest, row) => (row.date > latest ? row.date : latest), rows[0]?.date ?? '')
+}
+
+function StatTile({
+  label,
+  value,
+  helper,
+  accent = '#2563eb',
 }: {
-  transaction: FinanceTransaction
-  onDelete?: (id: string) => void
-  onClassify?: (id: string) => void
+  label: string
+  value: string
+  helper?: string
+  accent?: string
 }) {
-  const isOut = transaction.direction === 'out'
   return (
-    <div style={{ ...cardBase, borderRadius: 7, padding: '12px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-        <span style={{ color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{isOut ? '↓' : '↑'}</span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: '#E2E8F2', overflow: 'hidden', textOverflow: 'ellipsis' }}>{transaction.description}</div>
-          <div style={{ ...labelMuted, fontSize: 12 }}>{transaction.date}</div>
+    <div style={{ ...panelStyle, padding: 18, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: accent }} />
+        <span style={{ color: '#697386', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
+      </div>
+      <div style={{ ...mono, color: '#111827', fontSize: 26, fontWeight: 800, letterSpacing: 0 }}>{value}</div>
+      {helper ? <div style={{ color: '#697386', fontSize: 12, marginTop: 5 }}>{helper}</div> : null}
+    </div>
+  )
+}
+
+function MiniSparkline({ rows, color }: { rows: BrandDailyPerformanceRow[]; color: string }) {
+  const points = rows
+    .slice()
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(-7)
+    .map((row) => row.revenue)
+  const max = Math.max(...points, 1)
+  const min = Math.min(...points, 0)
+  const span = Math.max(max - min, 1)
+  const polyline = points
+    .map((value, index) => {
+      const x = points.length === 1 ? 0 : (index / (points.length - 1)) * 100
+      const y = 34 - ((value - min) / span) * 28
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return (
+    <svg viewBox="0 0 100 38" role="img" aria-label="Revenue trend" style={{ width: '100%', height: 38, display: 'block' }}>
+      <polyline points={polyline} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function BrandCard({
+  rows,
+  brandSlug,
+}: {
+  rows: BrandDailyPerformanceRow[]
+  brandSlug: PerformanceBrandSlug
+}) {
+  const totals = sumRows(rows)
+  const color = brandColor.get(brandSlug) ?? '#2563eb'
+
+  return (
+    <div style={{ ...panelStyle, padding: 18, borderTop: `3px solid ${color}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ color: '#111827', fontSize: 16, fontWeight: 850 }}>{brandName.get(brandSlug) ?? brandSlug}</div>
+          <div style={{ ...mutedText, fontSize: 12, marginTop: 3 }}>Daily performance</div>
+        </div>
+        <span style={{ color, background: brandTint.get(brandSlug), border: `1px solid ${color}22`, borderRadius: 999, padding: '5px 9px', fontSize: 11, fontWeight: 800 }}>
+          {rows.length} days
+        </span>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <div style={{ ...mono, color: '#111827', fontSize: 26, fontWeight: 850 }}>{formatMoney(totals.revenue)}</div>
+        <div style={{ color: '#697386', fontSize: 12, marginTop: 3 }}>
+          {formatMoney(totals.totalAdSpend)} spend · {formatNumber(totals.orders)} orders
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{
-          background: `${FINANCE_CATEGORY_COLORS[transaction.category]}26`,
-          color: FINANCE_CATEGORY_COLORS[transaction.category],
-          border: `1px solid ${FINANCE_CATEGORY_COLORS[transaction.category]}`,
-          borderRadius: 999,
-          padding: '3px 8px',
-          fontSize: 12,
-          whiteSpace: 'nowrap',
-        }}>
-          {FINANCE_CATEGORY_LABELS[transaction.category]}
-        </span>
-        <span style={{ ...moneyStyle, color: isOut ? '#EF4444' : '#10B981', fontWeight: 700 }}>{formatMoney(transaction.amount)}</span>
-        {onClassify ? <button type="button" style={tabStyle(false)} onClick={() => onClassify(transaction.id)}>Classify</button> : null}
-        {onDelete ? <button type="button" style={tabStyle(false)} onClick={() => onDelete(transaction.id)}>Delete</button> : null}
+      <div style={{ margin: '16px 0 12px' }}>
+        <MiniSparkline rows={rows} color={color} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+        <div>
+          <div style={{ color: '#697386', fontSize: 11 }}>Platform ROAS</div>
+          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMetric(totals.platformRoas)}</strong>
+        </div>
+        <div>
+          <div style={{ color: '#697386', fontSize: 11 }}>Blended ROAS</div>
+          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMetric(totals.blendedMer)}</strong>
+        </div>
+        <div>
+          <div style={{ color: '#697386', fontSize: 11 }}>CPA</div>
+          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMoney(totals.cpa, 2)}</strong>
+        </div>
       </div>
     </div>
   )
 }
 
-function StatCard({ label, value, valueColor, subText }: { label: string; value: string; valueColor: string; subText?: ReactNode }) {
-  return (
-    <div style={{ ...cardBase, flex: '1 1 160px', minWidth: '0', padding: '16px 18px' }}>
-      <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#5E6E85', marginBottom: '6px' }}>{label}</div>
-      <div style={{ ...moneyStyle, fontSize: '22px', fontWeight: 700, color: valueColor }}>{value}</div>
-      {subText ? <div style={{ fontSize: '12px', color: '#5E6E85', marginTop: '4px' }}>{subText}</div> : null}
-    </div>
-  )
+function buildAlerts(rows: BrandDailyPerformanceRow[]) {
+  const byBrand = PERFORMANCE_BRANDS.map((brand) => {
+    const brandRows = rows.filter((row) => row.brandSlug === brand.slug).sort((left, right) => right.date.localeCompare(left.date))
+    return { brand, today: brandRows[0], yesterday: brandRows[1] }
+  })
+
+  const alerts: Array<{ title: string; detail: string; tone: '#b45309' | '#be123c' | '#047857' | '#334155' }> = []
+
+  byBrand.forEach(({ brand, today, yesterday }) => {
+    if (!today || !yesterday) {
+      return
+    }
+
+    const spendChange = getChange(today.totalAdSpend, yesterday.totalAdSpend)
+    const merChange = getChange(today.blendedMer, yesterday.blendedMer)
+    const refundChange = getChange(today.refunds, yesterday.refunds)
+
+    if (merChange !== null && merChange < -12) {
+      alerts.push({
+        title: `${brand.name} ROAS drop`,
+        detail: `Blended ROAS softened. Check spend mix before scaling.`,
+        tone: '#be123c',
+      })
+    }
+
+    if (spendChange !== null && spendChange > 18) {
+      alerts.push({
+        title: `${brand.name} spend spike`,
+        detail: `${spendChange.toFixed(1)}% more ad spend than yesterday.`,
+        tone: '#b45309',
+      })
+    }
+
+    if (refundChange !== null && refundChange > 25 && today.refunds > 0) {
+      alerts.push({
+        title: `${brand.name} refunds up`,
+        detail: `${formatMoney(today.refunds)} refunds logged for ${formatDate(today.date)}.`,
+        tone: '#b45309',
+      })
+    }
+  })
+
+  if (alerts.length === 0) {
+    alerts.push({
+      title: 'No major anomalies',
+      detail: 'Revenue, spend, and refunds are inside the expected daily range.',
+      tone: '#047857',
+    })
+  }
+
+  return alerts.slice(0, 5)
 }
 
 export function FinancePage({ headerUtilityContent }: FinancePageProps) {
-  const [tab, setTab] = useState<FinanceTab>('dashboard')
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([])
-  const [subscriptions, setSubscriptions] = useState<FinanceSubscription[]>([])
-  const [patterns, setPatterns] = useState<FinancePattern[]>([])
-  const [subscriptionMeta, setSubscriptionMeta] = useState<Record<string, { brand: SubscriptionBrand; status: SubscriptionStatus }>>({})
-  const [accounts, setAccounts] = useState<FinanceAccount[]>([])
-  const [syncing, setSyncing] = useState(false)
-  const [syncSummary, setSyncSummary] = useState('Ready to sync')
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [searchQuery, setSearchQuery] = useState('')
-  const [triageTarget, setTriageTarget] = useState<FinanceTransaction | null>(null)
-  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false)
-  const [subName, setSubName] = useState('')
-  const [subAmount, setSubAmount] = useState('')
-  const [subFrequency, setSubFrequency] = useState<SubscriptionFrequency>('monthly')
-  const [subPlatform, setSubPlatform] = useState('')
-  const [subBrand, setSubBrand] = useState<SubscriptionBrand>('Unassigned')
-  const [subStatus, setSubStatus] = useState<SubscriptionStatus>('active')
-  const [subscriptionBrandFilter, setSubscriptionBrandFilter] = useState<'all' | SubscriptionBrand>('all')
-  const [subscriptionStatusFilter, setSubscriptionStatusFilter] = useState<'all' | SubscriptionStatus>('active')
-  const [seedClassifyMessage, setSeedClassifyMessage] = useState('')
-  const financeDirtyRef = useRef(false)
-  const financePendingWritesRef = useRef(0)
-  const financeLoadSeqRef = useRef(0)
-  const latestMutationSeqRef = useRef(0)
+  const [rows, setRows] = useState<BrandDailyPerformanceRow[]>([])
+  const [source, setSource] = useState<'api' | 'demo'>('demo')
+  const [generatedAt, setGeneratedAt] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
+  const [datePreset, setDatePreset] = useState<DatePreset>('last30')
+  const [customRange, setCustomRange] = useState<DateRange | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [draftPreset, setDraftPreset] = useState<DatePreset>('last30')
+  const [draftRange, setDraftRange] = useState<DateRange | null>(null)
 
-  const reloadData = async () => {
-    const loadSeq = financeLoadSeqRef.current + 1
-    financeLoadSeqRef.current = loadSeq
-    try {
-      const data = await loadFinanceData()
-      if (financeDirtyRef.current) {
-        console.warn('[finance sync] skipping remote replace — dirty')
-        return
-      }
-      if (loadSeq < latestMutationSeqRef.current) {
-        console.warn('[finance sync] skipping remote replace — stale load')
-        return
-      }
-      setTransactions(data.transactions)
-      setSubscriptions(data.subscriptions)
-      setPatterns(data.patterns)
-      setSubscriptionMeta(data.subscriptionMeta)
-      setErrorMessage(null)
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not load finance data')
+  const loadPerformance = async (range: DateRange | null, showRefresh = false) => {
+    if (showRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
     }
-  }
 
-  const runFinanceMutation = async (label: string, action: () => Promise<void>) => {
-    financePendingWritesRef.current += 1
-    financeDirtyRef.current = true
-    latestMutationSeqRef.current += 1
-    console.log('[finance save] saving', {
-      label,
-      count: financePendingWritesRef.current,
-      timestamp: new Date().toISOString(),
-    })
     try {
-      await action()
-      console.log('[finance save] success', { label })
+      const data = await loadBrandDailyPerformance(range ?? { days: 60 })
+      setRows(data.rows)
+      setSource(data.source)
+      setGeneratedAt(data.generatedAt)
     } finally {
-      financePendingWritesRef.current = Math.max(0, financePendingWritesRef.current - 1)
-      if (financePendingWritesRef.current === 0) {
-        financeDirtyRef.current = false
-      }
+      setLoading(false)
+      setRefreshing(false)
     }
   }
 
   useEffect(() => {
-    void reloadData()
+    void loadPerformance(null)
   }, [])
 
-  const monthPrefix = new Date().toISOString().slice(0, 7)
-  const monthTx = useMemo(() => transactions.filter((transaction) => transaction.date.startsWith(monthPrefix)), [transactions, monthPrefix])
-
-  const monthIn = monthTx.filter((transaction) => transaction.direction === 'in').reduce((sum, transaction) => sum + transaction.amount, 0)
-  const monthOut = monthTx.filter((transaction) => transaction.direction === 'out').reduce((sum, transaction) => sum + transaction.amount, 0)
-  const monthNet = monthIn - monthOut
-  const mSal = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.SALARY).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mSub = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.SUBSCRIPTION).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mAds = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.AD_SPEND).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mCogs = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.COGS).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mOne = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.ONE_TIME).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mTax = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.TAXES).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mAff = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.AFFILIATE).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const mHR = monthTx.filter((transaction) => transaction.direction === 'out' && transaction.category === CAT.HR).reduce((sum, transaction) => sum + transaction.amount, 0)
-  const opEx = mSal + mSub + mAds + mCogs + mOne + mTax + mAff + mHR
-  const today = new Date().toISOString().slice(0, 10)
-  const todaysTransactions = transactions.filter((transaction) => transaction.date === today)
-  const selectedTransactions = transactions.filter((transaction) => transaction.date === selectedDate)
-  const unclassified = transactions.filter((transaction) => transaction.category === CAT.UNCLASSIFIED)
-
-  const monthOutflowBreakdown = useMemo(() => {
-    const totals = new Map<FinanceCategory, number>()
-
-    monthTx
-      .filter((transaction) => transaction.direction === 'out')
-      .forEach((transaction) => {
-        totals.set(transaction.category, (totals.get(transaction.category) ?? 0) + transaction.amount)
-      })
-
-    const totalOutflow = Array.from(totals.values()).reduce((sum, amount) => sum + amount, 0)
-    const icons: Record<FinanceCategory, string> = {
-      [CAT.UNCLASSIFIED]: '❓',
-      [CAT.SUBSCRIPTION]: '🔄',
-      [CAT.SALARY]: '👤',
-      [CAT.ONE_TIME]: '📌',
-      [CAT.REVENUE]: '💰',
-      [CAT.REFUND]: '↩️',
-      [CAT.AD_SPEND]: '📢',
-      [CAT.COGS]: '📦',
-      [CAT.TAXES]: '🏛️',
-      [CAT.AFFILIATE]: '🤝',
-      [CAT.HR]: '👔',
-      [CAT.INTERNAL_TRANSFER]: '🔄',
+  const anchorDate = latestDate(rows) || toIsoDate(new Date())
+  const activeRange = useMemo(() => {
+    if (datePreset === 'custom' && customRange) {
+      return customRange
     }
+    return getPresetRange(datePreset, anchorDate)
+  }, [anchorDate, customRange, datePreset])
 
-    return Array.from(totals.entries())
-      .filter(([, amount]) => amount > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([category, amount]) => ({
-        category,
-        icon: icons[category],
-        label: FINANCE_CATEGORY_LABELS[category],
-        amount,
-        percentage: totalOutflow > 0 ? (amount / totalOutflow) * 100 : 0,
-      }))
-  }, [monthTx])
-
-  const groupedByDate = useMemo(() => {
-    const map = new Map<string, FinanceTransaction[]>()
-    transactions.forEach((transaction) => {
-      const rows = map.get(transaction.date) ?? []
-      rows.push(transaction)
-      map.set(transaction.date, rows)
-    })
-    return Array.from(map.entries()).sort(([a], [b]) => (a > b ? -1 : 1))
-  }, [transactions])
-
-  const searchResults = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase()
-    if (!normalized) {
-      return []
-    }
-    return transactions.filter((transaction) => transaction.description.toLowerCase().includes(normalized))
-  }, [searchQuery, transactions])
-
-  const subscriptionRows = useMemo(() => {
-    const detectedByDescription = new Map<string, FinanceTransaction[]>()
-    const subscriptionTransactions = transactions.filter(
-      (transaction) => transaction.category === 'subscription' && transaction.direction === 'out',
-    )
-
-    subscriptionTransactions.forEach((transaction) => {
-        const key = transaction.description.trim().toLowerCase()
-        const rows = detectedByDescription.get(key) ?? []
-        rows.push(transaction)
-        detectedByDescription.set(key, rows)
-      })
-
-    const groupedDebug = Array.from(detectedByDescription.entries()).map(([description, rows]) => ({
-      description,
-      count: rows.length,
-      dates: rows.map((row) => row.date),
-    }))
-    console.log('[subs debug]', {
-      totalTx: transactions.length,
-      subTx: transactions.filter((transaction) => transaction.category === 'subscription').length,
-      grouped: groupedDebug,
-    })
-
-    const detectedRows = Array.from(detectedByDescription.entries()).map(([key, groupedTransactions]) => {
-      const sorted = [...groupedTransactions].sort((a, b) => (a.date > b.date ? -1 : 1))
-      const mostRecent = sorted[0]
-      const previous = sorted[1]
-      const frequency = inferFrequency(mostRecent.date, previous?.date)
-      const totalThisMonth = sorted
-        .filter((transaction) => transaction.date.startsWith(monthPrefix))
-        .reduce((sum, transaction) => sum + transaction.amount, 0)
-
-      return {
-        id: `auto-${key}`,
-        descriptionKey: key,
-        subscriptionId: null,
-        name: mostRecent.description,
-        amount: mostRecent.amount,
-        frequency,
-        lastChargeDate: mostRecent.date,
-        totalThisMonth,
-        isManual: false,
-        brand: subscriptionMeta[key]?.brand ?? 'Unassigned',
-        status: subscriptionMeta[key]?.status ?? 'active',
-      }
-    })
-
-    const manualRows = subscriptions.map((subscription) => ({
-      id: `manual-${subscription.id}`,
-      descriptionKey: null,
-      subscriptionId: subscription.id,
-      name: subscription.name,
-      amount: subscription.amount,
-      frequency: subscription.frequency as InferredSubscriptionFrequency,
-      lastChargeDate: null,
-      totalThisMonth: 0,
-      isManual: true,
-      brand: subscription.brand ?? 'Unassigned',
-      status: subscription.status ?? (subscription.active ? 'active' : 'inactive'),
-    }))
-
-    return [...detectedRows, ...manualRows].sort((a, b) => a.name.localeCompare(b.name))
-  }, [transactions, subscriptions, monthPrefix, subscriptionMeta])
-
-  const filteredSubscriptionRows = useMemo(
-    () => subscriptionRows.filter((row) => {
-      if (subscriptionBrandFilter !== 'all' && row.brand !== subscriptionBrandFilter) {
-        return false
-      }
-      if (subscriptionStatusFilter !== 'all' && row.status !== subscriptionStatusFilter) {
-        return false
-      }
-      return true
-    }),
-    [subscriptionRows, subscriptionBrandFilter, subscriptionStatusFilter],
+  const visibleRows = useMemo(
+    () => rows
+      .filter((row) => row.date >= activeRange.from && row.date <= activeRange.to && (brandFilter === 'all' || row.brandSlug === brandFilter))
+      .sort((left, right) => {
+        if (left.date !== right.date) {
+          return right.date.localeCompare(left.date)
+        }
+        return left.brandName.localeCompare(right.brandName)
+      }),
+    [rows, activeRange.from, activeRange.to, brandFilter],
   )
 
-  const subscriptionsMonthlyBurn = useMemo(
-    () => filteredSubscriptionRows
-      .filter((row) => row.status === 'active')
-      .reduce((sum, row) => sum + projectToMonthly(row.amount, row.frequency), 0),
-    [filteredSubscriptionRows],
-  )
+  const totals = useMemo(() => sumRows(visibleRows), [visibleRows])
+  const alerts = useMemo(() => buildAlerts(visibleRows), [visibleRows])
+  const latestVisibleDate = latestDate(visibleRows)
+  const latestRows = visibleRows.filter((row) => row.date === latestVisibleDate)
 
-  const syncNow = async () => {
-    setSyncing(true)
-    setSyncSummary('Syncing…')
-    try {
-      const result = await syncFinanceFromSlash()
-      setSyncSummary(`${result.imported} imported · ${result.duplicates} dupes skipped · ${result.needReview} need review`)
-      setAccounts(result.accounts)
-      await reloadData()
-    } catch (error) {
-      setSyncSummary(error instanceof Error ? error.message : 'Sync failed')
-    } finally {
-      setSyncing(false)
-    }
+  const openDatePicker = () => {
+    setDraftPreset(datePreset)
+    setDraftRange(datePreset === 'custom' && customRange ? customRange : activeRange)
+    setPickerOpen(true)
   }
 
-  const onClassify = async (category: FinanceCategory) => {
-    if (!triageTarget) {
-      return
-    }
-    await runFinanceMutation('classify-transaction', async () => {
-      await classifyTransaction(triageTarget.id, category)
-      await reloadData()
-    })
-    setTriageTarget(null)
+  const applyDatePicker = () => {
+    const nextRange = draftRange ?? getPresetRange(draftPreset, anchorDate)
+    setDatePreset(draftPreset)
+    setCustomRange(draftPreset === 'custom' ? nextRange : null)
+    setPickerOpen(false)
+    void loadPerformance(nextRange, true)
   }
 
-  const onAutoClassifySeedRules = async () => {
-    const updated = await (async () => {
-      let nextUpdated = 0
-      await runFinanceMutation('auto-classify-seed-rules', async () => {
-        nextUpdated = await autoClassifyWithSeedRules()
-        await reloadData()
-      })
-      return nextUpdated
-    })()
-    setSeedClassifyMessage(`Auto-classified ${updated} transactions using seed rules`)
+  const refreshPerformance = () => {
+    void loadPerformance(activeRange, true)
   }
 
   return (
-    <div style={{ background: '#0B0D11', minHeight: '100vh', marginLeft: '-24px', marginRight: '-24px', marginTop: '-24px', marginBottom: '-24px' }}>
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px 20px', color: '#E2E8F2' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '20px', letterSpacing: '-0.02em', marginTop: 0, color: '#E2E8F2' }}>Finance</h1>
-          <div>{headerUtilityContent}</div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', overflowX: 'auto' }}>
-          {([
-            ['dashboard', 'Dashboard'],
-            ['ledger', 'Daily Ledger'],
-            ['subscriptions', 'Subscriptions'],
-            ['triage', 'Triage'],
-            ['search', 'Search'],
-          ] as const).map(([value, label]) => (
-            <button key={value} type="button" onClick={() => setTab(value)} style={tabStyle(tab === value)}>{label}</button>
-          ))}
-        </div>
-
-        {errorMessage ? <div style={{ ...cardBase, color: '#F59E0B', padding: 12, marginBottom: 16 }}>{errorMessage}</div> : null}
-
-        {tab === 'dashboard' ? (
-          <section>
-            <div style={{ background: '#161B28', border: '1px solid #2A3040', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#5E6E85' }}>{syncSummary}</span>
-              <button type="button" onClick={syncNow} disabled={syncing} style={{ background: '#3B82F6', color: '#FFFFFF', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer' }}>
-                {syncing ? 'Syncing…' : '⚡ Sync Now'}
-              </button>
+    <div style={pageShell}>
+      <div style={pageInner}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start', marginBottom: 22 }}>
+          <div>
+            <div style={{ color: '#697386', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>
+              Performance / BlueBrands
             </div>
-
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              <StatCard label="Month In" value={formatMoney(monthIn)} valueColor="#10B981" />
-              <StatCard label="Month Out" value={formatMoney(monthOut)} valueColor="#EF4444" />
-              <StatCard label="Net Flow" value={formatMoney(monthNet)} valueColor={monthNet >= 0 ? '#10B981' : '#EF4444'} />
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              <StatCard
-                label="OpEx"
-                value={formatMoney(opEx)}
-                valueColor="#8B5CF6"
-                subText={(
-                  <div style={{ display: 'grid', gap: 4 }}>
-                    <div>{`Sal ${formatMoney(mSal)} · Subs ${formatMoney(mSub)} · Ads ${formatMoney(mAds)} · Tax ${formatMoney(mTax)} · COGS ${formatMoney(mCogs)}`}</div>
-                    <div>{`HR ${formatMoney(mHR)} · Affiliate ${formatMoney(mAff)} · One-Time ${formatMoney(mOne)}`}</div>
-                  </div>
-                )}
-              />
-              <StatCard label="Sub Burn /mo" value={formatMoney(subscriptionsMonthlyBurn)} valueColor="#8B5CF6" subText={`${subscriptionRows.length} tracked`} />
-            </div>
-
-            <div style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 8, padding: '14px 16px', marginBottom: '24px' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#E2E8F2', marginBottom: 10 }}>This Month — Outflows by Category</div>
-              {monthOutflowBreakdown.length === 0 ? (
-                <div style={{ color: '#5E6E85', fontSize: 12 }}>No outflow categories this month.</div>
-              ) : monthOutflowBreakdown.map((row) => (
-                <div key={row.category} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #1C2130' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>{row.icon}</span>
-                    <span style={{ color: '#E2E8F2' }}>{row.label}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ ...moneyStyle, color: '#E2E8F2' }}>{formatMoney(row.amount)}</span>
-                    <span style={{ color: '#5E6E85', minWidth: 42, textAlign: 'right', fontSize: 12 }}>{row.percentage.toFixed(0)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {accounts.length > 0 ? (
-              <div style={{ ...cardBase, padding: 12, marginBottom: 16 }}>
-                {accounts.map((account) => (
-                  <div key={account.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #1C2130' }}>
-                    <span>{account.name}</span>
-                    <span style={{ ...moneyStyle }}>{formatMoney(account.availableBalance)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <h3 style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#5E6E85', fontWeight: 700, marginBottom: '10px' }}>Today</h3>
-
-            {todaysTransactions.length === 0 ? (
-              <div style={{ ...cardBase, padding: '32px', textAlign: 'center', color: '#5E6E85' }}>No transactions for today yet.</div>
-            ) : (
-              todaysTransactions.map((transaction) => (
-                <TransactionRow
-                  key={transaction.id}
-                  transaction={transaction}
-                  onDelete={async (id) => {
-                    await runFinanceMutation('delete-transaction', async () => {
-                      await deleteFinanceTransaction(id)
-                      await reloadData()
-                    })
-                  }}
-                />
-              ))
-            )}
-          </section>
-        ) : null}
-
-        {tab === 'ledger' ? (
-          <section style={{ display: 'grid', gap: 12 }}>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} style={inputStyle} />
-            <div style={{ ...cardBase, padding: 10, display: 'flex', gap: 12 }}>
-              <span style={labelMuted}>In <strong style={{ ...moneyStyle, color: '#10B981' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
-              <span style={labelMuted}>Out <strong style={{ ...moneyStyle, color: '#EF4444' }}>{formatMoney(selectedTransactions.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0))}</strong></span>
-            </div>
-            <div>{selectedTransactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => {
-              await runFinanceMutation('delete-transaction', async () => {
-                await deleteFinanceTransaction(id)
-                await reloadData()
-              })
-            }} />)}</div>
-            <div style={{ ...cardBase, padding: 10, maxHeight: 260, overflowY: 'auto' }}>
-              {groupedByDate.map(([date, items]) => {
-                const dayIn = items.filter((t) => t.direction === 'in').reduce((sum, t) => sum + t.amount, 0)
-                const dayOut = items.filter((t) => t.direction === 'out').reduce((sum, t) => sum + t.amount, 0)
-                const hasUnclassified = items.some((t) => t.category === 'unclassified')
-                return (
-                  <button key={date} type="button" style={{ ...tabStyle(false), width: '100%', display: 'flex', justifyContent: 'space-between', marginBottom: 6 }} onClick={() => setSelectedDate(date)}>
-                    <span>{date} {hasUnclassified ? <span style={{ color: '#F59E0B' }}>●</span> : null}</span>
-                    <span style={moneyStyle}>+{formatMoney(dayIn)} / -{formatMoney(dayOut)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        {tab === 'subscriptions' ? (
-          <section style={{ display: 'grid', gap: 12 }}>
-            <div style={{ ...cardBase, padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ ...labelMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Monthly Burn</div>
-                <div style={{ ...moneyStyle, color: '#8B5CF6', fontSize: 30, fontWeight: 700 }}>{formatMoney(subscriptionsMonthlyBurn)}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <select style={subscriptionSelectStyle} value={subscriptionBrandFilter} onChange={(event) => setSubscriptionBrandFilter(event.target.value as 'all' | SubscriptionBrand)}>
-                  <option value="all">All brands</option>
-                  {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
-                </select>
-                <select style={subscriptionSelectStyle} value={subscriptionStatusFilter} onChange={(event) => setSubscriptionStatusFilter(event.target.value as 'all' | SubscriptionStatus)}>
-                  <option value="all">All statuses</option>
-                  {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                </select>
-                <button type="button" style={tabStyle(true)} onClick={() => setSubscriptionModalOpen(true)}>+ Subscription</button>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gap: 8 }}>
-              {filteredSubscriptionRows.length === 0 ? (
-                <div style={{ ...cardBase, borderRadius: 7, padding: '20px 14px', color: '#5E6E85', textAlign: 'center' }}>
-                  <div style={{ marginBottom: 10 }}>No subscriptions yet. Go to Triage and classify recurring charges as Subscription.</div>
-                  <button type="button" style={tabStyle(false)} onClick={() => setTab('triage')}>Open Triage</button>
-                </div>
-              ) : filteredSubscriptionRows.map((subscription) => (
-                <div key={subscription.id} style={{ background: '#12151B', border: '1px solid #1C2130', borderRadius: 7, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', opacity: subscription.status === 'cancelled' ? 0.5 : 1 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: '#E2E8F2', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subscription.name}</div>
-                    <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ color: '#5E6E85', fontSize: 12 }}>{subscription.frequency}</span>
-                      {subscription.isManual ? (
-                        <span style={{ color: '#5E6E85', border: '1px solid #1C2130', borderRadius: 999, fontSize: 10, padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>manual</span>
-                      ) : null}
-                      <span style={{ color: '#5E6E85', fontSize: 12 }}>This month: {formatMoney(subscription.totalThisMonth)}</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <select
-                      style={subscriptionSelectStyle}
-                      value={subscription.brand}
-                      onChange={async (event) => {
-                        const brand = event.target.value as SubscriptionBrand
-                            if (subscription.isManual && subscription.subscriptionId) {
-                              setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? { ...item, brand } : item))
-                              await runFinanceMutation('update-subscription-brand', async () => {
-                                await updateSubscription(subscription.subscriptionId!, { brand })
-                              })
-                              return
-                            }
-                            if (subscription.descriptionKey) {
-                              setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand, status: subscription.status } }))
-                              await runFinanceMutation('upsert-subscription-meta-brand', async () => {
-                                await upsertSubscriptionMeta(subscription.descriptionKey!, { brand })
-                              })
-                            }
-                          }}
-                    >
-                      {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
-                    </select>
-                    <div style={{ position: 'relative' }}>
-                      <span
-                        style={{
-                          position: 'absolute',
-                          left: 8,
-                          top: '50%',
-                          width: 6,
-                          height: 6,
-                          borderRadius: '50%',
-                          transform: 'translateY(-50%)',
-                          background: SUBSCRIPTION_STATUSES.find((status) => status.value === subscription.status)?.color ?? '#10B981',
-                        }}
-                      />
-                      <select
-                        style={{ ...subscriptionSelectStyle, paddingLeft: 20 }}
-                        value={subscription.status}
-                        onChange={async (event) => {
-                          const status = event.target.value as SubscriptionStatus
-                            if (subscription.isManual && subscription.subscriptionId) {
-                              setSubscriptions((previous) => previous.map((item) => item.id === subscription.subscriptionId ? {
-                                ...item,
-                                status,
-                                active: status === 'active',
-                              } : item))
-                              await runFinanceMutation('update-subscription-status', async () => {
-                                await updateSubscription(subscription.subscriptionId!, { status, active: status === 'active' })
-                              })
-                              return
-                            }
-                            if (subscription.descriptionKey) {
-                              setSubscriptionMeta((previous) => ({ ...previous, [subscription.descriptionKey as string]: { brand: subscription.brand, status } }))
-                              await runFinanceMutation('upsert-subscription-meta-status', async () => {
-                                await upsertSubscriptionMeta(subscription.descriptionKey!, { status })
-                              })
-                            }
-                          }}
-                      >
-                        {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ ...moneyStyle, color: '#8B5CF6', fontWeight: 700, textDecoration: subscription.status === 'cancelled' ? 'line-through' : 'none' }}>{formatMoney(subscription.amount)}</div>
-                    <div style={{ color: '#5E6E85', fontSize: 12, marginTop: 4 }}>
-                      {subscription.lastChargeDate ? `Last: ${formatShortDate(subscription.lastChargeDate)}` : 'Last: —'}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <details style={{ ...cardBase, padding: 12 }}>
-              <summary style={{ color: '#5E6E85', cursor: 'pointer', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Learned Patterns (debug)</summary>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                {patterns.map((pattern) => (
-                  <span key={pattern.id} style={{ border: `1px solid ${FINANCE_CATEGORY_COLORS[pattern.category]}`, color: FINANCE_CATEGORY_COLORS[pattern.category], background: `${FINANCE_CATEGORY_COLORS[pattern.category]}26`, borderRadius: 999, padding: '4px 10px', fontSize: 11 }}>
-                    {pattern.pattern}
-                  </span>
-                ))}
-              </div>
-            </details>
-          </section>
-        ) : null}
-
-        {tab === 'triage' ? (
-          <section>
-            <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                style={{ background: '#10B981', color: '#fff', padding: '8px 14px', borderRadius: 5, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
-                onClick={() => void onAutoClassifySeedRules()}
-              >
-                Auto-classify using seed rules
-              </button>
-              {seedClassifyMessage ? <span style={{ color: '#5E6E85', fontSize: 12 }}>{seedClassifyMessage}</span> : null}
-            </div>
-            {unclassified.length === 0 ? <div style={{ ...cardBase, padding: 32, textAlign: 'center', color: '#5E6E85' }}>✅ All Clear</div> : unclassified.map((transaction) => (
-              <TransactionRow key={transaction.id} transaction={transaction} onDelete={async (id) => {
-                await runFinanceMutation('delete-transaction', async () => {
-                  await deleteFinanceTransaction(id)
-                  await reloadData()
-                })
-              }} onClassify={(id) => setTriageTarget(transactions.find((t) => t.id === id) ?? null)} />
-            ))}
-          </section>
-        ) : null}
-
-        {tab === 'search' ? (
-          <section style={{ display: 'grid', gap: 12 }}>
-            <input type="search" placeholder="Search descriptions..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} style={inputStyle} />
-            <div>
-              {searchResults.map((transaction) => (
-                <div key={transaction.id} style={{ ...cardBase, padding: 10, marginBottom: 6 }}>
-                  <span style={labelMuted}>{transaction.date} — </span>
-                  <span style={{ color: '#E2E8F2' }}>{transaction.description}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {triageTarget ? (
-          <div className="modal-backdrop" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.75)' }}>
-            <div className="modal-card" style={{ ...cardBase, maxWidth: 520 }}>
-              <h3 style={{ color: '#E2E8F2', marginTop: 0 }}>Classify transaction</h3>
-              <p style={{ color: '#E2E8F2' }}><strong>{triageTarget.description}</strong></p>
-              <p style={labelMuted}>{triageTarget.date} · {triageTarget.direction === 'out' ? 'Out' : 'In'} · <span style={{ ...moneyStyle, color: triageTarget.direction === 'out' ? '#EF4444' : '#10B981' }}>{formatMoney(triageTarget.amount)}</span></p>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {TRIAGE_OPTIONS.map((option) => (
-                  <button key={option.c} type="button" style={tabStyle(false)} onClick={() => void onClassify(option.c)}>
-                    {`${option.i} ${option.l}`}
-                  </button>
-                ))}
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <button type="button" style={tabStyle(false)} onClick={() => setTriageTarget(null)}>Close</button>
-              </div>
-            </div>
+            <h1 style={{ color: '#111827', fontSize: 31, lineHeight: 1.08, margin: 0, fontWeight: 880, letterSpacing: 0 }}>
+              Daily Performance
+            </h1>
+            <p style={{ color: '#697386', margin: '8px 0 0', maxWidth: 680, fontSize: 14, lineHeight: 1.55 }}>
+              Shopify revenue, paid spend, Platform ROAS, Blended ROAS, and contribution after ads for Pluxy, Vivi, and TrueClean. Dates are shown in EST.
+            </p>
           </div>
-        ) : null}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {headerUtilityContent}
+            <span style={{ ...panelStyle, padding: '8px 10px', color: source === 'api' ? '#047857' : '#b45309', fontSize: 12, fontWeight: 750 }}>
+              {source === 'api' ? 'Live HQ data' : 'Demo data'}
+            </span>
+          </div>
+        </header>
 
-        {subscriptionModalOpen ? (
-          <div className="modal-backdrop" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.75)' }}>
-            <div className="modal-card" style={{ ...cardBase, maxWidth: 460 }}>
-              <h3 style={{ marginTop: 0, color: '#E2E8F2' }}>New Subscription</h3>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <input style={inputStyle} placeholder="Name" value={subName} onChange={(event) => setSubName(event.target.value)} />
-                <input style={inputStyle} placeholder="Amount" inputMode="decimal" value={subAmount} onChange={(event) => setSubAmount(event.target.value)} />
-                <select style={inputStyle} value={subFrequency} onChange={(event) => setSubFrequency(event.target.value as SubscriptionFrequency)}>
-                  <option value="weekly">weekly</option>
-                  <option value="monthly">monthly</option>
-                  <option value="yearly">yearly</option>
-                </select>
-                <select style={inputStyle} value={subBrand} onChange={(event) => setSubBrand(event.target.value as SubscriptionBrand)}>
-                  {SUBSCRIPTION_BRANDS.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
-                </select>
-                <select style={inputStyle} value={subStatus} onChange={(event) => setSubStatus(event.target.value as SubscriptionStatus)}>
-                  {SUBSCRIPTION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                </select>
-                <input style={inputStyle} placeholder="Platform / Category" value={subPlatform} onChange={(event) => setSubPlatform(event.target.value)} />
+        <div style={{ ...panelStyle, padding: 10, marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={openDatePicker}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#172033',
+                borderRadius: 6,
+                padding: '8px 12px',
+                fontSize: 12,
+                fontWeight: 850,
+                cursor: 'pointer',
+              }}
+            >
+              {getPresetLabel(datePreset)} · {getRangeLabel(activeRange)}
+            </button>
+            <button
+              type="button"
+              onClick={refreshPerformance}
+              disabled={refreshing || loading}
+              style={{
+                border: '1px solid #111827',
+                background: refreshing || loading ? '#334155' : '#111827',
+                color: '#ffffff',
+                borderRadius: 6,
+                padding: '8px 12px',
+                fontSize: 12,
+                fontWeight: 850,
+                cursor: refreshing || loading ? 'wait' : 'pointer',
+                minWidth: 104,
+              }}
+            >
+              {refreshing || loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setBrandFilter('all')}
+              style={{
+                border: brandFilter === 'all' ? '1px solid #111827' : '1px solid #e4e8f0',
+                background: brandFilter === 'all' ? '#111827' : '#ffffff',
+                color: brandFilter === 'all' ? '#ffffff' : '#475467',
+                borderRadius: 6,
+                padding: '8px 11px',
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              All brands
+            </button>
+            {PERFORMANCE_BRANDS.map((brand) => (
+              <button
+                key={brand.slug}
+                type="button"
+                onClick={() => setBrandFilter(brand.slug)}
+                style={{
+                  border: brandFilter === brand.slug ? `1px solid ${brand.color}` : '1px solid #e4e8f0',
+                  background: brandFilter === brand.slug ? brand.tint : '#ffffff',
+                  color: brandFilter === brand.slug ? brand.color : '#475467',
+                  borderRadius: 6,
+                  padding: '8px 11px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                {brand.name}
+              </button>
+            ))}
+          </div>
+          <div style={{ color: '#697386', fontSize: 12 }}>
+            {loading ? 'Loading daily tracker...' : `Last refresh ${formatEstDateTime(generatedAt)}`}
+          </div>
+        </div>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginBottom: 14 }}>
+          <StatTile
+            label="Revenue"
+            value={formatMoney(totals.revenue)}
+            helper={`${formatNumber(totals.orders)} orders · ${getRangeLabel(activeRange)}`}
+            accent="#2563eb"
+          />
+          <StatTile label="Ad Spend" value={formatMoney(totals.totalAdSpend)} helper={`Meta ${formatMoney(totals.metaSpend)} · Axon ${formatMoney(totals.axonSpend)} · Google ${formatMoney(totals.googleSpend)}`} accent="#f97316" />
+          <StatTile label="Blended ROAS" value={formatMetric(totals.blendedMer)} helper="Shopify revenue ÷ total paid spend" accent="#059669" />
+          <StatTile label="Contribution" value={formatMoney(totals.contributionAfterAds)} helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`} accent="#111827" />
+        </section>
+
+        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, marginBottom: 14 }}>
+          {PERFORMANCE_BRANDS.map((brand) => (
+            <BrandCard
+              key={brand.slug}
+              brandSlug={brand.slug}
+              rows={visibleRows.filter((row) => row.brandSlug === brand.slug)}
+            />
+          ))}
+        </section>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 310px', gap: 14, alignItems: 'start' }}>
+          <section style={{ ...panelStyle, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 18px', borderBottom: '1px solid #e4e8f0', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Daily Tracker</h2>
+                <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>
+                  Platform ROAS is attributed ad revenue ÷ paid spend. Blended ROAS is Shopify revenue ÷ paid spend.
+                  {' '}Dates are shown in EST.
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button type="button" style={tabStyle(true)} onClick={async () => {
-                  const amount = Number(subAmount)
-                  if (!subName.trim() || !Number.isFinite(amount) || amount <= 0) {
-                    return
-                  }
-                  await runFinanceMutation('create-subscription', async () => {
-                    await createSubscription({ name: subName, amount, frequency: subFrequency, platform: subPlatform, brand: subBrand, status: subStatus })
-                    setSubName('')
-                    setSubAmount('')
-                    setSubFrequency('monthly')
-                    setSubBrand('Unassigned')
-                    setSubStatus('active')
-                    setSubPlatform('')
-                    setSubscriptionModalOpen(false)
-                    await reloadData()
-                  })
-                }}>Save</button>
-                <button type="button" style={tabStyle(false)} onClick={() => setSubscriptionModalOpen(false)}>Cancel</button>
+              <span style={{ color: '#697386', fontSize: 12, whiteSpace: 'nowrap' }}>
+                {visibleRows.length} rows
+              </span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#697386', background: '#fbfcfe', textAlign: 'left' }}>
+                    {['Date', 'Brand', 'Shopify Revenue', 'Meta', 'AppLovin', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Orders', 'Refunds', 'Contribution'].map((heading) => (
+                      <th key={heading} style={{ padding: '11px 12px', fontWeight: 800, borderBottom: '1px solid #e4e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => {
+                    const color = brandColor.get(row.brandSlug) ?? '#2563eb'
+                    return (
+                      <tr key={`${row.date}-${row.brandSlug}`} style={{ borderBottom: '1px solid #eef1f6' }}>
+                        <td style={{ padding: '12px', color: '#111827', fontWeight: 760, whiteSpace: 'nowrap' }}>{formatLongDate(row.date)}</td>
+                        <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: '#111827', fontWeight: 820 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                            {row.brandName}
+                          </span>
+                        </td>
+                        <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 760 }}>{formatMoney(row.revenue)}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.metaSpend)}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.axonSpend > 0 ? formatMoney(row.axonSpend) : '—'}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 760 }}>{formatMoney(row.totalAdSpend)}</td>
+                        <td style={{ ...mono, padding: '12px', color: row.platformRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.platformRoas)}</td>
+                        <td style={{ ...mono, padding: '12px', color: row.blendedMer >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.blendedMer)}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.cpa, 2)}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(row.orders)}</td>
+                        <td style={{ ...mono, padding: '12px', color: row.refunds > 0 ? '#be123c' : '#697386' }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
+                        <td style={{ ...mono, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 820 }}>{formatMoney(row.contributionAfterAds)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <aside style={{ display: 'grid', gap: 14 }}>
+            <section style={{ ...panelStyle, padding: 18 }}>
+              <h2 style={{ margin: 0, color: '#111827', fontSize: 16, letterSpacing: 0 }}>Alerts</h2>
+              <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+                {alerts.map((alert) => (
+                  <div key={`${alert.title}-${alert.detail}`} style={{ border: '1px solid #e4e8f0', borderLeft: `3px solid ${alert.tone}`, borderRadius: 7, padding: '11px 12px', background: '#ffffff' }}>
+                    <div style={{ color: '#111827', fontWeight: 820, fontSize: 13 }}>{alert.title}</div>
+                    <div style={{ color: '#697386', fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{alert.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={{ ...panelStyle, padding: 18 }}>
+              <h2 style={{ margin: 0, color: '#111827', fontSize: 16, letterSpacing: 0 }}>Latest Day</h2>
+              <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>{latestVisibleDate ? formatLongDate(latestVisibleDate) : '-'}</div>
+              <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+                {latestRows.map((row) => (
+                  <div key={row.brandSlug} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <span style={{ color: '#111827', fontWeight: 780 }}>{row.brandName}</span>
+                    <span style={{ ...mono, color: '#111827', fontWeight: 820 }}>{formatMetric(row.blendedMer)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        {pickerOpen ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pick date range"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.28)',
+              zIndex: 50,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+            }}
+          >
+            <div style={{ ...panelStyle, width: 'min(760px, 100%)', padding: 0, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '210px minmax(0, 1fr)', minHeight: 430 }}>
+                <aside style={{ borderRight: '1px solid #e4e8f0', padding: 18, background: '#fbfcfe' }}>
+                  <div style={{ color: '#111827', fontSize: 13, fontWeight: 850, marginBottom: 12 }}>Recently used</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {DATE_PRESETS.map((preset) => {
+                      const isActive = draftPreset === preset.value
+                      return (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          onClick={() => {
+                            const nextRange = preset.value === 'custom'
+                              ? (draftRange ?? activeRange)
+                              : getPresetRange(preset.value, anchorDate)
+                            setDraftPreset(preset.value)
+                            setDraftRange(nextRange)
+                          }}
+                          style={{
+                            border: 'none',
+                            background: isActive ? '#eef6ff' : 'transparent',
+                            color: '#172033',
+                            borderRadius: 7,
+                            padding: '8px 9px',
+                            display: 'flex',
+                            gap: 9,
+                            alignItems: 'center',
+                            fontSize: 13,
+                            fontWeight: isActive ? 850 : 650,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: '50%',
+                              border: `1px solid ${isActive ? '#1d75bd' : '#cbd5e1'}`,
+                              background: isActive ? '#1d75bd' : '#ffffff',
+                              boxShadow: isActive ? 'inset 0 0 0 4px #ffffff' : 'none',
+                              flex: '0 0 auto',
+                            }}
+                          />
+                          {preset.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </aside>
+
+                <section style={{ padding: 22 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#111827', fontSize: 18, letterSpacing: 0 }}>Date range</h2>
+                      <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>Dates are shown in EST.</div>
+                    </div>
+                    <div style={{ color: '#111827', fontSize: 13, fontWeight: 850 }}>
+                      {getPresetLabel(draftPreset)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                    <label style={{ display: 'grid', gap: 7, color: '#697386', fontSize: 12, fontWeight: 800 }}>
+                      Start date
+                      <input
+                        type="date"
+                        value={(draftRange ?? activeRange).from}
+                        onChange={(event) => {
+                          setDraftPreset('custom')
+                          setDraftRange({ ...(draftRange ?? activeRange), from: event.target.value })
+                        }}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '10px 11px', color: '#172033', fontSize: 13 }}
+                      />
+                    </label>
+                    <label style={{ display: 'grid', gap: 7, color: '#697386', fontSize: 12, fontWeight: 800 }}>
+                      End date
+                      <input
+                        type="date"
+                        value={(draftRange ?? activeRange).to}
+                        onChange={(event) => {
+                          setDraftPreset('custom')
+                          setDraftRange({ ...(draftRange ?? activeRange), to: event.target.value })
+                        }}
+                        style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '10px 11px', color: '#172033', fontSize: 13 }}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ border: '1px solid #e4e8f0', borderRadius: 8, overflow: 'hidden', marginTop: 18 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#fbfcfe', color: '#697386', fontSize: 11, fontWeight: 850 }}>
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                        <div key={day} style={{ padding: '9px 0', textAlign: 'center' }}>{day}</div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, padding: 10 }}>
+                      {Array.from({ length: 35 }).map((_, index) => {
+                        const range = draftRange ?? activeRange
+                        const end = new Date(`${range.to}T00:00:00`)
+                        end.setDate(end.getDate() - 34 + index)
+                        const iso = toIsoDate(end)
+                        const inRange = iso >= range.from && iso <= range.to
+                        const isEdge = iso === range.from || iso === range.to
+                        return (
+                          <button
+                            key={iso}
+                            type="button"
+                            onClick={() => {
+                              const current = draftRange ?? activeRange
+                              const next = iso < current.from || iso === current.to ? { from: iso, to: current.to } : { from: current.from, to: iso }
+                              setDraftPreset('custom')
+                              setDraftRange(next.from <= next.to ? next : { from: next.to, to: next.from })
+                            }}
+                            style={{
+                              border: 'none',
+                              borderRadius: isEdge ? 6 : 4,
+                              background: isEdge ? '#1d75bd' : inRange ? '#dbeafe' : '#ffffff',
+                              color: isEdge ? '#ffffff' : '#172033',
+                              padding: '7px 0',
+                              fontSize: 12,
+                              fontWeight: isEdge ? 850 : 650,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {end.getDate()}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, gap: 12 }}>
+                    <div style={{ color: '#697386', fontSize: 12 }}>
+                      {(draftRange ?? activeRange).from} - {(draftRange ?? activeRange).to}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setPickerOpen(false)}
+                        style={{ border: '1px solid #cbd5e1', background: '#ffffff', color: '#172033', borderRadius: 6, padding: '9px 14px', fontWeight: 750, cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={applyDatePicker}
+                        style={{ border: '1px solid #1d75bd', background: '#1d75bd', color: '#ffffff', borderRadius: 6, padding: '9px 14px', fontWeight: 850, cursor: 'pointer' }}
+                      >
+                        Update
+                      </button>
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
           </div>

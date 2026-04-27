@@ -202,6 +202,7 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
 const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+const PERFORMANCE_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
 const STRATEGY_LEADERS = [
   { name: 'Iskander', email: 'iskander@creativeboard.local' },
   { name: 'Naomi', email: 'naomi@creativeboard.local' },
@@ -294,6 +295,15 @@ function canAccessBacklogByEmail(email: string | null) {
 
   const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
   return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
+}
+
+function canAccessPerformanceByEmail(email: string | null) {
+  if (!email) {
+    return false
+  }
+
+  const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
+  return PERFORMANCE_ALLOWED_EMAIL_KEYS.has(localPart)
 }
 
 function App() {
@@ -627,6 +637,7 @@ function App() {
     : 'Local mode'
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
+  const canAccessPerformance = canAccessPerformanceByEmail(backlogAccessEmail)
   const dailyCheckinEmail = backlogAccessEmail
   const checkinIdentityKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -1098,7 +1109,10 @@ function App() {
       }
 
       if (nextPage === 'finance') {
-        if (state.activeRole.mode === 'owner') {
+        if (authEnabled && (authStatus !== 'signed-in' || accessStatus === 'checking')) {
+          return
+        }
+        if (canAccessPerformance) {
           setRoutePage('finance')
         } else {
           const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
@@ -1129,7 +1143,7 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [canAccessBacklog, isDeveloperUser, state.activePage, state.activeRole.mode])
+  }, [accessStatus, authEnabled, authStatus, canAccessBacklog, canAccessPerformance, isDeveloperUser, state.activePage, state.activeRole.mode])
 
   useEffect(() => {
     if (!canAccessBacklog && routePage === 'backlog') {
@@ -1151,14 +1165,24 @@ function App() {
       return
     }
 
+    if (routePage === 'finance') {
+      if (authEnabled && (authStatus !== 'signed-in' || accessStatus === 'checking')) {
+        return
+      }
+      if (!canAccessPerformance) {
+        setRoutePage(productionPage)
+        return
+      }
+    }
+
     if (
-      (routePage === 'scripts' || routePage === 'strategy' || routePage === 'finance') &&
+      (routePage === 'scripts' || routePage === 'strategy') &&
       state.activeRole.mode !== 'owner' &&
-      (routePage === 'finance' || state.activeRole.mode !== 'manager')
+      state.activeRole.mode !== 'manager'
     ) {
       setRoutePage(productionPage)
     }
-  }, [isDeveloperUser, productionPage, routePage, state.activeRole.mode])
+  }, [accessStatus, authEnabled, authStatus, canAccessPerformance, isDeveloperUser, productionPage, routePage, state.activeRole.mode])
 
   useEffect(() => {
     if (authEnabled && (authStatus !== 'signed-in' || accessStatus !== 'granted')) {
@@ -1556,7 +1580,7 @@ function App() {
     }
 
     if (page === 'finance') {
-      if (state.activeRole.mode !== 'owner') {
+      if (!canAccessPerformance) {
         return
       }
       setRoutePage('finance')
@@ -3281,6 +3305,7 @@ function App() {
           role={state.activeRole}
           isDeveloperUser={isDeveloperUser}
           canAccessBacklog={canAccessBacklog}
+          canAccessPerformance={canAccessPerformance}
           userName={userDisplayName}
           userSecondaryLabel={userSecondaryLabel}
           signOutPending={signOutPending}
