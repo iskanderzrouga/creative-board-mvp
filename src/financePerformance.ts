@@ -50,6 +50,34 @@ async function getAccessToken() {
   return data.session?.access_token ?? null
 }
 
+function stringifyApiError(error: unknown) {
+  if (!error) {
+    return 'Performance data unavailable'
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (typeof error === 'object') {
+    const maybeError = error as { message?: unknown; error?: unknown; details?: unknown; hint?: unknown; code?: unknown }
+    const parts = [maybeError.message, maybeError.error, maybeError.details, maybeError.hint, maybeError.code]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+
+    if (parts.length > 0) {
+      return parts.join(' · ')
+    }
+
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return 'Performance data unavailable'
+    }
+  }
+
+  return String(error)
+}
+
 function isPerformanceRow(value: unknown): value is BrandDailyPerformanceRow {
   if (!value || typeof value !== 'object') {
     return false
@@ -111,7 +139,7 @@ async function requestPerformance(
       rows,
       source: 'supabase',
       generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : new Date().toISOString(),
-      error: response.ok ? undefined : String(payload.error ?? 'Performance data unavailable'),
+      error: response.ok ? undefined : stringifyApiError(payload.error),
       sync: payload.sync,
     }
   } catch (error) {

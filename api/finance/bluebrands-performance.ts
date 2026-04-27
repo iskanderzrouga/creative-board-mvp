@@ -1,6 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
 type BrandSlug = 'pluxy' | 'vivi' | 'trueclean'
 
 interface PlatformConfig {
@@ -64,11 +61,15 @@ interface PerformanceRow {
   lastSync: string | null
 }
 
+interface JsonFetchResult<T> {
+  ok: boolean
+  status: number
+  data: T
+  raw: string
+}
+
 const ALLOWED_EMAIL_KEYS = new Set(['iskander', 'nicolas', 'naomi'])
 const BRAND_SLUGS: BrandSlug[] = ['pluxy', 'vivi', 'trueclean']
-const LOCAL_PROFIT_APP_CONFIG_DIR = '/Users/iskanderzrouga/Desktop/Marketing Skills & Agents/profit-app/config/brands'
-const LOCAL_PROFIT_APP_ENV_FILE = '/Users/iskanderzrouga/Desktop/Marketing Skills & Agents/profit-app/config/.env'
-let localEnvCache: Record<string, string> | null = null
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -85,40 +86,12 @@ function getSupabaseAnonKey() {
   return process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
 }
 
-function parseEnvLine(line: string) {
-  const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
-  if (!match) return null
-  const [, key, rawValue] = match
-  let value = rawValue.trim()
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    value = value.slice(1, -1)
-  }
-  return [key, value] as const
-}
-
-function getLocalEnv() {
-  if (localEnvCache) return localEnvCache
-
-  const envFile = process.env.BLUEBRANDS_PERFORMANCE_ENV_FILE || LOCAL_PROFIT_APP_ENV_FILE
-  localEnvCache = {}
-
-  if (!existsSync(envFile)) {
-    return localEnvCache
-  }
-
-  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
-    const parsed = parseEnvLine(line)
-    if (parsed) {
-      const [key, value] = parsed
-      localEnvCache[key] = value
-    }
-  }
-
-  return localEnvCache
+function getSupabaseServiceKey() {
+  return getServerEnv('SUPABASE_SERVICE_ROLE_KEY')
 }
 
 function getServerEnv(name: string) {
-  return process.env[name] || getLocalEnv()[name]
+  return process.env[name]
 }
 
 async function requireAllowedUser(req: Request) {
@@ -170,37 +143,33 @@ function parseBrandConfigs(raw: string) {
 
 function loadBrandConfigs() {
   const raw = getServerEnv('BLUEBRANDS_PERFORMANCE_CONFIG_JSON')
-  let configs: BrandConfig[]
-
-  if (raw) {
-    configs = parseBrandConfigs(raw)
-  } else {
-    const configDir = getServerEnv('BLUEBRANDS_PERFORMANCE_CONFIG_DIR') || LOCAL_PROFIT_APP_CONFIG_DIR
-    if (!existsSync(configDir)) {
-      throw new Error('BLUEBRANDS_PERFORMANCE_CONFIG_JSON or BLUEBRANDS_PERFORMANCE_CONFIG_DIR not configured')
-    }
-
-    configs = BRAND_SLUGS.map((slug) => JSON.parse(readFileSync(join(configDir, `${slug}.json`), 'utf8')) as BrandConfig)
+  if (!raw) {
+    throw new Error('BLUEBRANDS_PERFORMANCE_CONFIG_JSON not configured in Vercel')
   }
+  const configs = parseBrandConfigs(raw)
 
   return configs
     .filter((brand): brand is BrandConfig => BRAND_SLUGS.includes(brand.slug) && brand.enabled !== false)
     .sort((left, right) => BRAND_SLUGS.indexOf(left.slug) - BRAND_SLUGS.indexOf(right.slug))
 }
 
-async function supabaseUserFetch(path: string, auth: string, init: RequestInit = {}) {
+async function supabaseRestFetch(path: string, auth: string, init: RequestInit = {}, useServiceRole = false) {
   const supabaseUrl = getSupabaseUrl()
   const anonKey = getSupabaseAnonKey()
+  const serviceKey = useServiceRole ? getSupabaseServiceKey() : ''
 
-  if (!supabaseUrl || !anonKey) {
+  if (!supabaseUrl || (!anonKey && !serviceKey)) {
     throw new Error('Supabase client env is not configured')
   }
+
+  const apikey = serviceKey || anonKey
+  const authorization = serviceKey ? `Bearer ${serviceKey}` : auth
 
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...init,
     headers: {
-      apikey: anonKey,
-      Authorization: auth,
+      apikey,
+      Authorization: authorization,
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),
     },
@@ -210,6 +179,36 @@ async function supabaseUserFetch(path: string, auth: string, init: RequestInit =
 function toNumber(value: unknown) {
   const number = Number(value ?? 0)
   return Number.isFinite(number) ? number : 0
+}
+
+function parseJson(raw: string) {
+  if (!raw.trim()) return {}
+  return JSON.parse(raw)
+}
+
+async function fetchJson<T>(url: string, init: RequestInit = {}): Promise<JsonFetchResult<T>> {
+  const response = await fetch(url, init)
+  const raw = await response.text()
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: parseJson(raw) as T,
+    raw,
+  }
+}
+
+function apiErrorMessage(data: unknown, raw: string) {
+  if (data && typeof data === 'object') {
+    const maybe = data as { error?: unknown; message?: unknown }
+    if (typeof maybe.message === 'string') return maybe.message
+    if (maybe.error && typeof maybe.error === 'object') {
+      const nested = maybe.error as { message?: unknown; error?: unknown }
+      if (typeof nested.message === 'string') return nested.message
+      if (typeof nested.error === 'string') return nested.error
+    }
+    if (typeof maybe.error === 'string') return maybe.error
+  }
+  return raw.slice(0, 300)
 }
 
 function rowFromDb(row: Record<string, unknown>): PerformanceRow {
@@ -235,11 +234,13 @@ function rowFromDb(row: Record<string, unknown>): PerformanceRow {
   }
 }
 
-async function readRows(from: string, to: string, auth: string) {
+async function readRows(from: string, to: string, auth: string, useServiceRole = false) {
   const brandList = BRAND_SLUGS.join(',')
-  const response = await supabaseUserFetch(
+  const response = await supabaseRestFetch(
     `performance_brand_day?select=*&brand_slug=in.(${brandList})&date=gte.${from}&date=lte.${to}&order=date.desc,brand_slug.asc`,
     auth,
+    {},
+    useServiceRole,
   )
 
   if (!response.ok) {
@@ -265,13 +266,13 @@ async function metaDaily(brand: BrandConfig, since: string, until: string) {
     access_token: meta.access_token,
   })
   const apiVersion = getServerEnv('META_API_VERSION') || 'v22.0'
-  const response = await fetch(`https://graph.facebook.com/${apiVersion}/${meta.ad_account_id}/insights?${params}`)
+  const response = await fetchJson<{ data?: Array<Record<string, unknown>> }>(`https://graph.facebook.com/${apiVersion}/${meta.ad_account_id}/insights?${params}`)
 
   if (!response.ok) {
-    throw new Error(`${brand.slug} Meta failed: ${await response.text()}`)
+    throw new Error(`${brand.slug} Meta failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
   }
 
-  const payload = (await response.json()) as { data?: Array<Record<string, unknown>> }
+  const payload = response.data
   const rows = new Map<string, PlatformDay>()
 
   for (const item of payload.data ?? []) {
@@ -303,17 +304,17 @@ async function shopifyToken(brand: BrandConfig) {
     client_secret: shopify.client_secret,
   })
 
-  const response = await fetch(`https://${shopify.store}/admin/oauth/access_token`, {
+  const response = await fetchJson<{ access_token?: string }>(`https://${shopify.store}/admin/oauth/access_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
   })
 
   if (!response.ok) {
-    throw new Error(`${brand.slug} Shopify token failed: ${await response.text()}`)
+    throw new Error(`${brand.slug} Shopify token failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
   }
 
-  const payload = (await response.json()) as { access_token?: string }
+  const payload = response.data
   return payload.access_token ?? null
 }
 
@@ -321,7 +322,9 @@ async function shopifyql(brand: BrandConfig, token: string, query: string) {
   const store = brand.platforms?.shopify?.store
   const apiVersion = getServerEnv('SHOPIFY_API_VERSION') || 'unstable'
   const gql = `{ shopifyqlQuery(query: ${JSON.stringify(query)}) { parseErrors tableData { columns { name dataType } rows } } }`
-  const response = await fetch(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
+  const response = await fetchJson<{
+    data?: { shopifyqlQuery?: { parseErrors?: unknown[]; tableData?: { columns?: Array<{ name: string }>; rows?: unknown[][] } } }
+  }>(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
     method: 'POST',
     headers: {
       'X-Shopify-Access-Token': token,
@@ -331,15 +334,13 @@ async function shopifyql(brand: BrandConfig, token: string, query: string) {
   })
 
   if (!response.ok) {
-    throw new Error(`${brand.slug} ShopifyQL failed: ${await response.text()}`)
+    throw new Error(`${brand.slug} ShopifyQL failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
   }
 
-  const payload = await response.json() as {
-    data?: { shopifyqlQuery?: { parseErrors?: unknown[]; tableData?: { columns?: Array<{ name: string }>; rows?: unknown[][] } } }
-  }
+  const payload = response.data
   const data = payload.data?.shopifyqlQuery
   if (!data || (Array.isArray(data.parseErrors) && data.parseErrors.length > 0)) {
-    throw new Error(`${brand.slug} ShopifyQL parse failed`)
+    throw new Error(`${brand.slug} ShopifyQL parse failed: ${JSON.stringify(data?.parseErrors ?? null)}`)
   }
 
   const columns = data.tableData?.columns?.map((column) => column.name) ?? []
@@ -447,13 +448,13 @@ async function fetchAxonReport(brand: BrandConfig, reportKey: string, start: str
     report_type: 'advertiser',
     format: 'json',
   })
-  const response = await fetch(`https://r.applovin.com/report?${params}`)
+  const response = await fetchJson<{ results?: Array<Record<string, unknown>> }>(`https://r.applovin.com/report?${params}`)
 
   if (!response.ok) {
-    throw new Error(`${brand.slug} AppLovin failed: ${await response.text()}`)
+    throw new Error(`${brand.slug} AppLovin failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
   }
 
-  return (await response.json()) as { results?: Array<Record<string, unknown>> }
+  return response.data
 }
 
 function getAxonLocalDate(utcDay: string, hour: unknown, timezone: string) {
@@ -495,7 +496,7 @@ async function googleToken() {
   const refreshToken = getServerEnv('GOOGLE_REFRESH_TOKEN')
   if (!refreshToken) return null
 
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetchJson<{ access_token?: string }>('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -507,10 +508,10 @@ async function googleToken() {
   })
 
   if (!response.ok) {
-    throw new Error(`Google OAuth failed: ${await response.text()}`)
+    throw new Error(`Google OAuth failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
   }
 
-  const payload = (await response.json()) as { access_token?: string }
+  const payload = response.data
   return payload.access_token ?? null
 }
 
@@ -528,7 +529,7 @@ async function googleDaily(brand: BrandConfig, since: string, until: string) {
 
   const customerId = google.customer_id.replace(/[^0-9]/g, '')
   const mcc = (getServerEnv('GOOGLE_MCC_ID') ?? '').replace(/[^0-9]/g, '')
-  const response = await fetch(`https://googleads.googleapis.com/v21/customers/${customerId}/googleAds:searchStream`, {
+  const response = await fetchJson<Array<{ results?: Array<Record<string, unknown>> }>>(`https://googleads.googleapis.com/v21/customers/${customerId}/googleAds:searchStream`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -542,10 +543,10 @@ async function googleDaily(brand: BrandConfig, since: string, until: string) {
   })
 
   if (!response.ok) {
-    throw new Error(`${brand.slug} Google Ads failed: ${await response.text()}`)
+    throw new Error(`${brand.slug} Google Ads failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
   }
 
-  const payload = (await response.json()) as Array<{ results?: Array<Record<string, unknown>> }>
+  const payload = response.data
   const rows = new Map<string, PlatformDay>()
 
   for (const batch of payload) {
@@ -609,38 +610,56 @@ function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; s
   })
 }
 
-async function upsertRows(rows: Array<Record<string, unknown>>, auth: string) {
+async function upsertRows(rows: Array<Record<string, unknown>>, auth: string, useServiceRole = false) {
   if (rows.length === 0) return
 
-  const response = await supabaseUserFetch('performance_brand_day?on_conflict=brand_slug,date', auth, {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates' },
-    body: JSON.stringify(rows),
-  })
+  const response = await supabaseRestFetch(
+    'performance_brand_day?on_conflict=brand_slug,date',
+    auth,
+    {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(rows),
+    },
+    useServiceRole,
+  )
 
   if (!response.ok) {
     throw new Error(`Supabase upsert failed: ${await response.text()}`)
   }
 }
 
-async function syncPerformance(from: string, to: string, auth: string) {
+async function syncPerformance(from: string, to: string, auth: string, useServiceRole = false) {
   const brands = loadBrandConfigs()
   const errors: string[] = []
   let rowsWritten = 0
 
   for (const brand of brands) {
+    const [meta, shopify, axon, google] = await Promise.all([
+      metaDaily(brand, from, to).catch((error) => {
+        errors.push(`${brand.slug} meta: ${error instanceof Error ? error.message : 'unknown error'}`)
+        return new Map<string, PlatformDay>()
+      }),
+      shopifyDaily(brand, from, to).catch((error) => {
+        errors.push(`${brand.slug} shopify: ${error instanceof Error ? error.message : 'unknown error'}`)
+        return new Map<string, ShopifyDay>()
+      }),
+      axonDaily(brand, from, to).catch((error) => {
+        errors.push(`${brand.slug} axon: ${error instanceof Error ? error.message : 'unknown error'}`)
+        return new Map<string, PlatformDay>()
+      }),
+      googleDaily(brand, from, to).catch((error) => {
+        errors.push(`${brand.slug} google: ${error instanceof Error ? error.message : 'unknown error'}`)
+        return new Map<string, PlatformDay>()
+      }),
+    ])
+    const rows = buildRows(brand, { meta, shopify, axon, google })
+
     try {
-      const [meta, shopify, axon, google] = await Promise.all([
-        metaDaily(brand, from, to),
-        shopifyDaily(brand, from, to),
-        axonDaily(brand, from, to),
-        googleDaily(brand, from, to),
-      ])
-      const rows = buildRows(brand, { meta, shopify, axon, google })
-      await upsertRows(rows, auth)
+      await upsertRows(rows, auth, useServiceRole)
       rowsWritten += rows.length
     } catch (error) {
-      errors.push(`${brand.slug}: ${error instanceof Error ? error.message : 'unknown error'}`)
+      errors.push(`${brand.slug} supabase: ${error instanceof Error ? error.message : 'unknown error'}`)
     }
   }
 
@@ -657,13 +676,13 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     if (req.method === 'POST') {
-      const sync = await syncPerformance(from, to, access.auth)
-      const rows = await readRows(from, to, access.auth)
+      const sync = await syncPerformance(from, to, access.auth, Boolean(getSupabaseServiceKey()))
+      const rows = await readRows(from, to, access.auth, Boolean(getSupabaseServiceKey()))
       return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase', sync })
     }
 
     if (req.method === 'GET') {
-      const rows = await readRows(from, to, access.auth)
+      const rows = await readRows(from, to, access.auth, Boolean(getSupabaseServiceKey()))
       return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase' })
     }
 
