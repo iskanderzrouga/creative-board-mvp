@@ -396,21 +396,6 @@ export function StrategyCyclesPage({
                           className="strategy-lever-name-input"
                           aria-label="Lever name"
                         />
-                        <textarea
-                          value={lever.objective}
-                          onChange={(event) =>
-                            onUpdateCycle(visibleCycle.id, (cycle) => ({
-                              ...cycle,
-                              levers: cycle.levers.map((item) =>
-                                item.id === lever.id ? { ...item, objective: event.target.value } : item,
-                              ),
-                            }))
-                          }
-                          readOnly={isReadOnly}
-                          rows={2}
-                          placeholder="Lever objective"
-                          className="strategy-lever-objective-input"
-                        />
                       </div>
                       <div className="strategy-lever-summary">
                         <strong>{leverStats.avgProgress}%</strong>
@@ -468,7 +453,7 @@ export function StrategyCyclesPage({
                                   }))
                                 }
                                 readOnly={isReadOnly}
-                                placeholder="KPI description"
+                                placeholder="What gets measured"
                               />
                               <span className="strategy-kpi-progress-track">
                                 <span className={`strategy-kpi-progress-fill is-${progress.tone}`} style={{ width: `${progress.pct}%` }} />
