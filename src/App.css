@@ -2758,16 +2758,16 @@ button {
 
 .strategy-cycle-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.42fr);
-  gap: 20px;
-  padding: 22px;
-  border-radius: 20px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
 }
 
 .strategy-cycle-main {
   display: grid;
   align-content: space-between;
-  gap: 22px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -2784,8 +2784,8 @@ button {
 .strategy-cycle-topline > span:not(.strategy-status-pill) {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 24px;
+  padding: 0 9px;
   border: 1px solid var(--line-shell-soft);
   border-radius: 999px;
   background: rgba(245, 246, 248, 0.78);
@@ -2794,8 +2794,8 @@ button {
 .strategy-status-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 24px;
+  padding: 0 9px;
   border-radius: 999px;
   background: var(--success-surface);
   color: var(--success-text);
@@ -2811,8 +2811,8 @@ button {
 .strategy-cycle-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 18px;
+  align-items: center;
+  gap: 14px;
 }
 
 .strategy-objective-button {
@@ -2824,9 +2824,9 @@ button {
   background: transparent;
   color: var(--text-strong);
   text-align: left;
-  font-size: 38px;
+  font-size: 25px;
   font-weight: 680;
-  line-height: 1.04;
+  line-height: 1.12;
   letter-spacing: 0;
 }
 
@@ -2842,18 +2842,21 @@ button {
   border-radius: 12px;
   background: var(--surface);
   color: var(--text-strong);
-  font-size: 34px;
+  font-size: 25px;
   font-weight: 680;
-  line-height: 1.08;
+  line-height: 1.12;
 }
 
 .strategy-cycle-chip {
   display: grid;
-  gap: 2px;
-  min-width: 154px;
-  padding: 14px;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 1px;
+  min-width: 132px;
+  padding: 9px 11px;
   border: 1px solid var(--line-shell-soft);
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f7f8fa;
 }
 
@@ -2870,8 +2873,12 @@ button {
 
 .strategy-cycle-chip strong {
   color: var(--text-strong);
-  font-size: 30px;
+  font-size: 21px;
   line-height: 1;
+}
+
+.strategy-cycle-chip small {
+  grid-column: 1 / -1;
 }
 
 .strategy-cycle-timeline {
@@ -2901,7 +2908,7 @@ button {
 }
 
 .strategy-cycle-timeline-track {
-  height: 10px;
+  height: 6px;
 }
 
 .strategy-cycle-timeline-track div {
@@ -2912,25 +2919,32 @@ button {
 
 .strategy-health-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
   align-content: stretch;
 }
 
 .strategy-health-card {
   display: grid;
-  align-content: space-between;
-  min-height: 104px;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-height: 0;
+  padding: 8px 10px;
   border: 1px solid var(--line-shell-soft);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(247, 248, 250, 0.78);
 }
 
 .strategy-health-card strong {
   color: var(--text-strong);
-  font-size: 28px;
+  font-size: 18px;
   line-height: 1;
+}
+
+.strategy-health-card small {
+  grid-column: 1 / -1;
 }
 
 .strategy-health-card.is-green strong {
@@ -6730,12 +6744,12 @@ button {
   }
 
   .strategy-objective-button {
-    font-size: 28px;
+    font-size: 24px;
     line-height: 1.08;
   }
 
   .strategy-objective-input {
-    font-size: 26px;
+    font-size: 24px;
   }
 
   .strategy-health-grid,
@@ -6745,7 +6759,7 @@ button {
   }
 
   .strategy-health-card {
-    min-height: 82px;
+    min-height: 0;
   }
 
   .strategy-kpi-row,
