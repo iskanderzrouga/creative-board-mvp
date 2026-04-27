@@ -3216,11 +3216,7 @@ function App() {
   ) {
     return (
       <>
-        <RemoteLoadingShell
-          email={authSession.email}
-          signOutPending={signOutPending}
-          onSignOut={handleSignOut}
-        />
+        <RemoteLoadingShell />
         {toastView}
       </>
     )
@@ -3280,11 +3276,7 @@ function App() {
   if (dailyCheckinGateStatus === 'checking') {
     return (
       <>
-        <RemoteLoadingShell
-          email={authSession?.email ?? userSecondaryLabel ?? 'Workspace user'}
-          signOutPending={signOutPending}
-          onSignOut={handleSignOut}
-        />
+        <RemoteLoadingShell />
         {toastView}
       </>
     )

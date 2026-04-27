@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   PERFORMANCE_BRANDS,
   loadBrandDailyPerformance,
+  syncBrandDailyPerformance,
   type BrandDailyPerformanceRow,
   type PerformanceBrandSlug,
 } from '../financePerformance'
@@ -239,7 +240,7 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
   return {
     ...totals,
     platformRoas: totals.totalAdSpend > 0 ? totals.platformAttributedRevenue / totals.totalAdSpend : 0,
-    blendedMer: totals.totalAdSpend > 0 ? totals.revenue / totals.totalAdSpend : 0,
+    blendedRoas: totals.totalAdSpend > 0 ? totals.revenue / totals.totalAdSpend : 0,
     cpa: totals.orders > 0 ? totals.totalAdSpend / totals.orders : 0,
     contributionMargin: totals.revenue > 0 ? totals.contributionAfterAds / totals.revenue : 0,
   }
@@ -333,7 +334,7 @@ function BrandCard({
         </div>
         <div>
           <div style={{ color: '#697386', fontSize: 11 }}>Blended ROAS</div>
-          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMetric(totals.blendedMer)}</strong>
+          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMetric(totals.blendedRoas)}</strong>
         </div>
         <div>
           <div style={{ color: '#697386', fontSize: 11 }}>CPA</div>
@@ -358,10 +359,10 @@ function buildAlerts(rows: BrandDailyPerformanceRow[]) {
     }
 
     const spendChange = getChange(today.totalAdSpend, yesterday.totalAdSpend)
-    const merChange = getChange(today.blendedMer, yesterday.blendedMer)
+    const roasChange = getChange(today.blendedRoas, yesterday.blendedRoas)
     const refundChange = getChange(today.refunds, yesterday.refunds)
 
-    if (merChange !== null && merChange < -12) {
+    if (roasChange !== null && roasChange < -12) {
       alerts.push({
         title: `${brand.name} ROAS drop`,
         detail: `Blended ROAS softened. Check spend mix before scaling.`,
@@ -399,8 +400,9 @@ function buildAlerts(rows: BrandDailyPerformanceRow[]) {
 
 export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [rows, setRows] = useState<BrandDailyPerformanceRow[]>([])
-  const [source, setSource] = useState<'api' | 'demo'>('demo')
   const [generatedAt, setGeneratedAt] = useState('')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [syncSummary, setSyncSummary] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
@@ -418,10 +420,13 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
     }
 
     try {
-      const data = await loadBrandDailyPerformance(range ?? { days: 60 })
+      const data = showRefresh
+        ? await syncBrandDailyPerformance(range ?? { days: 60 })
+        : await loadBrandDailyPerformance(range ?? { days: 60 })
       setRows(data.rows)
-      setSource(data.source)
       setGeneratedAt(data.generatedAt)
+      setErrorMessage(data.error ?? null)
+      setSyncSummary(data.sync ? `${data.sync.rowsWritten} live rows refreshed${data.sync.errors.length > 0 ? ` · ${data.sync.errors.length} source error(s)` : ''}` : null)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -492,8 +497,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {headerUtilityContent}
-            <span style={{ ...panelStyle, padding: '8px 10px', color: source === 'api' ? '#047857' : '#b45309', fontSize: 12, fontWeight: 750 }}>
-              {source === 'api' ? 'Live HQ data' : 'Demo data'}
+            <span style={{ ...panelStyle, padding: '8px 10px', color: errorMessage ? '#b45309' : '#047857', fontSize: 12, fontWeight: 750 }}>
+              {errorMessage ? 'Live data unavailable' : 'Live data'}
             </span>
           </div>
         </header>
@@ -577,6 +582,18 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           </div>
         </div>
 
+        {errorMessage ? (
+          <div style={{ ...panelStyle, padding: 14, marginBottom: 14, borderColor: '#fbbf24', background: '#fffbeb', color: '#92400e', fontSize: 13, lineHeight: 1.5 }}>
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {syncSummary ? (
+          <div style={{ ...panelStyle, padding: 14, marginBottom: 14, borderColor: '#bbf7d0', background: '#f0fdf4', color: '#047857', fontSize: 13, lineHeight: 1.5 }}>
+            {syncSummary}
+          </div>
+        ) : null}
+
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginBottom: 14 }}>
           <StatTile
             label="Revenue"
@@ -585,7 +602,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
             accent="#2563eb"
           />
           <StatTile label="Ad Spend" value={formatMoney(totals.totalAdSpend)} helper={`Meta ${formatMoney(totals.metaSpend)} · Axon ${formatMoney(totals.axonSpend)} · Google ${formatMoney(totals.googleSpend)}`} accent="#f97316" />
-          <StatTile label="Blended ROAS" value={formatMetric(totals.blendedMer)} helper="Shopify revenue ÷ total paid spend" accent="#059669" />
+          <StatTile label="Blended ROAS" value={formatMetric(totals.blendedRoas)} helper="Shopify revenue ÷ total paid spend" accent="#059669" />
           <StatTile label="Contribution" value={formatMoney(totals.contributionAfterAds)} helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`} accent="#111827" />
         </section>
 
@@ -640,7 +657,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
                         <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 760 }}>{formatMoney(row.totalAdSpend)}</td>
                         <td style={{ ...mono, padding: '12px', color: row.platformRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.platformRoas)}</td>
-                        <td style={{ ...mono, padding: '12px', color: row.blendedMer >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.blendedMer)}</td>
+                        <td style={{ ...mono, padding: '12px', color: row.blendedRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.blendedRoas)}</td>
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.cpa, 2)}</td>
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(row.orders)}</td>
                         <td style={{ ...mono, padding: '12px', color: row.refunds > 0 ? '#be123c' : '#697386' }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
@@ -673,7 +690,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                 {latestRows.map((row) => (
                   <div key={row.brandSlug} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
                     <span style={{ color: '#111827', fontWeight: 780 }}>{row.brandName}</span>
-                    <span style={{ ...mono, color: '#111827', fontWeight: 820 }}>{formatMetric(row.blendedMer)}</span>
+                    <span style={{ ...mono, color: '#111827', fontWeight: 820 }}>{formatMetric(row.blendedRoas)}</span>
                   </div>
                 ))}
               </div>
