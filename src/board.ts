@@ -284,6 +284,7 @@ export interface DailyPulseTeamMember {
 }
 
 export interface DailyPulseFeedItem {
+  date: string
   member: DailyPulseTeamMember
   checkin: DailyCheckinRow | null
 }

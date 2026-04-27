@@ -8128,6 +8128,7 @@ button {
   display: grid;
   gap: 5px;
   min-width: 190px;
+  position: relative;
 }
 
 .pulse-control-field span {
@@ -8158,9 +8159,145 @@ button {
   padding: 7px 30px 7px 10px;
 }
 
+.pulse-date-trigger {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line-control);
+  border-radius: 8px;
+  background: var(--surface-overlay);
+  color: var(--text-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.pulse-date-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 12px;
+  width: min(360px, calc(100vw - 40px));
+  padding: 12px;
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+}
+
+.pulse-date-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.pulse-date-preset-grid button,
+.pulse-date-actions button {
+  min-height: 34px;
+  border: 1px solid var(--line-control);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.pulse-date-preset-grid button.is-active {
+  border-color: var(--text-strong);
+  background: var(--text-strong);
+  color: #ffffff;
+}
+
+.pulse-date-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pulse-date-inputs label {
+  display: grid;
+  gap: 5px;
+}
+
+.pulse-date-inputs span {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pulse-date-inputs input {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-control);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.pulse-date-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pulse-date-actions button {
+  padding: 0 12px;
+}
+
+.pulse-date-actions button.is-primary {
+  border-color: var(--text-strong);
+  background: var(--text-strong);
+  color: #ffffff;
+}
+
 .pulse-feed {
   display: grid;
   gap: 10px;
+}
+
+.pulse-day-group {
+  display: grid;
+  gap: 10px;
+}
+
+.pulse-day-group + .pulse-day-group {
+  padding-top: 4px;
+}
+
+.pulse-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.pulse-day-header h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.pulse-day-header span {
+  flex: 0 0 auto;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .pulse-card {
@@ -8287,9 +8424,31 @@ button {
   .pulse-control-field {
     flex: 1 1 180px;
   }
+
+  .pulse-date-popover {
+    left: 0;
+    right: auto;
+  }
 }
 
 @media (max-width: 640px) {
+  .pulse-date-popover {
+    position: static;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .pulse-date-inputs,
+  .pulse-date-preset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pulse-day-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .pulse-card-header {
     align-items: flex-start;
     flex-direction: column;

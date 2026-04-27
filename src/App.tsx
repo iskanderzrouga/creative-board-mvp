@@ -73,12 +73,17 @@ import {
 import {
   formatDisplayDate,
   getCheckinDates,
-  getCheckinsByDate,
+  getCheckinsByDateRange,
+  getDailyPulseRangeDays,
   getPreviousDayPlan,
   getTeamMembersForPulse,
   hasCheckinForDate,
+  isDailyCheckinExemptUser,
+  isDailyPulseExcludedPerson,
+  normalizeDailyPulseRange,
   resolveViewerTimezone,
   submitDailyCheckin,
+  type DailyPulseDateRange,
 } from './dailyCheckins'
 import {
   GROUPED_STAGES,
@@ -393,7 +398,7 @@ function App() {
   const [dailyCheckinYesterdayPlan, setDailyCheckinYesterdayPlan] = useState<string | null>(null)
   const [dailyCheckinSubmitting, setDailyCheckinSubmitting] = useState(false)
   const [dailyCheckinError, setDailyCheckinError] = useState<string | null>(null)
-  const [pulseSelectedDate, setPulseSelectedDate] = useState('')
+  const [pulseDateRange, setPulseDateRange] = useState<DailyPulseDateRange | null>(null)
   const [pulsePersonFilter, setPulsePersonFilter] = useState('all')
   const [pulseFeedItems, setPulseFeedItems] = useState<DailyPulseFeedItem[]>([])
   const [pulseLoading, setPulseLoading] = useState(false)
@@ -638,7 +643,7 @@ function App() {
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const canAccessPerformance = canAccessPerformanceByEmail(backlogAccessEmail)
-  const dailyCheckinEmail = backlogAccessEmail
+  const dailyCheckinEmail = isDailyCheckinExemptUser(backlogAccessEmail) ? null : backlogAccessEmail
   const checkinIdentityKeys = useMemo(() => {
     const keys = new Set<string>()
     const normalizedEmail = dailyCheckinEmail?.trim().toLowerCase()
@@ -1194,7 +1199,7 @@ function App() {
     const { today, yesterday } = getCheckinDates(timezone)
     setDailyCheckinTimezone(timezone)
     setDailyCheckinToday(today)
-    setPulseSelectedDate((current) => current || today)
+    setPulseDateRange((current) => current ?? { from: today, to: today })
 
     if (!dailyCheckinEmail) {
       setDailyCheckinGateStatus('ready')
@@ -1242,18 +1247,20 @@ function App() {
   ])
 
   useEffect(() => {
-    if (!pulseSelectedDate) {
+    if (!pulseDateRange) {
       return
     }
 
+    const normalizedRange = normalizeDailyPulseRange(pulseDateRange)
+    const rangeDays = getDailyPulseRangeDays(normalizedRange)
     const members = getTeamMembersForPulse(allTeamMembers)
-    const checkinsByIdentity = new Map<string, DailyPulseFeedItem['checkin']>()
+    const checkinsByDateAndIdentity = new Map<string, DailyPulseFeedItem['checkin']>()
     let cancelled = false
 
     setPulseLoading(true)
     setPulseError(null)
 
-    void getCheckinsByDate(pulseSelectedDate).then(({ data, error }) => {
+    void getCheckinsByDateRange(normalizedRange).then(({ data, error }) => {
       if (cancelled) {
         return
       }
@@ -1261,36 +1268,48 @@ function App() {
       if (error) {
         setPulseLoading(false)
         setPulseError('Daily Pulse is unavailable in local mode.')
-        const fallbackItems = members.map((member) => ({ member, checkin: null }))
+        const fallbackItems = rangeDays.flatMap((date) => members.map((member) => ({ date, member, checkin: null })))
         setPulseFeedItems(fallbackItems)
         return
       }
 
-      data.forEach((checkin) => {
+      const visibleCheckins = data.filter(
+        (checkin) => !isDailyPulseExcludedPerson({ email: checkin.user_email, name: checkin.user_name }),
+      )
+
+      visibleCheckins.forEach((checkin) => {
         const emailKey = checkin.user_email.trim().toLowerCase()
         const nameKey = checkin.user_name.trim().toLowerCase()
-        checkinsByIdentity.set(emailKey, checkin)
-        checkinsByIdentity.set(nameKey, checkin)
+        checkinsByDateAndIdentity.set(`${checkin.checkin_date}:${emailKey}`, checkin)
+        checkinsByDateAndIdentity.set(`${checkin.checkin_date}:${nameKey}`, checkin)
       })
 
-      const withMissing = members.map((member) => {
-        const emailKey = member.email?.trim().toLowerCase() ?? ''
-        const nameKey = member.name.trim().toLowerCase()
-        return {
-          member,
-          checkin: checkinsByIdentity.get(emailKey) ?? checkinsByIdentity.get(nameKey) ?? null,
-        }
-      })
+      const withMissing = rangeDays.flatMap((date) =>
+        members.map((member) => {
+          const emailKey = member.email?.trim().toLowerCase() ?? ''
+          const nameKey = member.name.trim().toLowerCase()
+          return {
+            date,
+            member,
+            checkin:
+              checkinsByDateAndIdentity.get(`${date}:${emailKey}`) ??
+              checkinsByDateAndIdentity.get(`${date}:${nameKey}`) ??
+              null,
+          }
+        }),
+      )
 
-      const unknownContributors = data
+      const unknownContributors = visibleCheckins
         .filter((checkin) =>
           withMissing.every(
             (entry) =>
+              entry.date !== checkin.checkin_date ||
               entry.member.name.trim().toLowerCase() !== checkin.user_name.trim().toLowerCase() &&
               (entry.member.email?.trim().toLowerCase() ?? '') !== checkin.user_email.trim().toLowerCase(),
           ),
         )
         .map((checkin) => ({
+          date: checkin.checkin_date,
           member: {
             name: checkin.user_name,
             email: checkin.user_email,
@@ -1300,6 +1319,9 @@ function App() {
 
       const merged = [...withMissing, ...unknownContributors]
       merged.sort((a, b) => {
+        if (a.date !== b.date) {
+          return b.date.localeCompare(a.date)
+        }
         if (!a.checkin && !b.checkin) {
           return a.member.name.localeCompare(b.member.name)
         }
@@ -1319,7 +1341,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [allTeamMembers, pulseSelectedDate])
+  }, [allTeamMembers, pulseDateRange])
 
   // Backlog localStorage persist + remote sync is now handled inside useAppEffects
 
@@ -3475,14 +3497,15 @@ function App() {
         {currentPage === 'pulse' ? (
           <DailyPulsePage
             timezone={dailyCheckinTimezone}
-            selectedDate={pulseSelectedDate || dailyCheckinToday}
+            selectedRange={pulseDateRange ?? { from: dailyCheckinToday, to: dailyCheckinToday }}
+            todayDate={dailyCheckinToday}
             personFilter={pulsePersonFilter}
             peopleOptions={pulsePeopleOptions}
             feedItems={pulseFeedItems}
             loading={pulseLoading}
             errorMessage={pulseError}
             headerUtilityContent={headerUtilityContent}
-            onDateChange={(nextDate) => setPulseSelectedDate(nextDate)}
+            onDateRangeChange={(nextRange) => setPulseDateRange(normalizeDailyPulseRange(nextRange))}
             onPersonFilterChange={(value) => setPulsePersonFilter(value)}
           />
         ) : null}
