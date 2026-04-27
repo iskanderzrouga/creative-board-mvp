@@ -77,6 +77,10 @@ interface BoardPageProps {
   onSaveCardTitle: (portfolioId: string, cardId: string, title: string) => void
 }
 
+function getStageClassName(stage: ColumnModel['id']) {
+  return `stage-${stage.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+}
+
 export function BoardPage({
   title,
   portfolio,
@@ -402,7 +406,9 @@ export function BoardPage({
               {columns.map((column) => (
                 <section
                   key={column.id}
-                  className={`stage-column ${column.id === 'Archived' ? 'is-archived-column' : ''}`}
+                  className={`stage-column ${getStageClassName(column.id)} ${
+                    column.id === 'Archived' ? 'is-archived-column' : ''
+                  }`}
                 >
                   <div className="stage-column-header">
                     <h2>

@@ -791,18 +791,18 @@ export const DEFAULT_QUICK_CREATE_INPUT: QuickCreateInput = {
 }
 
 export const BRAND_PALETTES = [
-  { color: '#7c3aed', surfaceColor: '#f3e8ff', textColor: '#5b21b6' },
-  { color: '#059669', surfaceColor: '#d1fae5', textColor: '#047857' },
-  { color: '#0284c7', surfaceColor: '#e0f2fe', textColor: '#0369a1' },
-  { color: '#db2777', surfaceColor: '#fce7f3', textColor: '#be185d' },
-  { color: '#d97706', surfaceColor: '#fef3c7', textColor: '#b45309' },
-  { color: '#4f46e5', surfaceColor: '#e0e7ff', textColor: '#4338ca' },
-  { color: '#dc2626', surfaceColor: '#fee2e2', textColor: '#b91c1c' },
-  { color: '#0d9488', surfaceColor: '#ccfbf1', textColor: '#0f766e' },
-  { color: '#7c3aed', surfaceColor: '#ede9fe', textColor: '#6d28d9' },
-  { color: '#ea580c', surfaceColor: '#ffedd5', textColor: '#c2410c' },
-  { color: '#2563eb', surfaceColor: '#dbeafe', textColor: '#1d4ed8' },
-  { color: '#65a30d', surfaceColor: '#ecfccb', textColor: '#4d7c0f' },
+  { color: '#6d5dfc', surfaceColor: '#f3f0ff', textColor: '#5b4bd9' },
+  { color: '#0f9f7a', surfaceColor: '#ecfbf6', textColor: '#08745b' },
+  { color: '#2563eb', surfaceColor: '#eef5ff', textColor: '#1d4ed8' },
+  { color: '#c04f8a', surfaceColor: '#fdf1f8', textColor: '#9d326b' },
+  { color: '#c27a12', surfaceColor: '#fff7e8', textColor: '#92550a' },
+  { color: '#5667e8', surfaceColor: '#f0f3ff', textColor: '#3f4fc2' },
+  { color: '#e05263', surfaceColor: '#fff1f3', textColor: '#b73545' },
+  { color: '#0d9488', surfaceColor: '#edfbf9', textColor: '#0f766e' },
+  { color: '#7c5ce8', surfaceColor: '#f4f0ff', textColor: '#6344c4' },
+  { color: '#ca6d1a', surfaceColor: '#fff3e8', textColor: '#9b4d0f' },
+  { color: '#2f6ee5', surfaceColor: '#eef5ff', textColor: '#2457b9' },
+  { color: '#6f9f1f', surfaceColor: '#f4f9e8', textColor: '#567c16' },
 ] as const
 
 export const ALL_PORTFOLIOS_ID = 'all-portfolios'

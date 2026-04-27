@@ -121,7 +121,9 @@ function DevCardItem({
     <button
       ref={setNodeRef}
       type="button"
-      className={`board-card cursor-${canDrag ? 'drag' : 'pointer'} ${isDragging ? 'is-dragging' : ''} ${
+      className={`board-card dev-card status-${status} cursor-${canDrag ? 'drag' : 'pointer'} ${
+        isDragging ? 'is-dragging' : ''
+      } ${
         hasActiveDevBlocker(card) ? 'is-flagged' : ''
       }`}
       style={{

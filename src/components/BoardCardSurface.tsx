@@ -49,6 +49,10 @@ function getPriorityLabel(priority: CardPriority) {
   return priority === 1 || priority === 2 || priority === 3 ? String(priority) : '1'
 }
 
+function getStageClassName(stage: Card['stage']) {
+  return `stage-${stage.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+}
+
 function BoardCardSurfaceComponent({
   card,
   portfolio,
@@ -133,7 +137,7 @@ function BoardCardSurfaceComponent({
   return (
     <button
       type="button"
-      className={`board-card tone-${tone} cursor-${cursorMode} ${
+      className={`board-card ${getStageClassName(card.stage)} tone-${tone} cursor-${cursorMode} ${
         card.blocked ? 'is-flagged' : ''
       } ${isDragging ? 'is-dragging' : ''} ${isOverlay ? 'is-overlay' : ''} ${
         isInvalid ? 'is-invalid' : ''

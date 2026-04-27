@@ -169,7 +169,7 @@ function BacklogCardItem({
     <button
       ref={setNodeRef}
       type="button"
-      className={`backlog-card ${isDragging ? 'is-dragging' : ''}`}
+      className={`backlog-card is-${card.taskType} ${isDragging ? 'is-dragging' : ''}`}
       style={{
         transform: CSS.Translate.toString(transform),
       }}
