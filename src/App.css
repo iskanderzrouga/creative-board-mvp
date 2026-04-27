@@ -5003,6 +5003,415 @@ button {
   color: var(--text-strong);
 }
 
+.production-detail-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(980px, calc(100vw - 48px));
+  border-left: 1px solid var(--line-shell-soft);
+  background: var(--surface);
+  box-shadow: -8px 0 28px rgba(31, 35, 41, 0.12);
+}
+
+.production-detail-panel .slide-panel-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--line-shell-soft);
+  background: var(--surface);
+}
+
+.production-detail-panel .panel-section-nav {
+  top: 86px;
+  padding: 0 24px;
+}
+
+.production-detail-panel .panel-section-nav-button {
+  min-height: 34px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.production-detail-panel .panel-card-id {
+  color: var(--muted-soft);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.production-detail-panel .panel-title,
+.production-detail-panel .panel-title-input {
+  max-width: 760px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.28;
+}
+
+.production-detail-panel .panel-pill-row {
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.production-detail-panel .brand-pill,
+.production-detail-panel .task-type-pill,
+.production-detail-panel .funnel-pill,
+.production-detail-panel .blocked-badge,
+.production-detail-panel .archived-badge {
+  min-height: 22px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.production-detail-panel .panel-priority-selector {
+  margin-top: 8px;
+}
+
+.production-detail-panel .panel-priority-button {
+  border-radius: 4px;
+  padding: 3px 9px;
+}
+
+.production-detail-panel .panel-section {
+  gap: 14px;
+  padding: 18px 24px;
+  border-bottom-color: var(--line-shell-soft);
+  scroll-margin-top: 132px;
+}
+
+.production-detail-panel .section-rule-title {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0;
+  border-bottom: none;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.production-detail-panel .metadata-groups {
+  gap: 20px;
+}
+
+.production-detail-panel .metadata-group {
+  gap: 8px;
+  padding: 0;
+}
+
+.production-detail-panel .metadata-group-title,
+.production-detail-panel .frameio-label,
+.production-detail-panel .copy-field label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.production-detail-panel .metadata-grid {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.production-detail-panel .metadata-grid label {
+  display: grid;
+  grid-template-columns: minmax(118px, 26%) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  min-height: 32px;
+  color: var(--text-strong);
+}
+
+.production-detail-panel .metadata-grid label > span,
+.production-detail-panel .metadata-grid label > .frameio-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.production-detail-panel .metadata-grid strong,
+.production-detail-panel .metadata-grid a {
+  min-width: 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.production-detail-panel .metadata-grid input,
+.production-detail-panel .metadata-grid select,
+.production-detail-panel .panel-input,
+.production-detail-panel .blocked-controls input,
+.production-detail-panel .frameio-row input {
+  min-height: 32px;
+  border-color: transparent;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  font-size: 13px;
+}
+
+.production-detail-panel .metadata-grid input:hover,
+.production-detail-panel .metadata-grid select:hover,
+.production-detail-panel .panel-input:hover,
+.production-detail-panel .blocked-controls input:hover,
+.production-detail-panel .frameio-row input:hover {
+  border-color: var(--line-control);
+  background: var(--surface);
+}
+
+.production-detail-panel .metadata-grid label.full-width {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.production-detail-panel .creative-direction-grid textarea,
+.production-detail-panel .panel-textarea,
+.production-detail-panel .rich-text-surface,
+.production-detail-panel .comment-composer textarea {
+  border-color: var(--line-shell-soft);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.production-detail-panel .rich-text-editor {
+  gap: 10px;
+}
+
+.production-detail-panel .rich-text-toolbar {
+  gap: 4px;
+}
+
+.production-detail-panel .toolbar-button {
+  min-height: 28px;
+  padding: 0 8px;
+  border-color: var(--line-shell-soft);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.production-detail-panel .toolbar-button:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+}
+
+.production-detail-panel .rich-text-surface {
+  min-height: 260px;
+  padding: 14px 16px;
+}
+
+.production-detail-panel .block-toggle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.production-detail-panel .blocked-controls {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+
+.production-detail-panel .blocked-controls input {
+  flex: 1;
+  min-width: 0;
+}
+
+.production-detail-panel .stage-dot-row {
+  margin-top: 6px;
+}
+
+.production-detail-panel .stage-history-row {
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.production-detail-panel .stage-history-piece {
+  gap: 5px;
+}
+
+.production-detail-panel .copy-field,
+.production-detail-panel .drive-section,
+.production-detail-panel .frameio-row,
+.production-detail-panel .multi-link-list {
+  gap: 8px;
+}
+
+.production-detail-panel .copy-field {
+  padding: 10px 12px;
+  border: 1px solid var(--line-shell-soft);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+
+.production-detail-panel .copy-field code {
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.production-detail-panel .multi-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.45fr) 32px 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.production-detail-panel .frameio-row:first-of-type .multi-link-row {
+  grid-template-columns: minmax(0, 1fr) 32px 32px;
+}
+
+.production-detail-panel .multi-link-list > a,
+.production-detail-panel .drive-section a {
+  color: var(--info-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.production-detail-panel .comment-list,
+.production-detail-panel .activity-list {
+  gap: 0;
+}
+
+.production-detail-panel .comment-card,
+.production-detail-panel .activity-item {
+  position: relative;
+  gap: 4px;
+  padding: 0 0 16px 18px;
+  border-bottom: none;
+}
+
+.production-detail-panel .comment-card::before,
+.production-detail-panel .activity-item::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.production-detail-panel .comment-card::after,
+.production-detail-panel .activity-item::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 4px;
+  left: 3px;
+  width: 1px;
+  background: var(--line-shell-soft);
+}
+
+.production-detail-panel .comment-card:last-child,
+.production-detail-panel .activity-item:last-child {
+  padding-bottom: 2px;
+}
+
+.production-detail-panel .comment-card:last-child::after,
+.production-detail-panel .activity-item:last-child::after {
+  display: none;
+}
+
+.production-detail-panel .comment-meta,
+.production-detail-panel .activity-meta {
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.production-detail-panel .comment-meta span,
+.production-detail-panel .activity-meta span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.production-detail-panel .comment-card p,
+.production-detail-panel .activity-item p {
+  margin: 5px 0 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.production-detail-panel .comment-composer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.production-detail-panel .comment-actions-row {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.production-detail-panel .comment-helper-row {
+  align-items: center;
+}
+
+.production-detail-panel .tracking-list {
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+@media (max-width: 1120px) {
+  .production-detail-panel {
+    width: min(860px, calc(100vw - 24px));
+  }
+}
+
+@media (max-width: 760px) {
+  .production-detail-panel {
+    width: 100vw;
+  }
+
+  .production-detail-panel .slide-panel-header {
+    position: static;
+  }
+
+  .production-detail-panel .panel-section-nav {
+    top: 0;
+  }
+
+  .production-detail-panel .metadata-grid label,
+  .production-detail-panel .metadata-grid label.full-width {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    align-items: stretch;
+  }
+
+  .production-detail-panel .multi-link-row,
+  .production-detail-panel .frameio-row:first-of-type .multi-link-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px 32px;
+  }
+
+  .production-detail-panel .frameio-row:first-of-type .multi-link-row {
+    grid-template-columns: minmax(0, 1fr) 32px 32px;
+  }
+}
+
 .danger-solid {
   border-color: var(--danger-text);
   background: var(--danger-text);

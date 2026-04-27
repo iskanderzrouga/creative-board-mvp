@@ -451,7 +451,7 @@ export function CardDetailPanel({
       <aside
         key={`${card.id}-${isOpen ? 'open' : 'closed'}`}
         ref={panelRef}
-        className={`slide-panel ${isOpen ? 'is-open' : ''}`}
+        className={`slide-panel production-detail-panel ${isOpen ? 'is-open' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -614,7 +614,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.details = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-details"
         >
           <div className="section-rule-title">Details</div>
           <div className="metadata-groups">
@@ -1014,7 +1014,7 @@ export function CardDetailPanel({
             ref={(node) => {
               sectionRefs.current.naming = node
             }}
-            className="panel-section"
+            className="panel-section panel-section-naming"
           >
             <div className="section-rule-title">Naming</div>
             <div className="copy-field">
@@ -1037,7 +1037,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.drive = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-drive"
         >
           <div className="section-rule-title">Drive Folder</div>
           {card.driveFolderCreated && card.driveFolderUrl ? (
@@ -1091,7 +1091,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.brief = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-brief"
         >
           <div className="section-rule-title">Brief</div>
           {canEditOwnedContent ? (
@@ -1115,7 +1115,7 @@ export function CardDetailPanel({
             ref={(node) => {
               sectionRefs.current['creative-direction'] = node
             }}
-            className="panel-section"
+            className="panel-section panel-section-creative-direction"
           >
             <div className="section-rule-title">Creative Direction</div>
             <div className="metadata-grid creative-direction-grid">
@@ -1213,7 +1213,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.links = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-links"
         >
           <div className="section-rule-title">Links</div>
           {creativeTask ? (
@@ -1350,7 +1350,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.comments = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-comments"
         >
           <div className="section-rule-title">Comments</div>
           <div className="comment-list">
@@ -1479,7 +1479,7 @@ export function CardDetailPanel({
             ref={(node) => {
               sectionRefs.current.attachments = node
             }}
-            className="panel-section"
+            className="panel-section panel-section-attachments"
           >
             <div className="section-rule-title">Attachments</div>
             <ImageAttachments
@@ -1496,7 +1496,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.activity = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-activity"
         >
           <div className="section-rule-title">Activity</div>
           <div className="activity-list">
@@ -1525,7 +1525,7 @@ export function CardDetailPanel({
           ref={(node) => {
             sectionRefs.current.tracking = node
           }}
-          className="panel-section"
+          className="panel-section panel-section-tracking"
         >
           <button
             type="button"
