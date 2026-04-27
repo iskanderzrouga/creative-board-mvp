@@ -332,11 +332,70 @@ async function axonDaily(brand: BrandConfig, since: string, until: string) {
     return new Map<string, PlatformDay>()
   }
 
+  const timezone = brand.timezone || 'America/New_York'
+  const todayUtc = toUtcDateString(new Date())
+  const cutoff = addIsoDays(todayUtc, -27)
+  const hourlySince = since > cutoff ? since : cutoff
+  const hourlyUntil = until
+  const dailySince = since
+  const dailyUntil = until < addIsoDays(cutoff, -1) ? until : addIsoDays(cutoff, -1)
+  const rows = new Map<string, PlatformDay>()
+
+  if (hourlySince <= hourlyUntil) {
+    const hardMin = addIsoDays(todayUtc, -29)
+    const utcSince = maxIsoDate(addIsoDays(hourlySince, -1), hardMin)
+    const utcUntil = minIsoDate(addIsoDays(hourlyUntil, 1), todayUtc)
+    const payload = await fetchAxonReport(brand, axon.report_key, utcSince, utcUntil, 'day,hour,cost,impressions,clicks,roas_7d,sales_7d')
+
+    for (const item of payload.results ?? []) {
+      const utcDay = String(item.day ?? '').slice(0, 10)
+      if (!utcDay) continue
+      const localDate = getAxonLocalDate(utcDay, item.hour, timezone)
+      if (localDate < hourlySince || localDate > hourlyUntil) continue
+      addAxonRow(rows, localDate, item)
+    }
+  }
+
+  if (dailySince <= dailyUntil) {
+    try {
+      const payload = await fetchAxonReport(brand, axon.report_key, dailySince, dailyUntil, 'day,cost,impressions,clicks,roas_7d,sales_7d')
+      for (const item of payload.results ?? []) {
+        const date = String(item.day ?? '').slice(0, 10)
+        if (!date) continue
+        addAxonRow(rows, date, item)
+      }
+    } catch {
+      // Keep the precise hourly rows if the older UTC-daily fallback is unavailable.
+    }
+  }
+
+  return rows
+}
+
+function toUtcDateString(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function addIsoDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return toUtcDateString(date)
+}
+
+function minIsoDate(left: string, right: string) {
+  return left < right ? left : right
+}
+
+function maxIsoDate(left: string, right: string) {
+  return left > right ? left : right
+}
+
+async function fetchAxonReport(brand: BrandConfig, reportKey: string, start: string, end: string, columns: string) {
   const params = new URLSearchParams({
-    api_key: axon.report_key,
-    start: since,
-    end: until,
-    columns: 'day,cost,roas_7d,sales_7d',
+    api_key: reportKey,
+    start,
+    end,
+    columns,
     report_type: 'advertiser',
     format: 'json',
   })
@@ -346,21 +405,42 @@ async function axonDaily(brand: BrandConfig, since: string, until: string) {
     throw new Error(`${brand.slug} AppLovin failed: ${await response.text()}`)
   }
 
-  const payload = (await response.json()) as { results?: Array<Record<string, unknown>> }
-  const rows = new Map<string, PlatformDay>()
+  return (await response.json()) as { results?: Array<Record<string, unknown>> }
+}
 
-  for (const item of payload.results ?? []) {
-    const date = String(item.day ?? '').slice(0, 10)
-    const spend = toNumber(item.cost)
-    const roasPercent = toNumber(item.roas_7d)
-    rows.set(date, {
-      spend,
-      revenue: spend * (roasPercent / 100),
-      purchases: toNumber(item.sales_7d),
-    })
-  }
+function getAxonLocalDate(utcDay: string, hour: unknown, timezone: string) {
+  const rawHour = String(hour ?? '00:00')
+  const [hourPart = '00', minutePart = '00'] = rawHour.split(':')
+  const normalizedHour = hourPart.padStart(2, '0')
+  const normalizedMinute = minutePart.padStart(2, '0')
+  const utcDate = new Date(`${utcDay}T${normalizedHour}:${normalizedMinute}:00Z`)
 
-  return rows
+  return formatDateInTimezone(utcDate, timezone)
+}
+
+function formatDateInTimezone(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+
+  return `${year}-${month}-${day}`
+}
+
+function addAxonRow(rows: Map<string, PlatformDay>, date: string, item: Record<string, unknown>) {
+  const current = rows.get(date) ?? {}
+  const spend = toNumber(item.cost)
+  const roasPercent = toNumber(item.roas_7d)
+  rows.set(date, {
+    spend: toNumber(current.spend) + spend,
+    revenue: toNumber(current.revenue) + spend * (roasPercent / 100),
+    purchases: toNumber(current.purchases) + toNumber(item.sales_7d),
+  })
 }
 
 async function googleToken() {
