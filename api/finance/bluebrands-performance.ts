@@ -32,12 +32,23 @@ interface PlatformDay {
   spend?: number
   revenue?: number
   purchases?: number
+  roas?: number
+  cpa?: number
 }
 
 interface ShopifyDay {
   revenue?: number
+  totalSales?: number
+  grossSales?: number
+  netSales?: number
   orders?: number
+  aov?: number
+  discounts?: number
   returns?: number
+  taxes?: number
+  shipping?: number
+  sessions?: number
+  cvr?: number
 }
 
 interface PerformanceRow {
@@ -47,14 +58,35 @@ interface PerformanceRow {
   revenue: number
   orders: number
   metaSpend: number
+  metaRevenue: number
+  metaPurchases: number
+  metaRoas: number
+  metaCpa: number
   axonSpend: number
+  axonRevenue: number
+  axonPurchases: number
+  axonRoas: number
+  axonCpa: number
   googleSpend: number
+  googleRevenue: number
+  googlePurchases: number
+  googleRoas: number
+  googleCpa: number
   totalAdSpend: number
   platformAttributedRevenue: number
   platformRoas: number
   blendedRoas: number
   cpa: number
+  totalSales: number
+  grossSales: number
+  netSales: number
+  aov: number
+  discounts: number
   refunds: number
+  taxes: number
+  shipping: number
+  sessions: number
+  cvr: number
   cogs: number
   contributionAfterAds: number
   netProfit: number
@@ -198,8 +230,8 @@ async function requireAllowedUser(req: HandlerRequest) {
 
 function getRequestRange(req: HandlerRequest) {
   const url = getRequestUrl(req)
-  const to = url.searchParams.get('to') || getTodayInTimezone('America/New_York')
-  const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days') || 30)))
+  const to = url.searchParams.get('to') || addIsoDays(getTodayInTimezone('America/New_York'), -1)
+  const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days') || 1)))
   const fromDate = new Date(`${to}T00:00:00`)
   fromDate.setDate(fromDate.getDate() - (days - 1))
   const from = url.searchParams.get('from') || fromDate.toISOString().slice(0, 10)
@@ -290,14 +322,35 @@ function rowFromDb(row: Record<string, unknown>): PerformanceRow {
     revenue: toNumber(row.revenue),
     orders: toNumber(row.orders),
     metaSpend: toNumber(row.meta_spend),
+    metaRevenue: toNumber(row.meta_revenue),
+    metaPurchases: toNumber(row.meta_purchases),
+    metaRoas: toNumber(row.meta_roas),
+    metaCpa: toNumber(row.meta_cpa),
     axonSpend: toNumber(row.axon_spend),
+    axonRevenue: toNumber(row.axon_revenue),
+    axonPurchases: toNumber(row.axon_purchases),
+    axonRoas: toNumber(row.axon_roas),
+    axonCpa: toNumber(row.axon_cpa),
     googleSpend: toNumber(row.google_spend),
+    googleRevenue: toNumber(row.google_revenue),
+    googlePurchases: toNumber(row.google_purchases),
+    googleRoas: toNumber(row.google_roas),
+    googleCpa: toNumber(row.google_cpa),
     totalAdSpend: toNumber(row.total_ad_spend),
     platformAttributedRevenue: toNumber(row.platform_attributed_revenue),
     platformRoas: toNumber(row.platform_roas),
     blendedRoas: toNumber(row.blended_roas),
     cpa: toNumber(row.cpa),
+    totalSales: toNumber(row.total_sales),
+    grossSales: toNumber(row.gross_sales),
+    netSales: toNumber(row.net_sales),
+    aov: toNumber(row.aov),
+    discounts: toNumber(row.discounts),
     refunds: toNumber(row.refunds),
+    taxes: toNumber(row.taxes),
+    shipping: toNumber(row.shipping),
+    sessions: toNumber(row.sessions),
+    cvr: toNumber(row.cvr),
     cogs: toNumber(row.cogs),
     contributionAfterAds: toNumber(row.contribution_after_ads),
     netProfit: toNumber(row.net_profit),
@@ -354,12 +407,18 @@ async function metaDaily(brand: BrandConfig, since: string, until: string) {
     if (!date) continue
     const actionValues = Array.isArray(item.action_values) ? item.action_values : []
     const actions = Array.isArray(item.actions) ? item.actions : []
+    const purchaseRoas = Array.isArray(item.purchase_roas) ? item.purchase_roas : []
+    const costPerAction = Array.isArray(item.cost_per_action_type) ? item.cost_per_action_type : []
     const revenue = actionValues.find((action) => (action as { action_type?: string }).action_type === 'omni_purchase') as { value?: string } | undefined
     const purchases = actions.find((action) => (action as { action_type?: string }).action_type === 'omni_purchase') as { value?: string } | undefined
+    const roas = purchaseRoas.find((action) => (action as { action_type?: string }).action_type === 'omni_purchase') as { value?: string } | undefined
+    const cpa = costPerAction.find((action) => (action as { action_type?: string }).action_type === 'omni_purchase') as { value?: string } | undefined
     rows.set(date, {
       spend: toNumber(item.spend),
       revenue: toNumber(revenue?.value),
       purchases: toNumber(purchases?.value),
+      roas: toNumber(roas?.value),
+      cpa: toNumber(cpa?.value),
     })
   }
 
@@ -457,17 +516,48 @@ async function shopifyDaily(brand: BrandConfig, since: string, until: string) {
     token,
     `FROM sales SHOW total_sales, gross_sales, net_sales, orders, discounts, returns, taxes GROUP BY day SINCE ${since} UNTIL ${until} ORDER BY day`,
   )
+  const sessionRows = await shopifyql(
+    brand,
+    token,
+    `FROM sessions SHOW sessions, conversion_rate GROUP BY day SINCE ${since} UNTIL ${until} ORDER BY day`,
+  ).catch(() => [])
   const rows = new Map<string, ShopifyDay>()
 
   for (const item of salesRows) {
     const date = String(item.day ?? '').slice(0, 10)
     if (!date) continue
     const totalSales = toNumber(item.total_sales)
+    const grossSales = toNumber(item.gross_sales)
+    const netSales = toNumber(item.net_sales)
     const taxes = toNumber(item.taxes)
+    const discounts = Math.abs(toNumber(item.discounts))
+    const returns = Math.abs(toNumber(item.returns))
+    const orders = toNumber(item.orders)
+    const revenue = totalSales - taxes
     rows.set(date, {
-      revenue: totalSales - taxes,
-      orders: toNumber(item.orders),
-      returns: Math.abs(toNumber(item.returns)),
+      revenue,
+      totalSales,
+      grossSales,
+      netSales,
+      orders,
+      aov: orders > 0 ? revenue / orders : 0,
+      discounts,
+      returns,
+      taxes,
+      shipping: totalSales - netSales - taxes,
+      sessions: 0,
+      cvr: 0,
+    })
+  }
+
+  for (const item of sessionRows) {
+    const date = String(item.day ?? '').slice(0, 10)
+    if (!date) continue
+    const current = rows.get(date) ?? {}
+    rows.set(date, {
+      ...current,
+      sessions: toNumber(item.sessions),
+      cvr: toNumber(item.conversion_rate),
     })
   }
 
@@ -592,6 +682,14 @@ function addAxonRow(rows: Map<string, PlatformDay>, date: string, item: Record<s
     revenue: toNumber(current.revenue) + spend * (roasPercent / 100),
     purchases: toNumber(current.purchases) + toNumber(item.sales_7d),
   })
+  const next = rows.get(date) ?? {}
+  const nextSpend = toNumber(next.spend)
+  const nextPurchases = toNumber(next.purchases)
+  rows.set(date, {
+    ...next,
+    roas: nextSpend > 0 ? toNumber(next.revenue) / nextSpend : 0,
+    cpa: nextPurchases > 0 ? nextSpend / nextPurchases : 0,
+  })
 }
 
 async function googleToken() {
@@ -664,10 +762,15 @@ async function googleDaily(brand: BrandConfig, since: string, until: string) {
       const date = segments?.date
       if (!date) continue
       const current = rows.get(date) ?? {}
+      const spend = toNumber(current.spend) + toNumber(metrics?.costMicros) / 1_000_000
+      const revenue = toNumber(current.revenue) + toNumber(metrics?.conversionsValue)
+      const purchases = toNumber(current.purchases) + toNumber(metrics?.conversions)
       rows.set(date, {
-        spend: toNumber(current.spend) + toNumber(metrics?.costMicros) / 1_000_000,
-        revenue: toNumber(current.revenue) + toNumber(metrics?.conversionsValue),
-        purchases: toNumber(current.purchases) + toNumber(metrics?.conversions),
+        spend,
+        revenue,
+        purchases,
+        roas: spend > 0 ? revenue / spend : 0,
+        cpa: purchases > 0 ? spend / purchases : 0,
       })
     }
   }
@@ -687,10 +790,16 @@ function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; s
     const revenue = toNumber(shopify.revenue)
     const orders = toNumber(shopify.orders)
     const metaSpend = toNumber(meta.spend)
+    const metaRevenue = toNumber(meta.revenue)
+    const metaPurchases = toNumber(meta.purchases)
     const axonSpend = toNumber(axon.spend)
+    const axonRevenue = toNumber(axon.revenue)
+    const axonPurchases = toNumber(axon.purchases)
     const googleSpend = toNumber(google.spend)
+    const googleRevenue = toNumber(google.revenue)
+    const googlePurchases = toNumber(google.purchases)
     const totalAdSpend = metaSpend + axonSpend + googleSpend
-    const attributedRevenue = toNumber(meta.revenue) + toNumber(axon.revenue) + toNumber(google.revenue)
+    const attributedRevenue = metaRevenue + axonRevenue + googleRevenue
     const cogs = revenue * (toNumber(brand.costs?.cogs_pct) / 100)
     const contributionAfterAds = revenue - cogs - totalAdSpend
 
@@ -701,14 +810,35 @@ function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; s
       revenue,
       orders,
       meta_spend: metaSpend,
+      meta_revenue: metaRevenue,
+      meta_purchases: metaPurchases,
+      meta_roas: toNumber(meta.roas) || (metaSpend > 0 ? metaRevenue / metaSpend : 0),
+      meta_cpa: toNumber(meta.cpa) || (metaPurchases > 0 ? metaSpend / metaPurchases : 0),
       axon_spend: axonSpend,
+      axon_revenue: axonRevenue,
+      axon_purchases: axonPurchases,
+      axon_roas: toNumber(axon.roas) || (axonSpend > 0 ? axonRevenue / axonSpend : 0),
+      axon_cpa: toNumber(axon.cpa) || (axonPurchases > 0 ? axonSpend / axonPurchases : 0),
       google_spend: googleSpend,
+      google_revenue: googleRevenue,
+      google_purchases: googlePurchases,
+      google_roas: toNumber(google.roas) || (googleSpend > 0 ? googleRevenue / googleSpend : 0),
+      google_cpa: toNumber(google.cpa) || (googlePurchases > 0 ? googleSpend / googlePurchases : 0),
       total_ad_spend: totalAdSpend,
       platform_attributed_revenue: attributedRevenue,
       platform_roas: totalAdSpend > 0 ? attributedRevenue / totalAdSpend : 0,
       blended_roas: totalAdSpend > 0 ? revenue / totalAdSpend : 0,
       cpa: orders > 0 ? totalAdSpend / orders : 0,
+      total_sales: toNumber(shopify.totalSales),
+      gross_sales: toNumber(shopify.grossSales),
+      net_sales: toNumber(shopify.netSales),
+      aov: toNumber(shopify.aov) || (orders > 0 ? revenue / orders : 0),
+      discounts: toNumber(shopify.discounts),
       refunds: toNumber(shopify.returns),
+      taxes: toNumber(shopify.taxes),
+      shipping: toNumber(shopify.shipping),
+      sessions: toNumber(shopify.sessions),
+      cvr: toNumber(shopify.cvr),
       cogs,
       contribution_after_ads: contributionAfterAds,
       net_profit: contributionAfterAds,

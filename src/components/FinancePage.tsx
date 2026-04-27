@@ -89,6 +89,10 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US').format(value)
 }
 
+function formatPercent(value: number) {
+  return Number.isFinite(value) ? `${value.toFixed(1)}%` : '—'
+}
+
 function formatMetric(value: number) {
   return Number.isFinite(value) && value > 0 ? `${value.toFixed(2)}x` : '—'
 }
@@ -227,11 +231,24 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
       revenue: acc.revenue + row.revenue,
       orders: acc.orders + row.orders,
       metaSpend: acc.metaSpend + row.metaSpend,
+      metaRevenue: acc.metaRevenue + row.metaRevenue,
+      metaPurchases: acc.metaPurchases + row.metaPurchases,
       axonSpend: acc.axonSpend + row.axonSpend,
+      axonRevenue: acc.axonRevenue + row.axonRevenue,
+      axonPurchases: acc.axonPurchases + row.axonPurchases,
       googleSpend: acc.googleSpend + row.googleSpend,
+      googleRevenue: acc.googleRevenue + row.googleRevenue,
+      googlePurchases: acc.googlePurchases + row.googlePurchases,
       totalAdSpend: acc.totalAdSpend + row.totalAdSpend,
       platformAttributedRevenue: acc.platformAttributedRevenue + row.platformAttributedRevenue,
+      totalSales: acc.totalSales + row.totalSales,
+      grossSales: acc.grossSales + row.grossSales,
+      netSales: acc.netSales + row.netSales,
+      discounts: acc.discounts + row.discounts,
       refunds: acc.refunds + row.refunds,
+      taxes: acc.taxes + row.taxes,
+      shipping: acc.shipping + row.shipping,
+      sessions: acc.sessions + row.sessions,
       cogs: acc.cogs + row.cogs,
       contributionAfterAds: acc.contributionAfterAds + row.contributionAfterAds,
       netProfit: acc.netProfit + row.netProfit,
@@ -240,11 +257,24 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
       revenue: 0,
       orders: 0,
       metaSpend: 0,
+      metaRevenue: 0,
+      metaPurchases: 0,
       axonSpend: 0,
+      axonRevenue: 0,
+      axonPurchases: 0,
       googleSpend: 0,
+      googleRevenue: 0,
+      googlePurchases: 0,
       totalAdSpend: 0,
       platformAttributedRevenue: 0,
+      totalSales: 0,
+      grossSales: 0,
+      netSales: 0,
+      discounts: 0,
       refunds: 0,
+      taxes: 0,
+      shipping: 0,
+      sessions: 0,
       cogs: 0,
       contributionAfterAds: 0,
       netProfit: 0,
@@ -257,6 +287,14 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
     blendedRoas: totals.totalAdSpend > 0 ? totals.revenue / totals.totalAdSpend : 0,
     cpa: totals.orders > 0 ? totals.totalAdSpend / totals.orders : 0,
     contributionMargin: totals.revenue > 0 ? totals.contributionAfterAds / totals.revenue : 0,
+    aov: totals.orders > 0 ? totals.revenue / totals.orders : 0,
+    cvr: totals.sessions > 0 ? (totals.orders / totals.sessions) * 100 : 0,
+    metaRoas: totals.metaSpend > 0 ? totals.metaRevenue / totals.metaSpend : 0,
+    metaCpa: totals.metaPurchases > 0 ? totals.metaSpend / totals.metaPurchases : 0,
+    axonRoas: totals.axonSpend > 0 ? totals.axonRevenue / totals.axonSpend : 0,
+    axonCpa: totals.axonPurchases > 0 ? totals.axonSpend / totals.axonPurchases : 0,
+    googleRoas: totals.googleSpend > 0 ? totals.googleRevenue / totals.googleSpend : 0,
+    googleCpa: totals.googlePurchases > 0 ? totals.googleSpend / totals.googlePurchases : 0,
   }
 }
 
@@ -359,6 +397,152 @@ function BrandCard({
   )
 }
 
+function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
+  const dailyRows = rows
+    .slice()
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(-30)
+  const values = dailyRows.flatMap((row) => [row.revenue, row.totalAdSpend])
+  const maxValue = Math.max(...values, 1)
+  const width = 620
+  const height = 180
+  const topPadding = 20
+  const bottomPadding = 32
+  const chartHeight = height - topPadding - bottomPadding
+
+  const pointsFor = (key: 'revenue' | 'totalAdSpend') => dailyRows
+    .map((row, index) => {
+      const x = dailyRows.length === 1 ? 0 : (index / (dailyRows.length - 1)) * width
+      const y = topPadding + chartHeight - (row[key] / maxValue) * chartHeight
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return (
+    <section style={{ ...panelStyle, padding: 18, minHeight: 250 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Revenue vs Spend</h2>
+          <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>{dailyRows.length} day trend</div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, color: '#697386', fontSize: 12, fontWeight: 750 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#2563eb' }} />Revenue</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#f97316' }} />Spend</span>
+        </div>
+      </div>
+      <div style={{ marginTop: 16, overflow: 'hidden' }}>
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue and spend trend" style={{ width: '100%', height: 210, display: 'block' }}>
+          {[0, 1, 2, 3].map((line) => {
+            const y = topPadding + (chartHeight / 3) * line
+            return <line key={line} x1="0" x2={width} y1={y} y2={y} stroke="#e4e8f0" strokeWidth="1" />
+          })}
+          <polyline points={pointsFor('revenue')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={pointsFor('totalAdSpend')} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          {dailyRows.map((row, index) => {
+            if (dailyRows.length <= 8 || index % Math.ceil(dailyRows.length / 6) === 0 || index === dailyRows.length - 1) {
+              const x = dailyRows.length === 1 ? 0 : (index / (dailyRows.length - 1)) * width
+              return (
+                <text key={row.date} x={x} y={height - 9} textAnchor={index === 0 ? 'start' : index === dailyRows.length - 1 ? 'end' : 'middle'} fill="#697386" fontSize="11">
+                  {formatDate(row.date)}
+                </text>
+              )
+            }
+            return null
+          })}
+        </svg>
+      </div>
+    </section>
+  )
+}
+
+function PlatformBreakdown({ rows }: { rows: BrandDailyPerformanceRow[] }) {
+  const totals = sumRows(rows)
+  const platforms = [
+    { name: 'Meta', spend: totals.metaSpend, revenue: totals.metaRevenue, purchases: totals.metaPurchases, roas: totals.metaRoas, cpa: totals.metaCpa },
+    { name: 'Axon', spend: totals.axonSpend, revenue: totals.axonRevenue, purchases: totals.axonPurchases, roas: totals.axonRoas, cpa: totals.axonCpa },
+    { name: 'Google', spend: totals.googleSpend, revenue: totals.googleRevenue, purchases: totals.googlePurchases, roas: totals.googleRoas, cpa: totals.googleCpa },
+  ].filter((platform) => platform.spend > 0 || platform.revenue > 0 || platform.purchases > 0)
+  const attributionShare = totals.revenue > 0 ? (totals.platformAttributedRevenue / totals.revenue) * 100 : 0
+
+  return (
+    <section style={{ ...panelStyle, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 18px', borderBottom: '1px solid #e4e8f0', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Platform Breakdown</h2>
+          <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>Self-reported attribution compared against Shopify actuals.</div>
+        </div>
+        <span style={{ color: '#697386', fontSize: 12, whiteSpace: 'nowrap' }}>{formatPercent(attributionShare)} attributed</span>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: '#697386', background: '#fbfcfe', textAlign: 'left' }}>
+              {['Platform', 'Spend', 'Attributed Revenue', 'Purchases', 'Platform ROAS', 'CPA'].map((heading) => (
+                <th key={heading} style={{ padding: '11px 12px', fontWeight: 800, borderBottom: '1px solid #e4e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {platforms.map((platform) => (
+              <tr key={platform.name} style={{ borderBottom: '1px solid #eef1f6' }}>
+                <td style={{ padding: '12px', color: '#111827', fontWeight: 820 }}>{platform.name}</td>
+                <td style={{ ...mono, padding: '12px', color: '#111827' }}>{formatMoney(platform.spend)}</td>
+                <td style={{ ...mono, padding: '12px', color: '#111827' }}>{formatMoney(platform.revenue)}</td>
+                <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(platform.purchases)}</td>
+                <td style={{ ...mono, padding: '12px', color: platform.roas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(platform.roas)}</td>
+                <td style={{ ...mono, padding: '12px', color: '#475467' }}>{platform.cpa > 0 ? formatMoney(platform.cpa, 2) : '—'}</td>
+              </tr>
+            ))}
+            <tr style={{ borderBottom: '1px solid #eef1f6', background: '#fbfcfe' }}>
+              <td style={{ padding: '12px', color: '#111827', fontWeight: 850 }}>Total attributed</td>
+              <td style={{ padding: '12px', color: '#697386' }}>—</td>
+              <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 850 }}>{formatMoney(totals.platformAttributedRevenue)}</td>
+              <td style={{ padding: '12px', color: '#697386' }}>—</td>
+              <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 850 }}>{formatMetric(totals.platformRoas)}</td>
+              <td style={{ padding: '12px', color: '#697386' }}>—</td>
+            </tr>
+            <tr style={{ background: '#ecfdf5' }}>
+              <td style={{ padding: '12px', color: '#047857', fontWeight: 850 }}>Shopify actual</td>
+              <td style={{ padding: '12px', color: '#047857' }}>—</td>
+              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{formatMoney(totals.revenue)}</td>
+              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{formatNumber(totals.orders)}</td>
+              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{formatMetric(totals.blendedRoas)} blended</td>
+              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{totals.cpa > 0 ? formatMoney(totals.cpa, 2) : '—'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function ShopifyExtras({ rows }: { rows: BrandDailyPerformanceRow[] }) {
+  const totals = sumRows(rows)
+
+  return (
+    <section style={{ ...panelStyle, padding: 18 }}>
+      <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Shopify Extras</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 }}>
+        {[
+          ['AOV', totals.aov > 0 ? formatMoney(totals.aov, 2) : '—'],
+          ['Gross sales', formatMoney(totals.grossSales)],
+          ['Net sales', formatMoney(totals.netSales)],
+          ['Discounts', formatMoney(totals.discounts)],
+          ['Taxes', formatMoney(totals.taxes)],
+          ['Refunds', formatMoney(totals.refunds)],
+          ['Sessions', totals.sessions > 0 ? formatNumber(totals.sessions) : '—'],
+          ['CVR', totals.cvr > 0 ? formatPercent(totals.cvr) : '—'],
+        ].map(([label, value]) => (
+          <div key={label} style={{ border: '1px solid #e4e8f0', borderRadius: 7, padding: '10px 11px', minWidth: 0 }}>
+            <div style={{ color: '#697386', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+            <div style={{ ...mono, color: '#111827', fontSize: 16, fontWeight: 820, marginTop: 4 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function buildAlerts(rows: BrandDailyPerformanceRow[]) {
   const byBrand = PERFORMANCE_BRANDS.map((brand) => {
     const brandRows = rows.filter((row) => row.brandSlug === brand.slug).sort((left, right) => right.date.localeCompare(left.date))
@@ -420,13 +604,17 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
-  const [datePreset, setDatePreset] = useState<DatePreset>('last30')
+  const [datePreset, setDatePreset] = useState<DatePreset>('yesterday')
   const [customRange, setCustomRange] = useState<DateRange | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [draftPreset, setDraftPreset] = useState<DatePreset>('last30')
+  const [draftPreset, setDraftPreset] = useState<DatePreset>('yesterday')
   const [draftRange, setDraftRange] = useState<DateRange | null>(null)
+  const anchorDate = getTodayInEst()
+  const defaultRange = useMemo(() => getPresetRange('yesterday', anchorDate), [anchorDate])
 
   const loadPerformance = async (range: DateRange | null, showRefresh = false) => {
+    const nextRange = range ?? defaultRange
+
     if (showRefresh) {
       setRefreshing(true)
     } else {
@@ -435,8 +623,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
     try {
       const data = showRefresh
-        ? await syncBrandDailyPerformance(range ?? { days: 60 })
-        : await loadBrandDailyPerformance(range ?? { days: 60 })
+        ? await syncBrandDailyPerformance(nextRange)
+        : await loadBrandDailyPerformance(nextRange)
       const sourceErrors = data.sync?.errors ?? []
       setRows(data.rows)
       setGeneratedAt(data.generatedAt)
@@ -449,10 +637,9 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   }
 
   useEffect(() => {
-    void loadPerformance(null)
-  }, [])
+    void loadPerformance(defaultRange)
+  }, [defaultRange.from, defaultRange.to])
 
-  const anchorDate = getTodayInEst()
   const activeRange = useMemo(() => {
     if (datePreset === 'custom' && customRange) {
       return customRange
@@ -476,6 +663,9 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const alerts = useMemo(() => buildAlerts(visibleRows), [visibleRows])
   const latestVisibleDate = latestDate(visibleRows)
   const latestRows = visibleRows.filter((row) => row.date === latestVisibleDate)
+  const displayedBrands = brandFilter === 'all'
+    ? PERFORMANCE_BRANDS
+    : PERFORMANCE_BRANDS.filter((brand) => brand.slug === brandFilter)
 
   const openDatePicker = () => {
     setDraftPreset(datePreset)
@@ -488,7 +678,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
     setDatePreset(draftPreset)
     setCustomRange(draftPreset === 'custom' ? nextRange : null)
     setPickerOpen(false)
-    void loadPerformance(nextRange, true)
+    void loadPerformance(nextRange)
   }
 
   const refreshPerformance = () => {
@@ -621,8 +811,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           <StatTile label="Contribution" value={formatMoney(totals.contributionAfterAds)} helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`} accent="#111827" />
         </section>
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, marginBottom: 14 }}>
-          {PERFORMANCE_BRANDS.map((brand) => (
+        <section style={{ display: 'grid', gridTemplateColumns: `repeat(${displayedBrands.length}, minmax(0, 1fr))`, gap: 14, marginBottom: 14 }}>
+          {displayedBrands.map((brand) => (
             <BrandCard
               key={brand.slug}
               brandSlug={brand.slug}
@@ -630,6 +820,15 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
             />
           ))}
         </section>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(360px, 0.75fr)', gap: 14, alignItems: 'stretch', marginBottom: 14 }}>
+          <PerformanceTrend rows={visibleRows} />
+          <ShopifyExtras rows={visibleRows} />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <PlatformBreakdown rows={visibleRows} />
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 310px', gap: 14, alignItems: 'start' }}>
           <section style={{ ...panelStyle, overflow: 'hidden' }}>
@@ -646,10 +845,10 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', minWidth: 1240, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: '#697386', background: '#fbfcfe', textAlign: 'left' }}>
-                    {['Date', 'Brand', 'Shopify Revenue', 'Meta', 'AppLovin', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Orders', 'Refunds', 'Contribution'].map((heading) => (
+                    {['Date', 'Brand', 'Shopify Revenue', 'Orders', 'AOV', 'Meta', 'Axon', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Refunds', 'Contribution'].map((heading) => (
                       <th key={heading} style={{ padding: '11px 12px', fontWeight: 800, borderBottom: '1px solid #e4e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
                     ))}
                   </tr>
@@ -667,6 +866,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                           </span>
                         </td>
                         <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 760 }}>{formatMoney(row.revenue)}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(row.orders)}</td>
+                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.aov > 0 ? formatMoney(row.aov, 2) : '—'}</td>
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.metaSpend)}</td>
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.axonSpend > 0 ? formatMoney(row.axonSpend) : '—'}</td>
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
@@ -674,7 +875,6 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                         <td style={{ ...mono, padding: '12px', color: row.platformRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.platformRoas)}</td>
                         <td style={{ ...mono, padding: '12px', color: row.blendedRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.blendedRoas)}</td>
                         <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.cpa, 2)}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(row.orders)}</td>
                         <td style={{ ...mono, padding: '12px', color: row.refunds > 0 ? '#be123c' : '#697386' }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
                         <td style={{ ...mono, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 820 }}>{formatMoney(row.contributionAfterAds)}</td>
                       </tr>

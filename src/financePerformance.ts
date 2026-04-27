@@ -9,14 +9,35 @@ export interface BrandDailyPerformanceRow {
   revenue: number
   orders: number
   metaSpend: number
+  metaRevenue: number
+  metaPurchases: number
+  metaRoas: number
+  metaCpa: number
   axonSpend: number
+  axonRevenue: number
+  axonPurchases: number
+  axonRoas: number
+  axonCpa: number
   googleSpend: number
+  googleRevenue: number
+  googlePurchases: number
+  googleRoas: number
+  googleCpa: number
   totalAdSpend: number
   platformAttributedRevenue: number
   platformRoas: number
   blendedRoas: number
   cpa: number
+  totalSales: number
+  grossSales: number
+  netSales: number
+  aov: number
+  discounts: number
   refunds: number
+  taxes: number
+  shipping: number
+  sessions: number
+  cvr: number
   cogs: number
   contributionAfterAds: number
   netProfit: number
