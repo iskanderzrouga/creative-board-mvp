@@ -1602,28 +1602,10 @@ function App() {
     setSelectedDevCard(null)
   }
 
-  function focusBoardAttention() {
-    if (!attention.hasAttention || !activePortfolioView) {
-      return
-    }
-
-    if (attention.stuckCount > 0) {
-      setBoardFilters((current) => ({ ...current, stuckOnly: true, blockedOnly: false }))
-      return
-    }
-
-    if (attention.blockedCount > 0) {
-      setBoardFilters((current) => ({ ...current, stuckOnly: false, blockedOnly: true }))
-    }
-  }
-
   function handleSidebarPageChange(page: ExtendedPage) {
     setPage(page)
     if (touchSidebarEnabled) {
       setTouchSidebarOpen(false)
-    }
-    if (page === 'board') {
-      focusBoardAttention()
     }
   }
 
