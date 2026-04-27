@@ -68,6 +68,20 @@ interface JsonFetchResult<T> {
   raw: string
 }
 
+type HandlerRequest = Request | {
+  method?: string
+  url?: string
+  headers?: Record<string, string | string[] | undefined>
+}
+
+type HandlerResponse = {
+  status?: (status: number) => HandlerResponse
+  setHeader?: (name: string, value: string) => void
+  json?: (payload: unknown) => void
+  end?: (body?: string) => void
+  statusCode?: number
+}
+
 const ALLOWED_EMAIL_KEYS = new Set(['iskander', 'nicolas', 'naomi'])
 const BRAND_SLUGS: BrandSlug[] = ['pluxy', 'vivi', 'trueclean']
 
@@ -76,6 +90,50 @@ function jsonResponse(payload: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function sendJson(res: HandlerResponse | undefined, payload: unknown, status = 200) {
+  if (!res) {
+    return jsonResponse(payload, status)
+  }
+
+  res.setHeader?.('Content-Type', 'application/json')
+
+  if (typeof res.status === 'function' && typeof res.json === 'function') {
+    res.status(status).json(payload)
+    return undefined
+  }
+
+  res.statusCode = status
+  res.end?.(JSON.stringify(payload))
+  return undefined
+}
+
+function isFetchRequest(req: HandlerRequest): req is Request {
+  return typeof (req as Request).headers?.get === 'function'
+}
+
+function getHeader(req: HandlerRequest, name: string) {
+  if (isFetchRequest(req)) {
+    return req.headers.get(name)
+  }
+
+  const lowerName = name.toLowerCase()
+  const value = req.headers?.[lowerName] ?? req.headers?.[name]
+
+  if (Array.isArray(value)) {
+    return value[0] ?? null
+  }
+
+  return value ?? null
+}
+
+function getMethod(req: HandlerRequest) {
+  return (req.method || 'GET').toUpperCase()
+}
+
+function getRequestUrl(req: HandlerRequest) {
+  return new URL(req.url || '/', 'https://editors-board.local')
 }
 
 function getSupabaseUrl() {
@@ -94,10 +152,10 @@ function getServerEnv(name: string) {
   return process.env[name]
 }
 
-async function requireAllowedUser(req: Request) {
+async function requireAllowedUser(req: HandlerRequest) {
   const supabaseUrl = getSupabaseUrl()
   const anonKey = getSupabaseAnonKey()
-  const auth = req.headers.get('Authorization')
+  const auth = getHeader(req, 'authorization')
 
   if (!supabaseUrl || !anonKey || !auth) {
     return { ok: false as const, status: 401, error: 'performance_auth_required' }
@@ -124,8 +182,8 @@ async function requireAllowedUser(req: Request) {
   return { ok: true as const, email: user.email ?? '', auth }
 }
 
-function getRequestRange(req: Request) {
-  const url = new URL(req.url)
+function getRequestRange(req: HandlerRequest) {
+  const url = getRequestUrl(req)
   const today = new Date()
   const to = url.searchParams.get('to') || new Date(today.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days') || 30)))
@@ -666,29 +724,31 @@ async function syncPerformance(from: string, to: string, auth: string, useServic
   return { rowsWritten, errors }
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  const access = await requireAllowedUser(req)
-  if (!access.ok) {
-    return jsonResponse({ error: access.error, rows: [] }, access.status)
-  }
-
-  const { from, to } = getRequestRange(req)
-
+export default async function handler(req: HandlerRequest, res?: HandlerResponse): Promise<Response | undefined> {
   try {
-    if (req.method === 'POST') {
+    const access = await requireAllowedUser(req)
+    if (!access.ok) {
+      return sendJson(res, { error: access.error, rows: [] }, access.status)
+    }
+
+    const { from, to } = getRequestRange(req)
+    const method = getMethod(req)
+
+    if (method === 'POST') {
       const sync = await syncPerformance(from, to, access.auth, Boolean(getSupabaseServiceKey()))
       const rows = await readRows(from, to, access.auth, Boolean(getSupabaseServiceKey()))
-      return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase', sync })
+      return sendJson(res, { rows, generatedAt: new Date().toISOString(), source: 'supabase', sync })
     }
 
-    if (req.method === 'GET') {
+    if (method === 'GET') {
       const rows = await readRows(from, to, access.auth, Boolean(getSupabaseServiceKey()))
-      return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase' })
+      return sendJson(res, { rows, generatedAt: new Date().toISOString(), source: 'supabase' })
     }
 
-    return jsonResponse({ error: 'Method not allowed', rows: [] }, 405)
+    return sendJson(res, { error: 'Method not allowed', rows: [] }, 405)
   } catch (error) {
-    return jsonResponse({
+    console.error('bluebrands performance api failed', error)
+    return sendJson(res, {
       error: error instanceof Error ? error.message : 'Performance API failed',
       rows: [],
       generatedAt: new Date().toISOString(),
