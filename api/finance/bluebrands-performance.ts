@@ -404,7 +404,15 @@ async function shopifyql(brand: BrandConfig, token: string, query: string) {
   const apiVersion = getServerEnv('SHOPIFY_API_VERSION') || 'unstable'
   const gql = `{ shopifyqlQuery(query: ${JSON.stringify(query)}) { parseErrors tableData { columns { name dataType } rows } } }`
   const response = await fetchJson<{
-    data?: { shopifyqlQuery?: { parseErrors?: unknown[]; tableData?: { columns?: Array<{ name: string }>; rows?: unknown[][] } } }
+    data?: {
+      shopifyqlQuery?: {
+        parseErrors?: unknown[]
+        tableData?: {
+          columns?: Array<{ name: string }>
+          rows?: Array<unknown[] | Record<string, unknown>>
+        }
+      }
+    }
   }>(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
     method: 'POST',
     headers: {
@@ -425,7 +433,17 @@ async function shopifyql(brand: BrandConfig, token: string, query: string) {
   }
 
   const columns = data.tableData?.columns?.map((column) => column.name) ?? []
-  return (data.tableData?.rows ?? []).map((values) => Object.fromEntries(columns.map((column, index) => [column, values[index]])))
+  return (data.tableData?.rows ?? []).map((values) => {
+    if (Array.isArray(values)) {
+      return Object.fromEntries(columns.map((column, index) => [column, values[index]]))
+    }
+
+    if (values && typeof values === 'object') {
+      return values
+    }
+
+    return {}
+  })
 }
 
 async function shopifyDaily(brand: BrandConfig, since: string, until: string) {
