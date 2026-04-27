@@ -30,6 +30,19 @@ interface DateRange {
   to: string
 }
 
+interface DailyTrendRow {
+  date: string
+  revenue: number
+  totalAdSpend: number
+  blendedRoas: number
+  platformRoas: number
+  metaRoas: number
+  axonRoas: number
+  googleRoas: number
+}
+
+type RoasTrendKey = 'blendedRoas' | 'platformRoas' | 'metaRoas' | 'axonRoas' | 'googleRoas'
+
 const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
   { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
@@ -302,6 +315,29 @@ function latestDate(rows: BrandDailyPerformanceRow[]) {
   return rows.reduce((latest, row) => (row.date > latest ? row.date : latest), rows[0]?.date ?? '')
 }
 
+function buildDailyTrendRows(rows: BrandDailyPerformanceRow[]): DailyTrendRow[] {
+  const grouped = rows.reduce<Record<string, BrandDailyPerformanceRow[]>>((acc, row) => {
+    acc[row.date] = [...(acc[row.date] ?? []), row]
+    return acc
+  }, {})
+
+  return Object.entries(grouped)
+    .map(([date, dateRows]) => {
+      const totals = sumRows(dateRows)
+      return {
+        date,
+        revenue: totals.revenue,
+        totalAdSpend: totals.totalAdSpend,
+        blendedRoas: totals.blendedRoas,
+        platformRoas: totals.platformRoas,
+        metaRoas: totals.metaRoas,
+        axonRoas: totals.axonRoas,
+        googleRoas: totals.googleRoas,
+      }
+    })
+    .sort((left, right) => left.date.localeCompare(right.date))
+}
+
 function StatTile({
   label,
   value,
@@ -398,66 +434,92 @@ function BrandCard({
 }
 
 function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
-  const dailyRows = Object.values(
-    rows.reduce<Record<string, { date: string; revenue: number; totalAdSpend: number }>>((acc, row) => {
-      const current = acc[row.date] ?? { date: row.date, revenue: 0, totalAdSpend: 0 }
-      acc[row.date] = {
-        date: row.date,
-        revenue: current.revenue + row.revenue,
-        totalAdSpend: current.totalAdSpend + row.totalAdSpend,
-      }
-      return acc
-    }, {}),
-  )
-    .sort((left, right) => left.date.localeCompare(right.date))
-    .slice(-30)
+  const dailyRows = buildDailyTrendRows(rows).slice(-30)
+  const roasSeries = [
+    { key: 'blendedRoas' as const, label: 'Blended', color: '#059669', dash: '' },
+    { key: 'platformRoas' as const, label: 'Platform', color: '#7c3aed', dash: '5 4' },
+    { key: 'metaRoas' as const, label: 'Meta', color: '#2563eb', dash: '3 4' },
+    { key: 'axonRoas' as const, label: 'Axon', color: '#db2777', dash: '3 4' },
+    { key: 'googleRoas' as const, label: 'Google', color: '#16a34a', dash: '3 4' },
+  ].filter((series) => dailyRows.some((row) => row[series.key] > 0))
   const values = dailyRows.flatMap((row) => [row.revenue, row.totalAdSpend])
   const maxValue = Math.max(...values, 1)
+  const maxRoas = Math.max(...dailyRows.flatMap((row) => roasSeries.map((series) => row[series.key])), 1)
   const width = 620
   const height = 180
   const topPadding = 20
   const bottomPadding = 32
   const chartHeight = height - topPadding - bottomPadding
 
-  const pointsFor = (key: 'revenue' | 'totalAdSpend') => dailyRows
+  const xFor = (index: number) => dailyRows.length === 1 ? width / 2 : (index / (dailyRows.length - 1)) * width
+  const moneyYFor = (value: number) => topPadding + chartHeight - (value / maxValue) * chartHeight
+  const roasYFor = (value: number) => topPadding + chartHeight - (value / maxRoas) * chartHeight
+
+  const moneyPointsFor = (key: 'revenue' | 'totalAdSpend') => dailyRows
     .map((row, index) => {
-      const x = dailyRows.length === 1 ? width / 2 : (index / (dailyRows.length - 1)) * width
-      const y = topPadding + chartHeight - (row[key] / maxValue) * chartHeight
-      return `${x},${y}`
+      return `${xFor(index)},${moneyYFor(row[key])}`
     })
     .join(' ')
+
+  const roasPointsFor = (key: RoasTrendKey) => dailyRows
+    .map((row, index) => {
+      const value = typeof row[key] === 'number' ? row[key] : 0
+      return `${xFor(index)},${roasYFor(value)}`
+    })
+    .join(' ')
+  const latest = dailyRows[dailyRows.length - 1]
 
   return (
     <section style={{ ...panelStyle, padding: 18, minHeight: 250 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div>
-          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Revenue vs Spend</h2>
+          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Revenue, Spend & ROAS</h2>
           <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>{dailyRows.length} day trend</div>
         </div>
-        <div style={{ display: 'flex', gap: 12, color: '#697386', fontSize: 12, fontWeight: 750 }}>
+        <div style={{ display: 'flex', gap: 12, color: '#697386', fontSize: 12, fontWeight: 750, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#2563eb' }} />Revenue</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#f97316' }} />Spend</span>
+          {roasSeries.map((series) => (
+            <span key={series.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 18, height: 3, background: series.color }} />
+              {series.label} {latest ? formatMetric(latest[series.key]) : ''}
+            </span>
+          ))}
         </div>
       </div>
       <div style={{ marginTop: 16, overflow: 'hidden' }}>
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue and spend trend" style={{ width: '100%', height: 210, display: 'block' }}>
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue, spend, and ROAS trend" style={{ width: '100%', height: 210, display: 'block' }}>
           {[0, 1, 2, 3].map((line) => {
             const y = topPadding + (chartHeight / 3) * line
             return <line key={line} x1="0" x2={width} y1={y} y2={y} stroke="#e4e8f0" strokeWidth="1" />
           })}
-          <polyline points={pointsFor('revenue')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points={pointsFor('totalAdSpend')} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={moneyPointsFor('revenue')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={moneyPointsFor('totalAdSpend')} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          {roasSeries.map((series) => (
+            <polyline
+              key={series.key}
+              points={roasPointsFor(series.key)}
+              fill="none"
+              stroke={series.color}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={series.dash}
+            />
+          ))}
           {dailyRows.length === 1 ? (
             <>
-              <circle cx={width / 2} cy={topPadding + chartHeight - (dailyRows[0].revenue / maxValue) * chartHeight} r="4" fill="#2563eb" />
-              <circle cx={width / 2} cy={topPadding + chartHeight - (dailyRows[0].totalAdSpend / maxValue) * chartHeight} r="4" fill="#f97316" />
+              <circle cx={width / 2} cy={moneyYFor(dailyRows[0].revenue)} r="4" fill="#2563eb" />
+              <circle cx={width / 2} cy={moneyYFor(dailyRows[0].totalAdSpend)} r="4" fill="#f97316" />
+              {roasSeries.map((series) => (
+                <circle key={series.key} cx={width / 2} cy={roasYFor(dailyRows[0][series.key])} r="3.5" fill={series.color} />
+              ))}
             </>
           ) : null}
           {dailyRows.map((row, index) => {
             if (dailyRows.length <= 8 || index % Math.ceil(dailyRows.length / 6) === 0 || index === dailyRows.length - 1) {
-              const x = dailyRows.length === 1 ? width / 2 : (index / (dailyRows.length - 1)) * width
               return (
-                <text key={row.date} x={x} y={height - 9} textAnchor={index === 0 ? 'start' : index === dailyRows.length - 1 ? 'end' : 'middle'} fill="#697386" fontSize="11">
+                <text key={row.date} x={xFor(index)} y={height - 9} textAnchor={index === 0 ? 'start' : index === dailyRows.length - 1 ? 'end' : 'middle'} fill="#697386" fontSize="11">
                   {formatDate(row.date)}
                 </text>
               )
@@ -826,15 +888,17 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           <StatTile label="Contribution" value={formatMoney(totals.contributionAfterAds)} helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`} accent="#111827" />
         </section>
 
-        <section style={{ display: 'grid', gridTemplateColumns: `repeat(${displayedBrands.length}, minmax(0, 1fr))`, gap: 14, marginBottom: 14 }}>
-          {displayedBrands.map((brand) => (
-            <BrandCard
-              key={brand.slug}
-              brandSlug={brand.slug}
-              rows={visibleRows.filter((row) => row.brandSlug === brand.slug)}
-            />
-          ))}
-        </section>
+        {brandFilter === 'all' ? (
+          <section style={{ display: 'grid', gridTemplateColumns: `repeat(${displayedBrands.length}, minmax(0, 1fr))`, gap: 14, marginBottom: 14 }}>
+            {displayedBrands.map((brand) => (
+              <BrandCard
+                key={brand.slug}
+                brandSlug={brand.slug}
+                rows={visibleRows.filter((row) => row.brandSlug === brand.slug)}
+              />
+            ))}
+          </section>
+        ) : null}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(360px, 0.75fr)', gap: 14, alignItems: 'stretch', marginBottom: 14 }}>
           <PerformanceTrend rows={visibleRows} />
