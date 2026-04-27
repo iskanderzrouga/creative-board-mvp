@@ -112,7 +112,7 @@ async function requireAllowedUser(req: Request) {
     return { ok: false as const, status: 403, error: 'performance_access_denied' }
   }
 
-  return { ok: true as const, email: user.email ?? '' }
+  return { ok: true as const, email: user.email ?? '', auth }
 }
 
 function getRequestRange(req: Request) {
@@ -141,12 +141,29 @@ function loadBrandConfigs() {
     .sort((left, right) => BRAND_SLUGS.indexOf(left.slug) - BRAND_SLUGS.indexOf(right.slug))
 }
 
+async function supabaseReadFetch(path: string, auth: string) {
+  const supabaseUrl = getSupabaseUrl()
+  const anonKey = getSupabaseAnonKey()
+
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Supabase client env is not configured')
+  }
+
+  return fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: auth,
+      'Content-Type': 'application/json',
+    },
+  })
+}
+
 async function supabaseFetch(path: string, init: RequestInit = {}) {
   const supabaseUrl = getSupabaseUrl()
   const serviceKey = getSupabaseServiceKey()
 
   if (!supabaseUrl || !serviceKey) {
-    throw new Error('Supabase server env is not configured')
+    throw new Error('Supabase service role env is not configured for performance sync')
   }
 
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -188,10 +205,11 @@ function rowFromDb(row: Record<string, unknown>): PerformanceRow {
   }
 }
 
-async function readRows(from: string, to: string) {
+async function readRows(from: string, to: string, auth: string) {
   const brandList = BRAND_SLUGS.join(',')
-  const response = await supabaseFetch(
+  const response = await supabaseReadFetch(
     `performance_brand_day?select=*&brand_slug=in.(${brandList})&date=gte.${from}&date=lte.${to}&order=date.desc,brand_slug.asc`,
+    auth,
   )
 
   if (!response.ok) {
@@ -609,12 +627,12 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     if (req.method === 'POST') {
       const sync = await syncPerformance(from, to)
-      const rows = await readRows(from, to)
+      const rows = await readRows(from, to, access.auth)
       return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase', sync })
     }
 
     if (req.method === 'GET') {
-      const rows = await readRows(from, to)
+      const rows = await readRows(from, to, access.auth)
       return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase' })
     }
 
