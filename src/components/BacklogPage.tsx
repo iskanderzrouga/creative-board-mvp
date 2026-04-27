@@ -116,6 +116,10 @@ function getDropTargetFromId(value: string): BacklogDropTarget | null {
   return null
 }
 
+function getSlugClassName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
 function getActiveBrandFilterStyle(
   brandName: string,
   brandStyles: Record<string, { background: string; color: string }>,
@@ -169,7 +173,7 @@ function BacklogCardItem({
     <button
       ref={setNodeRef}
       type="button"
-      className={`backlog-card is-${card.taskType} ${isDragging ? 'is-dragging' : ''}`}
+      className={`board-card backlog-card is-${card.taskType} ${isDragging ? 'is-dragging' : ''}`}
       style={{
         transform: CSS.Translate.toString(transform),
       }}
@@ -177,18 +181,19 @@ function BacklogCardItem({
       {...listeners}
       {...attributes}
     >
-      <div className="backlog-card-topline">
-        <strong>{card.name}</strong>
-        <div className="backlog-card-badges">
-          <span className={`backlog-task-badge is-${card.taskType}`}>{getTaskTypeLabel(card.taskType)}</span>
-          <span className="brand-pill backlog-brand-pill" style={brandStyle}>
-            {card.brand}
-          </span>
-        </div>
+      <div className="board-card-top">
+        <span className="board-card-id">{card.id}</span>
       </div>
-      <div className="backlog-card-meta">
-        <span>{card.addedBy}</span>
-        <span>{getFormattedDate(card.dateAdded)}</span>
+      <p className="board-card-title">{card.name}</p>
+      <div className="board-card-tags backlog-card-badges">
+        <span className={`task-type-pill backlog-task-badge is-${card.taskType}`}>{getTaskTypeLabel(card.taskType)}</span>
+        <span className="brand-pill backlog-brand-pill" style={brandStyle}>
+          {card.brand}
+        </span>
+      </div>
+      <div className="board-card-footer backlog-card-meta">
+        <span className="card-owner">{card.addedBy}</span>
+        <span className="card-age">{getFormattedDate(card.dateAdded)}</span>
       </div>
     </button>
   )
@@ -669,7 +674,11 @@ export function BacklogPage({
             const isOpsColumn = column.id === 'ops-priority'
 
             return (
-              <section key={column.id} className="backlog-column" aria-label={column.label}>
+              <section
+                key={column.id}
+                className={`backlog-column backlog-column-${getSlugClassName(column.id)}`}
+                aria-label={column.label}
+              >
                 <div className="backlog-column-header">
                   <h2>{column.label}</h2>
                   <span>{columnCards.length}</span>

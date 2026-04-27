@@ -146,6 +146,7 @@ function DevCardItem({
           ) : null}
         </div>
         <span className="board-card-id">{card.id}</span>
+        <span className={`dev-status-pill status-${status}`}>{statusLabel}</span>
         <span
           role="button"
           tabIndex={0}
@@ -163,9 +164,6 @@ function DevCardItem({
           <LinkIcon />
         </span>
         {copyFeedbackVisible ? <span className="card-progress-chip">Link copied</span> : null}
-      </div>
-      <div className="dev-card-status-row">
-        <span className={`dev-status-pill status-${status}`}>{statusLabel}</span>
       </div>
       {isEditingTitle ? (
         <input
