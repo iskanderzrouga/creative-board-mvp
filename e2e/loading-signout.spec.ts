@@ -28,9 +28,10 @@ test('authenticated loading shell appears before the shared board and sign out r
 
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Loading your latest board' })).toBeVisible()
-  await expect(page.getByText('Loading shared workspace')).toBeVisible()
-  await expect(page.getByText('team@example.com')).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Loading board' })).toBeVisible()
+  await expect(page.getByText('Loading your latest board')).toBeHidden()
+  await expect(page.getByText('Loading shared workspace')).toBeHidden()
+  await expect(page.getByText('team@example.com')).toBeHidden()
 
   await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
   await page.getByRole('button', { name: 'Expand sidebar' }).click()
