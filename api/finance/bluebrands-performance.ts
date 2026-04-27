@@ -1,4 +1,5 @@
-export const config = { runtime: 'edge' }
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 type BrandSlug = 'pluxy' | 'vivi' | 'trueclean'
 
@@ -65,6 +66,9 @@ interface PerformanceRow {
 
 const ALLOWED_EMAIL_KEYS = new Set(['iskander', 'nicolas', 'naomi'])
 const BRAND_SLUGS: BrandSlug[] = ['pluxy', 'vivi', 'trueclean']
+const LOCAL_PROFIT_APP_CONFIG_DIR = '/Users/iskanderzrouga/Desktop/Marketing Skills & Agents/profit-app/config/brands'
+const LOCAL_PROFIT_APP_ENV_FILE = '/Users/iskanderzrouga/Desktop/Marketing Skills & Agents/profit-app/config/.env'
+let localEnvCache: Record<string, string> | null = null
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -81,8 +85,40 @@ function getSupabaseAnonKey() {
   return process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
 }
 
-function getSupabaseServiceKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY
+function parseEnvLine(line: string) {
+  const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
+  if (!match) return null
+  const [, key, rawValue] = match
+  let value = rawValue.trim()
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1)
+  }
+  return [key, value] as const
+}
+
+function getLocalEnv() {
+  if (localEnvCache) return localEnvCache
+
+  const envFile = process.env.BLUEBRANDS_PERFORMANCE_ENV_FILE || LOCAL_PROFIT_APP_ENV_FILE
+  localEnvCache = {}
+
+  if (!existsSync(envFile)) {
+    return localEnvCache
+  }
+
+  for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+    const parsed = parseEnvLine(line)
+    if (parsed) {
+      const [key, value] = parsed
+      localEnvCache[key] = value
+    }
+  }
+
+  return localEnvCache
+}
+
+function getServerEnv(name: string) {
+  return process.env[name] || getLocalEnv()[name]
 }
 
 async function requireAllowedUser(req: Request) {
@@ -127,21 +163,32 @@ function getRequestRange(req: Request) {
   return { from, to, days }
 }
 
-function loadBrandConfigs() {
-  const raw = process.env.BLUEBRANDS_PERFORMANCE_CONFIG_JSON
-  if (!raw) {
-    throw new Error('BLUEBRANDS_PERFORMANCE_CONFIG_JSON not configured')
-  }
-
+function parseBrandConfigs(raw: string) {
   const parsed = JSON.parse(raw) as BrandConfig[] | Record<string, BrandConfig>
-  const configs = Array.isArray(parsed) ? parsed : Object.values(parsed)
+  return Array.isArray(parsed) ? parsed : Object.values(parsed)
+}
+
+function loadBrandConfigs() {
+  const raw = getServerEnv('BLUEBRANDS_PERFORMANCE_CONFIG_JSON')
+  let configs: BrandConfig[]
+
+  if (raw) {
+    configs = parseBrandConfigs(raw)
+  } else {
+    const configDir = getServerEnv('BLUEBRANDS_PERFORMANCE_CONFIG_DIR') || LOCAL_PROFIT_APP_CONFIG_DIR
+    if (!existsSync(configDir)) {
+      throw new Error('BLUEBRANDS_PERFORMANCE_CONFIG_JSON or BLUEBRANDS_PERFORMANCE_CONFIG_DIR not configured')
+    }
+
+    configs = BRAND_SLUGS.map((slug) => JSON.parse(readFileSync(join(configDir, `${slug}.json`), 'utf8')) as BrandConfig)
+  }
 
   return configs
     .filter((brand): brand is BrandConfig => BRAND_SLUGS.includes(brand.slug) && brand.enabled !== false)
     .sort((left, right) => BRAND_SLUGS.indexOf(left.slug) - BRAND_SLUGS.indexOf(right.slug))
 }
 
-async function supabaseReadFetch(path: string, auth: string) {
+async function supabaseUserFetch(path: string, auth: string, init: RequestInit = {}) {
   const supabaseUrl = getSupabaseUrl()
   const anonKey = getSupabaseAnonKey()
 
@@ -150,27 +197,10 @@ async function supabaseReadFetch(path: string, auth: string) {
   }
 
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...init,
     headers: {
       apikey: anonKey,
       Authorization: auth,
-      'Content-Type': 'application/json',
-    },
-  })
-}
-
-async function supabaseFetch(path: string, init: RequestInit = {}) {
-  const supabaseUrl = getSupabaseUrl()
-  const serviceKey = getSupabaseServiceKey()
-
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error('Supabase service role env is not configured for performance sync')
-  }
-
-  return fetch(`${supabaseUrl}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),
     },
@@ -207,7 +237,7 @@ function rowFromDb(row: Record<string, unknown>): PerformanceRow {
 
 async function readRows(from: string, to: string, auth: string) {
   const brandList = BRAND_SLUGS.join(',')
-  const response = await supabaseReadFetch(
+  const response = await supabaseUserFetch(
     `performance_brand_day?select=*&brand_slug=in.(${brandList})&date=gte.${from}&date=lte.${to}&order=date.desc,brand_slug.asc`,
     auth,
   )
@@ -234,7 +264,7 @@ async function metaDaily(brand: BrandConfig, since: string, until: string) {
     limit: '500',
     access_token: meta.access_token,
   })
-  const apiVersion = process.env.META_API_VERSION || 'v22.0'
+  const apiVersion = getServerEnv('META_API_VERSION') || 'v22.0'
   const response = await fetch(`https://graph.facebook.com/${apiVersion}/${meta.ad_account_id}/insights?${params}`)
 
   if (!response.ok) {
@@ -289,7 +319,7 @@ async function shopifyToken(brand: BrandConfig) {
 
 async function shopifyql(brand: BrandConfig, token: string, query: string) {
   const store = brand.platforms?.shopify?.store
-  const apiVersion = process.env.SHOPIFY_API_VERSION || 'unstable'
+  const apiVersion = getServerEnv('SHOPIFY_API_VERSION') || 'unstable'
   const gql = `{ shopifyqlQuery(query: ${JSON.stringify(query)}) { parseErrors tableData { columns { name dataType } rows } } }`
   const response = await fetch(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
     method: 'POST',
@@ -462,7 +492,7 @@ function addAxonRow(rows: Map<string, PlatformDay>, date: string, item: Record<s
 }
 
 async function googleToken() {
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN
+  const refreshToken = getServerEnv('GOOGLE_REFRESH_TOKEN')
   if (!refreshToken) return null
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -470,8 +500,8 @@ async function googleToken() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       refresh_token: refreshToken,
-      client_id: process.env.GOOGLE_CLIENT_ID ?? '',
-      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+      client_id: getServerEnv('GOOGLE_CLIENT_ID') ?? '',
+      client_secret: getServerEnv('GOOGLE_CLIENT_SECRET') ?? '',
       grant_type: 'refresh_token',
     }),
   })
@@ -486,7 +516,8 @@ async function googleToken() {
 
 async function googleDaily(brand: BrandConfig, since: string, until: string) {
   const google = brand.platforms?.google_ads
-  if (!google?.enabled || !google.customer_id || !process.env.GOOGLE_DEVELOPER_TOKEN) {
+  const developerToken = getServerEnv('GOOGLE_DEVELOPER_TOKEN')
+  if (!google?.enabled || !google.customer_id || !developerToken) {
     return new Map<string, PlatformDay>()
   }
 
@@ -496,12 +527,12 @@ async function googleDaily(brand: BrandConfig, since: string, until: string) {
   }
 
   const customerId = google.customer_id.replace(/[^0-9]/g, '')
-  const mcc = (process.env.GOOGLE_MCC_ID ?? '').replace(/[^0-9]/g, '')
+  const mcc = (getServerEnv('GOOGLE_MCC_ID') ?? '').replace(/[^0-9]/g, '')
   const response = await fetch(`https://googleads.googleapis.com/v21/customers/${customerId}/googleAds:searchStream`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': process.env.GOOGLE_DEVELOPER_TOKEN,
+      'developer-token': developerToken,
       ...(mcc ? { 'login-customer-id': mcc } : {}),
       'Content-Type': 'application/json',
     },
@@ -578,10 +609,10 @@ function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; s
   })
 }
 
-async function upsertRows(rows: Array<Record<string, unknown>>) {
+async function upsertRows(rows: Array<Record<string, unknown>>, auth: string) {
   if (rows.length === 0) return
 
-  const response = await supabaseFetch('performance_brand_day?on_conflict=brand_slug,date', {
+  const response = await supabaseUserFetch('performance_brand_day?on_conflict=brand_slug,date', auth, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates' },
     body: JSON.stringify(rows),
@@ -592,7 +623,7 @@ async function upsertRows(rows: Array<Record<string, unknown>>) {
   }
 }
 
-async function syncPerformance(from: string, to: string) {
+async function syncPerformance(from: string, to: string, auth: string) {
   const brands = loadBrandConfigs()
   const errors: string[] = []
   let rowsWritten = 0
@@ -606,7 +637,7 @@ async function syncPerformance(from: string, to: string) {
         googleDaily(brand, from, to),
       ])
       const rows = buildRows(brand, { meta, shopify, axon, google })
-      await upsertRows(rows)
+      await upsertRows(rows, auth)
       rowsWritten += rows.length
     } catch (error) {
       errors.push(`${brand.slug}: ${error instanceof Error ? error.message : 'unknown error'}`)
@@ -626,7 +657,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     if (req.method === 'POST') {
-      const sync = await syncPerformance(from, to)
+      const sync = await syncPerformance(from, to, access.auth)
       const rows = await readRows(from, to, access.auth)
       return jsonResponse({ rows, generatedAt: new Date().toISOString(), source: 'supabase', sync })
     }
