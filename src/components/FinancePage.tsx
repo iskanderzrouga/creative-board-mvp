@@ -35,13 +35,7 @@ interface DailyTrendRow {
   revenue: number
   totalAdSpend: number
   blendedRoas: number
-  platformRoas: number
-  metaRoas: number
-  axonRoas: number
-  googleRoas: number
 }
-
-type RoasTrendKey = 'blendedRoas' | 'platformRoas' | 'metaRoas' | 'axonRoas' | 'googleRoas'
 
 const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
   { value: 'today', label: 'Today' },
@@ -329,10 +323,6 @@ function buildDailyTrendRows(rows: BrandDailyPerformanceRow[]): DailyTrendRow[] 
         revenue: totals.revenue,
         totalAdSpend: totals.totalAdSpend,
         blendedRoas: totals.blendedRoas,
-        platformRoas: totals.platformRoas,
-        metaRoas: totals.metaRoas,
-        axonRoas: totals.axonRoas,
-        googleRoas: totals.googleRoas,
       }
     })
     .sort((left, right) => left.date.localeCompare(right.date))
@@ -435,16 +425,9 @@ function BrandCard({
 
 function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
   const dailyRows = buildDailyTrendRows(rows).slice(-30)
-  const roasSeries = [
-    { key: 'blendedRoas' as const, label: 'Blended', color: '#059669', dash: '' },
-    { key: 'platformRoas' as const, label: 'Platform', color: '#7c3aed', dash: '5 4' },
-    { key: 'metaRoas' as const, label: 'Meta', color: '#2563eb', dash: '3 4' },
-    { key: 'axonRoas' as const, label: 'Axon', color: '#db2777', dash: '3 4' },
-    { key: 'googleRoas' as const, label: 'Google', color: '#16a34a', dash: '3 4' },
-  ].filter((series) => dailyRows.some((row) => row[series.key] > 0))
   const values = dailyRows.flatMap((row) => [row.revenue, row.totalAdSpend])
   const maxValue = Math.max(...values, 1)
-  const maxRoas = Math.max(...dailyRows.flatMap((row) => roasSeries.map((series) => row[series.key])), 1)
+  const maxRoas = Math.max(...dailyRows.map((row) => row.blendedRoas), 1)
   const width = 620
   const height = 180
   const topPadding = 20
@@ -461,10 +444,9 @@ function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
     })
     .join(' ')
 
-  const roasPointsFor = (key: RoasTrendKey) => dailyRows
+  const roasPoints = dailyRows
     .map((row, index) => {
-      const value = typeof row[key] === 'number' ? row[key] : 0
-      return `${xFor(index)},${roasYFor(value)}`
+      return `${xFor(index)},${roasYFor(row.blendedRoas)}`
     })
     .join(' ')
   const latest = dailyRows[dailyRows.length - 1]
@@ -473,49 +455,24 @@ function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
     <section style={{ ...panelStyle, padding: 18, minHeight: 250 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div>
-          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Revenue, Spend & ROAS</h2>
+          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Revenue, Spend, ROAS</h2>
           <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>{dailyRows.length} day trend</div>
         </div>
         <div style={{ display: 'flex', gap: 12, color: '#697386', fontSize: 12, fontWeight: 750, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#2563eb' }} />Revenue</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#f97316' }} />Spend</span>
-          {roasSeries.map((series) => (
-            <span key={series.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 18, height: 3, background: series.color }} />
-              {series.label} {latest ? formatMetric(latest[series.key]) : ''}
-            </span>
-          ))}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#059669' }} />ROAS {latest ? formatMetric(latest.blendedRoas) : ''}</span>
         </div>
       </div>
       <div style={{ marginTop: 16, overflow: 'hidden' }}>
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue, spend, and ROAS trend" style={{ width: '100%', height: 210, display: 'block' }}>
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue, spend, and blended ROAS trend" style={{ width: '100%', height: 210, display: 'block' }}>
           {[0, 1, 2, 3].map((line) => {
             const y = topPadding + (chartHeight / 3) * line
             return <line key={line} x1="0" x2={width} y1={y} y2={y} stroke="#e4e8f0" strokeWidth="1" />
           })}
           <polyline points={moneyPointsFor('revenue')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           <polyline points={moneyPointsFor('totalAdSpend')} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          {roasSeries.map((series) => (
-            <polyline
-              key={series.key}
-              points={roasPointsFor(series.key)}
-              fill="none"
-              stroke={series.color}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={series.dash}
-            />
-          ))}
-          {dailyRows.length === 1 ? (
-            <>
-              <circle cx={width / 2} cy={moneyYFor(dailyRows[0].revenue)} r="4" fill="#2563eb" />
-              <circle cx={width / 2} cy={moneyYFor(dailyRows[0].totalAdSpend)} r="4" fill="#f97316" />
-              {roasSeries.map((series) => (
-                <circle key={series.key} cx={width / 2} cy={roasYFor(dailyRows[0][series.key])} r="3.5" fill={series.color} />
-              ))}
-            </>
-          ) : null}
+          <polyline points={roasPoints} fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 4" />
           {dailyRows.map((row, index) => {
             if (dailyRows.length <= 8 || index % Math.ceil(dailyRows.length / 6) === 0 || index === dailyRows.length - 1) {
               return (
@@ -740,6 +697,7 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const alerts = useMemo(() => buildAlerts(visibleRows), [visibleRows])
   const latestVisibleDate = latestDate(visibleRows)
   const latestRows = visibleRows.filter((row) => row.date === latestVisibleDate)
+  const showPerformanceTrend = useMemo(() => buildDailyTrendRows(visibleRows).length > 1, [visibleRows])
   const displayedBrands = brandFilter === 'all'
     ? PERFORMANCE_BRANDS
     : PERFORMANCE_BRANDS.filter((brand) => brand.slug === brandFilter)
@@ -900,8 +858,16 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           </section>
         ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(360px, 0.75fr)', gap: 14, alignItems: 'stretch', marginBottom: 14 }}>
-          <PerformanceTrend rows={visibleRows} />
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: showPerformanceTrend ? 'minmax(0, 1.25fr) minmax(360px, 0.75fr)' : 'minmax(360px, 455px)',
+            gap: 14,
+            alignItems: 'stretch',
+            marginBottom: 14,
+          }}
+        >
+          {showPerformanceTrend ? <PerformanceTrend rows={visibleRows} /> : null}
           <ShopifyExtras rows={visibleRows} />
         </div>
 
