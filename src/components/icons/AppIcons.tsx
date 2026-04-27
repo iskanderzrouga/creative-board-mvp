@@ -110,6 +110,15 @@ export function XIcon(props: IconProps) {
   )
 }
 
+export function LinkIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M10 13a5 5 0 0 0 7.1 0l1.4-1.4a5 5 0 0 0-7.1-7.1L10.5 5.4" />
+      <path d="M14 11a5 5 0 0 0-7.1 0l-1.4 1.4a5 5 0 0 0 7.1 7.1l.9-.9" />
+    </SvgIcon>
+  )
+}
+
 export function BellIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

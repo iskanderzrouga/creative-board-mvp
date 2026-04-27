@@ -16,7 +16,7 @@ import {
   type GlobalSettings,
   type Portfolio,
 } from '../board'
-import { BlockedIcon } from './icons/AppIcons'
+import { BlockedIcon, LinkIcon } from './icons/AppIcons'
 
 interface BoardCardSurfaceProps {
   card: Card
@@ -155,6 +155,7 @@ function BoardCardSurfaceComponent({
         <span
           role="button"
           tabIndex={0}
+          className="board-card-copy-action"
           aria-label={`Copy link for ${card.id}`}
           title="Copy card link"
           onMouseDown={(event) => event.stopPropagation()}
@@ -164,9 +165,8 @@ function BoardCardSurfaceComponent({
               void handleCopyCardLink(event)
             }
           }}
-          style={{ marginLeft: 'auto', fontSize: '0.85rem', opacity: 0.7 }}
         >
-          🔗
+          <LinkIcon />
         </span>
         {copyFeedbackVisible ? <span className="card-progress-chip">Link copied</span> : null}
         {showPriorityControl ? (
