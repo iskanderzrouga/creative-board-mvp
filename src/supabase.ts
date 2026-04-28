@@ -19,6 +19,11 @@ const E2E_ACCESS_DELAY_KEY = 'editors-board-e2e-access-delay-ms'
 const E2E_ACCESS_TIMEOUT_KEY = 'editors-board-e2e-access-timeout-ms'
 export const E2E_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
 const MAGIC_LINK_FUNCTION_NAME = 'request-magic-link'
+const browserAuthOverridesEnabled =
+  import.meta.env.DEV ||
+  import.meta.env.MODE === 'test' ||
+  String(import.meta.env.VITEST) === 'true' ||
+  import.meta.env.VITE_ENABLE_E2E_AUTH_OVERRIDES === 'true'
 
 export const REMOTE_WORKSPACE_ID =
   import.meta.env.VITE_REMOTE_WORKSPACE_ID?.trim() || 'primary'
@@ -137,6 +142,18 @@ function hasRealSupabaseConfig() {
   return Boolean(supabaseUrl && supabasePublishableKey)
 }
 
+function getBrowserAuthModeOverride() {
+  if (!hasBrowser() || !browserAuthOverridesEnabled) {
+    return null
+  }
+
+  return window.localStorage.getItem(E2E_AUTH_MODE_KEY)
+}
+
+export function isE2EAuthOverrideEnabled() {
+  return getBrowserAuthModeOverride() === 'enabled'
+}
+
 function getPositiveStorageNumber(key: string) {
   if (!hasBrowser()) {
     return 0
@@ -147,19 +164,11 @@ function getPositiveStorageNumber(key: string) {
 }
 
 function isE2ESupabaseMode() {
-  if (!hasBrowser()) {
-    return false
-  }
-
-  return window.localStorage.getItem(E2E_AUTH_MODE_KEY) === 'enabled'
+  return isE2EAuthOverrideEnabled()
 }
 
 function isE2ELocalMode() {
-  if (!hasBrowser()) {
-    return false
-  }
-
-  return window.localStorage.getItem(E2E_AUTH_MODE_KEY) === 'disabled'
+  return getBrowserAuthModeOverride() === 'disabled'
 }
 
 function getE2EAccessState() {

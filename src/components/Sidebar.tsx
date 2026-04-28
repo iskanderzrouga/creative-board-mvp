@@ -363,7 +363,7 @@ function SidebarComponent({
                 {signOutPending ? 'Signing out...' : 'Sign out'}
               </button>
             ) : (
-              <span className="sidebar-user-secondary">Local demo access</span>
+              <span className="sidebar-user-secondary">Demo/local access</span>
             )}
           </div>
         ) : null}

@@ -540,12 +540,12 @@ export function SettingsPage({
                     <div className="settings-section-header">
                       <h3>Demo mode</h3>
                       <p className="muted-copy">
-                        Bypasses sign-in so you can test as any role.
+                        Local browser only. Bypasses sign-in for UI testing and never represents the shared team workspace.
                       </p>
                     </div>
                     <div className="settings-form-grid">
                       <label>
-                        <span>Access level</span>
+                        <span>Demo access level</span>
                         <select
                           aria-label="Local demo role"
                           value={localRole.mode}

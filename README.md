@@ -33,6 +33,16 @@ npm run dev
 
 Without Supabase env vars, the app stays usable in local-only mode so the board can still be developed and tested safely.
 
+### Runtime modes for future agents
+
+Treat Supabase as the source of truth whenever `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_ANON_KEY` are present. In that mode, the shared board comes from `public.workspace_state`, backlog data comes from `public.workspace_backlog`, and login/access comes from Supabase Auth plus `public.workspace_access`.
+
+The local/demo path is only for development and Playwright. It appears in the UI as `Demo/local only` and should not be used to judge production access, team roles, or shared board state.
+
+The `editors-board-e2e-*` browser storage keys are test overrides. They are ignored in production builds unless `VITE_ENABLE_E2E_AUTH_OVERRIDES="true"` is explicitly set. Do not use those keys as a production fix.
+
+`creative-board-state` is legacy local state. The main app no longer loads the board from it; keep it out of new features except for deliberate migration or cleanup work.
+
 ## Verification
 
 ```bash

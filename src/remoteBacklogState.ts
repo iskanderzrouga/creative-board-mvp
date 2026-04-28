@@ -5,6 +5,7 @@ import {
 } from './backlog'
 import {
   getSupabaseClient,
+  isE2EAuthOverrideEnabled,
   REMOTE_WORKSPACE_ID,
 } from './supabase'
 
@@ -87,7 +88,7 @@ export function mergeRemoteBacklogWithLocal(
 }
 
 function isE2ERemoteMode() {
-  return hasBrowser() && window.localStorage.getItem('editors-board-e2e-auth-mode') === 'enabled'
+  return hasBrowser() && isE2EAuthOverrideEnabled()
 }
 
 function getStoredE2ERemoteBacklog(): StoredRemoteBacklog | null {

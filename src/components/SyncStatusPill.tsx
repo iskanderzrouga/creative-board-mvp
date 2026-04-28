@@ -10,7 +10,7 @@ interface SyncStatusPillProps {
 function getSyncStatusLabel(syncStatus: SyncStatus, lastSyncedAt: string | null) {
   switch (syncStatus) {
     case 'local':
-      return 'Local mode'
+      return 'Demo/local only'
     case 'loading':
       return 'Syncing workspace...'
     case 'syncing':

@@ -216,21 +216,12 @@ const STRATEGY_LEADERS = [
 
 if (typeof window !== 'undefined') {
   try {
-    const state = window.localStorage.getItem('creative-board-state')
-    if (state && state.length > 50000) {
-      window.localStorage.removeItem('creative-board-state')
-      window.localStorage.removeItem('backlog-state')
-      window.localStorage.removeItem('creative-board-sync-metadata')
-      window.localStorage.removeItem('backlog-sync-metadata')
-      console.warn('[boot] Cleared bloated localStorage cache — app will load fresh from Supabase')
+    const legacyState = window.localStorage.getItem('creative-board-state')
+    if (legacyState && legacyState.length > 50000) {
+      console.warn('[boot] Ignoring legacy local board cache; shared state loads from the current runtime source')
     }
   } catch {
-    try {
-      window.localStorage.clear()
-    } catch {
-      // noop
-    }
-    console.warn('[boot] localStorage corrupted — cleared all')
+    console.warn('[boot] localStorage unavailable; continuing without clearing browser storage')
   }
 }
 
@@ -639,7 +630,7 @@ function App() {
     : 'Local User'
   const userSecondaryLabel = authEnabled
     ? authSession?.email ?? workspaceAccess?.email ?? null
-    : 'Local mode'
+    : 'Demo/local only'
   const backlogAccessEmail =
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const canAccessPerformance = canAccessPerformanceByEmail(backlogAccessEmail)
@@ -811,12 +802,12 @@ function App() {
   const localModeBanner = !authEnabled ? (
     <section className="local-mode-banner" role="status" aria-live="polite">
       <div className="local-mode-copy">
-        <strong>Running in local mode.</strong>
-        <span>Configure Supabase to enable team login.</span>
+        <strong>Demo mode: local browser only.</strong>
+        <span>Supabase is not active here, so this is not the shared team workspace.</span>
       </div>
       <div className="local-mode-controls">
         <label className="local-mode-field">
-          <span>Local role</span>
+          <span>Demo role</span>
           <select
             aria-label="Local demo role"
             value={state.activeRole.mode}
@@ -3653,6 +3644,8 @@ function App() {
           key={selectedDevCardData.id}
           card={selectedDevCardData}
           teamMembers={developerTeamMembers}
+          activeRoleMode={state.activeRole.mode}
+          activeContributorId={state.activeRole.editorId}
           isOpen={!isClosingCardPanel}
           onClose={() => setSelectedDevCard(null)}
           onSave={handleSaveDevCard}

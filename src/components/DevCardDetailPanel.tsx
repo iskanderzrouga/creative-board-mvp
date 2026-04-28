@@ -6,8 +6,8 @@ import { getSupabaseClient, isSupabaseConfigured } from '../supabase'
 import {
   DEV_BLOCKER_OPTIONS,
   DEV_CHANGE_REQUEST_TYPES,
-  STORAGE_KEY,
   getDevCardBlockerReason,
+  type ActiveRole,
   type DevBlockerOption,
   type DevCard,
   type DevChangeRequestType,
@@ -39,57 +39,11 @@ function coerceStringArrayField(value: string[] | string | null | undefined) {
   return []
 }
 
-function getActiveContributorIdFromStorage() {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      return null
-    }
-    const parsed = JSON.parse(raw) as {
-      activeRole?: {
-        mode?: string
-        editorId?: unknown
-      }
-    }
-    if (parsed.activeRole?.mode !== 'contributor' || typeof parsed.activeRole.editorId !== 'string') {
-      return null
-    }
-    return parsed.activeRole.editorId
-  } catch {
-    return null
-  }
-}
-
-function getActiveRoleModeFromStorage() {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      return null
-    }
-    const parsed = JSON.parse(raw) as {
-      activeRole?: {
-        mode?: unknown
-      }
-    }
-    return parsed.activeRole?.mode === 'owner' || parsed.activeRole?.mode === 'manager'
-      ? parsed.activeRole.mode
-      : null
-  } catch {
-    return null
-  }
-}
-
 interface DevCardDetailPanelProps {
   card: DevCard
   teamMembers: TeamMember[]
+  activeRoleMode: ActiveRole['mode']
+  activeContributorId: string | null
   isOpen: boolean
   onClose: () => void
   onSave: (cardId: string, updates: Partial<DevCard>) => void
@@ -99,6 +53,8 @@ interface DevCardDetailPanelProps {
 export function DevCardDetailPanel({
   card,
   teamMembers,
+  activeRoleMode,
+  activeContributorId,
   isOpen,
   onClose,
   onSave,
@@ -106,8 +62,6 @@ export function DevCardDetailPanel({
 }: DevCardDetailPanelProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLElement | null>(null)
-  const activeContributorId = useMemo(() => getActiveContributorIdFromStorage(), [])
-  const activeRoleMode = useMemo(() => getActiveRoleModeFromStorage(), [])
   const canManage = activeRoleMode === 'owner' || activeRoleMode === 'manager'
   const canEditAssignedCard = canManage || Boolean(card.assigneeId && activeContributorId && card.assigneeId === activeContributorId)
   const attachmentsEnabled = isSupabaseConfigured() && Boolean(getSupabaseClient())

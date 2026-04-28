@@ -9,6 +9,7 @@ import {
 import {
   E2E_REMOTE_STATE_KEY,
   getSupabaseClient,
+  isE2EAuthOverrideEnabled,
   REMOTE_WORKSPACE_ID,
 } from './supabase'
 
@@ -47,7 +48,14 @@ function createRemoteStateSnapshot(state: AppState): AppState {
 }
 
 export function getRemoteStateSignature(state: AppState) {
-  return JSON.stringify(createRemoteStateSnapshot(state))
+  const snapshot = createRemoteStateSnapshot(state)
+  const { strategyCycles, notifications, version, ...sharedState } = snapshot
+  return JSON.stringify({
+    ...sharedState,
+    strategyCycles: strategyCycles ?? [],
+    notifications,
+    version,
+  })
 }
 
 export function mergeRemoteAppStateWithLocalState(remoteState: AppState, localState: AppState): AppState {
@@ -291,7 +299,7 @@ async function getRemoteWorkspaceStateRow() {
 }
 
 function isE2ERemoteMode() {
-  return hasBrowser() && window.localStorage.getItem('editors-board-e2e-auth-mode') === 'enabled'
+  return hasBrowser() && isE2EAuthOverrideEnabled()
 }
 
 function getE2ERemoteDelayMs() {
