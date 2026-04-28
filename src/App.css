@@ -4618,6 +4618,109 @@ button {
   gap: 14px;
 }
 
+.drive-settings {
+  gap: 14px;
+}
+
+.drive-status-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.drive-status-row span {
+  display: grid;
+  gap: 2px;
+  min-height: 54px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.drive-status-row strong {
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.drive-shared-section {
+  margin-top: 14px;
+}
+
+.drive-url-field,
+.drive-brand-list label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.drive-portfolio-list {
+  display: grid;
+  gap: 10px;
+}
+
+.drive-portfolio-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.drive-portfolio-head,
+.drive-portfolio-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.drive-portfolio-head h4 {
+  margin: 0 0 3px;
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.drive-portfolio-head span {
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.drive-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.drive-status-pill.is-on {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: #eef5ff;
+  color: #2457b9;
+}
+
+.drive-brand-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .organization-shell {
   padding: 0;
   border: none;
@@ -7413,7 +7516,11 @@ button {
   .organization-index-list,
   .organization-team-strip,
   .organization-section-bar,
-  .organization-integration-row {
+  .organization-integration-row,
+  .drive-status-row,
+  .drive-portfolio-head,
+  .drive-portfolio-controls,
+  .drive-brand-list {
     grid-template-columns: 1fr;
   }
 

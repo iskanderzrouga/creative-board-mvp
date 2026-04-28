@@ -88,6 +88,7 @@ export const TASK_TYPE_CATEGORIES = [
 ] as const
 export const SETTING_TABS = [
   'general',
+  'drive',
   'portfolios',
   'people',
   'workflow',
@@ -809,6 +810,7 @@ export const BRAND_PALETTES = [
 export const ALL_PORTFOLIOS_ID = 'all-portfolios'
 export const SETTINGS_TAB_LABELS: Record<SettingTab, string> = {
   general: 'General',
+  drive: 'Drive',
   portfolios: 'Portfolios',
   people: 'People',
   workflow: 'Workflow',

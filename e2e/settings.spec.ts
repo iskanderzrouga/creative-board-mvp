@@ -83,6 +83,25 @@ test('settings removes fake webhook test buttons and keeps webhook fields editab
   )
   await expect(page.getByRole('button', { name: 'Test', exact: true })).toHaveCount(0)
 
+  await page.getByRole('button', { name: 'Drive' }).click()
+  await expect(page.getByRole('heading', { name: 'Drive' })).toBeVisible()
+  await expect(page.getByLabel('Drive shared webhook URL')).toHaveValue(
+    'https://example.com/global-webhook',
+  )
+  await page.getByLabel('Drive shared webhook URL').fill('https://example.com/shared-drive')
+  await expect(page.getByLabel('Drive shared webhook URL')).toHaveValue(
+    'https://example.com/shared-drive',
+  )
+  await expect(page.getByLabel('BrandLab Drive webhook URL')).toHaveValue(
+    'https://example.com/brandlab-webhook',
+  )
+  await page.getByLabel('BrandLab Drive webhook URL').fill('https://example.com/brandlab-drive')
+  await expect(page.getByLabel('BrandLab Drive webhook URL')).toHaveValue(
+    'https://example.com/brandlab-drive',
+  )
+  await page.getByLabel('Pluxy Drive parent folder ID').fill('pluxy-folder-id')
+  await expect(page.getByLabel('Pluxy Drive parent folder ID')).toHaveValue('pluxy-folder-id')
+
   await page.getByRole('button', { name: 'People' }).click()
   await page.locator('.people-table-row').filter({ hasText: 'Naomi' }).getByRole('button', { name: 'Edit' }).click()
   const drawer = page.locator('.slide-panel.is-open')

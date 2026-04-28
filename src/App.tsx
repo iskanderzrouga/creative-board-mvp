@@ -2325,7 +2325,9 @@ function App() {
       const webhookPayload = {
         cardId: nextProductionCardId,
         cardTitle: card.name,
+        portfolioName: portfolioSource.name,
         brand: card.brand,
+        parentFolderId: brand?.driveParentFolderId ?? '',
         brief: card.brief ?? '',
         targetAudience: card.targetAudience ?? '',
         keyMessage: card.keyMessage ?? '',
@@ -2626,10 +2628,13 @@ function App() {
       return
     }
 
+    const brand = activeSelectedPortfolio.brands.find((item) => item.name === selectedCardData.brand)
     const payload = {
       cardId: selectedCardData.id,
       cardTitle: selectedCardData.title,
+      portfolioName: activeSelectedPortfolio.name,
       brand: selectedCardData.brand,
+      parentFolderId: brand?.driveParentFolderId ?? '',
       brief: selectedCardData.brief,
       targetAudience: selectedCardData.audience,
       keyMessage: selectedCardData.keyMessage,

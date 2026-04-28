@@ -6,6 +6,7 @@ import { TaskLibraryEditor } from './TaskLibraryEditor'
 import type { WorkspaceAccessEntry } from '../supabase'
 import {
   BRAND_PALETTES,
+  SETTING_TABS,
   SETTINGS_TAB_LABELS,
   createEmptyPortfolio,
   getBrandRemovalBlocker,
@@ -194,6 +195,14 @@ export function SettingsPage({
   )
   const totalActiveCardCount = state.portfolios.reduce(
     (sum, portfolio) => sum + portfolio.cards.filter((card) => !card.archivedAt).length,
+    0,
+  )
+  const drivePortfolioOverrideCount = state.portfolios.filter((portfolio) =>
+    portfolio.webhookUrl.trim(),
+  ).length
+  const driveBrandFolderCount = state.portfolios.reduce(
+    (sum, portfolio) =>
+      sum + portfolio.brands.filter((brand) => brand.driveParentFolderId.trim()).length,
     0,
   )
 
@@ -510,7 +519,7 @@ export function SettingsPage({
           <strong className="settings-sidebar-name">{state.settings.general.appName}</strong>
         </div>
         <div className="settings-tab-list">
-          {(['general', 'portfolios', 'people', 'workflow'] as SettingTab[]).map((tab) => (
+          {SETTING_TABS.map((tab) => (
             <button
               key={tab}
               type="button"
@@ -857,6 +866,150 @@ export function SettingsPage({
                   Start fresh keeps brands, products, settings, and your owner login. Everything
                   else is permanently removed.
                 </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {settingsTab === 'drive' ? (
+          <div className="settings-stack drive-settings">
+            <div className="settings-block">
+              <SettingsToolbar
+                title="Drive"
+                description="Google Drive folder routing for production cards."
+                actions={headerUtilityContent}
+              />
+
+              <div className="drive-status-row">
+                <span>
+                  <strong>
+                    {state.settings.integrations.globalDriveWebhookUrl.trim() ? 'On' : 'Off'}
+                  </strong>
+                  shared webhook
+                </span>
+                <span>
+                  <strong>{drivePortfolioOverrideCount}</strong>
+                  portfolio overrides
+                </span>
+                <span>
+                  <strong>{driveBrandFolderCount}</strong>
+                  brand folders
+                </span>
+              </div>
+
+              <div className="settings-section-divider" />
+
+              <div className="settings-section drive-shared-section">
+                <div className="settings-section-header">
+                  <h3>Shared webhook</h3>
+                </div>
+                <label className="drive-url-field">
+                  <span>Google Drive webhook URL</span>
+                  <input
+                    aria-label="Drive shared webhook URL"
+                    value={state.settings.integrations.globalDriveWebhookUrl}
+                    onChange={(event) =>
+                      onStateChange((current) => ({
+                        ...current,
+                        settings: {
+                          ...current.settings,
+                          integrations: {
+                            ...current.settings.integrations,
+                            globalDriveWebhookUrl: event.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    placeholder="https://script.google.com/macros/..."
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="settings-block">
+              <div className="settings-section">
+                <div className="settings-section-header">
+                  <h3>Portfolios and brands</h3>
+                </div>
+
+                <div className="drive-portfolio-list">
+                  {state.portfolios.map((portfolio) => {
+                    const portfolioUsesOverride = Boolean(portfolio.webhookUrl.trim())
+                    return (
+                      <section key={portfolio.id} className="drive-portfolio-card">
+                        <div className="drive-portfolio-head">
+                          <div>
+                            <h4>{portfolio.name}</h4>
+                            <span>{portfolio.brands.length} brands</span>
+                          </div>
+                          <span className={`drive-status-pill${portfolioUsesOverride ? ' is-on' : ''}`}>
+                            {portfolioUsesOverride ? 'Portfolio webhook' : 'Shared webhook'}
+                          </span>
+                        </div>
+
+                        <div className="drive-portfolio-controls">
+                          <label className="drive-url-field">
+                            <span>Portfolio webhook URL</span>
+                            <input
+                              aria-label={`${portfolio.name} Drive webhook URL`}
+                              value={portfolio.webhookUrl}
+                              onChange={(event) =>
+                                updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                  ...currentPortfolio,
+                                  webhookUrl: event.target.value,
+                                }))
+                              }
+                              placeholder="Use shared webhook"
+                            />
+                          </label>
+                          {portfolioUsesOverride ? (
+                            <button
+                              type="button"
+                              className="ghost-button compact-button"
+                              onClick={() =>
+                                updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                  ...currentPortfolio,
+                                  webhookUrl: '',
+                                }))
+                              }
+                            >
+                              Use shared
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <div className="drive-brand-list">
+                          {portfolio.brands.length === 0 ? (
+                            <span className="organization-empty-inline">No brands in this portfolio.</span>
+                          ) : null}
+                          {portfolio.brands.map((brand, brandIndex) => (
+                            <label key={`${portfolio.id}-${brand.prefix}-${brandIndex}`}>
+                              <span>{brand.name || 'Untitled brand'} parent folder ID</span>
+                              <input
+                                aria-label={`${brand.name || 'Brand'} Drive parent folder ID`}
+                                value={brand.driveParentFolderId}
+                                onChange={(event) =>
+                                  updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                    ...currentPortfolio,
+                                    brands: currentPortfolio.brands.map((item, index) =>
+                                      index === brandIndex
+                                        ? {
+                                            ...item,
+                                            driveParentFolderId: event.target.value,
+                                          }
+                                        : item,
+                                    ),
+                                  }))
+                                }
+                                placeholder="Google Drive folder ID"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </section>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
