@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   addCardToPortfolio,
+  applyPendingAppStatePatch,
   applyCardUpdates,
   archiveEligibleCards,
   buildDashboardData,
@@ -20,6 +21,7 @@ import {
   getTeamMemberRemovalBlocker,
   getVisibleCards,
   getRevisionCount,
+  markPortfolioMetadataUpdated,
   moveCardInPortfolio,
   removeBrandFromPortfolio,
   removeCardFromPortfolio,
@@ -119,6 +121,42 @@ describe('board integrity helpers', () => {
         scopeAssignments: [{ portfolioId: state.portfolios[0]!.id, brandNames: [] }],
       }),
     ).toEqual([state.portfolios[0]!.id])
+  })
+
+  it('does not append a stale pending portfolio patch when the portfolio already exists', () => {
+    const state = createSeedState()
+    const portfolio = markPortfolioMetadataUpdated(
+      {
+        ...state.portfolios[0]!,
+        name: 'Remote newer portfolio',
+      },
+      '2026-04-28T00:00:02.000Z',
+    )
+    const stalePendingPortfolio = {
+      id: portfolio.id,
+      name: 'Stale local portfolio',
+      brands: portfolio.brands,
+      team: portfolio.team,
+      webhookUrl: portfolio.webhookUrl,
+      lastIdPerPrefix: portfolio.lastIdPerPrefix,
+      metadataUpdatedAt: '2026-04-28T00:00:01.000Z',
+    }
+
+    const patched = applyPendingAppStatePatch(
+      {
+        ...state,
+        portfolios: [portfolio],
+      },
+      {
+        portfolios: [stalePendingPortfolio],
+        settings: state.settings,
+        activePortfolioId: portfolio.id,
+        version: state.version,
+      },
+    )
+
+    expect(patched.portfolios.filter((item) => item.id === portfolio.id)).toHaveLength(1)
+    expect(patched.portfolios[0]?.name).toBe('Remote newer portfolio')
   })
 
   it('creates a fresh-start state that keeps brands and products but clears cards and team members', () => {

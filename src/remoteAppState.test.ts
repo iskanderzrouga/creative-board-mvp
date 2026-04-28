@@ -7,6 +7,7 @@ import {
   loadAppState,
   loadPendingAppStatePatch,
   loadSyncMetadata,
+  markPortfolioMetadataUpdated,
   persistAppState,
   persistSyncMetadata,
   type WorkingDay,
@@ -219,7 +220,10 @@ describe('remote app state sync', () => {
   it('keeps local portfolio edits when a stale in-flight shell save wins the race first', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
-    const shellPortfolio = createEmptyPortfolio('Untitled portfolio', seed.portfolios.length)
+    const shellPortfolio = markPortfolioMetadataUpdated(
+      createEmptyPortfolio('Untitled portfolio', seed.portfolios.length),
+      '2026-04-28T00:00:00.000Z',
+    )
     const shellState = {
       ...seed,
       portfolios: [...seed.portfolios, shellPortfolio],
@@ -228,11 +232,11 @@ describe('remote app state sync', () => {
       ...shellState,
       portfolios: shellState.portfolios.map((portfolio) =>
         portfolio.id === shellPortfolio.id
-          ? {
+          ? markPortfolioMetadataUpdated({
               ...portfolio,
               name: 'BrandLab Thai',
               webhookUrl: 'https://example.com/brandlab-thai',
-            }
+            }, '2026-04-28T00:00:01.000Z')
           : portfolio,
       ),
     }
@@ -260,13 +264,116 @@ describe('remote app state sync', () => {
     expect(syncedPortfolio?.webhookUrl).toBe('https://example.com/brandlab-thai')
   })
 
+  it('saves through a merge when the client has no remote base timestamp yet', async () => {
+    const seed = createSeedState()
+    await loadOrCreateRemoteAppState(seed)
+    const portfolioId = seed.portfolios[0]!.id
+    const renamedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((portfolio) =>
+        portfolio.id === portfolioId
+          ? markPortfolioMetadataUpdated(
+              {
+                ...portfolio,
+                name: 'BrandLab Thailand',
+              },
+              '2026-04-28T00:00:01.000Z',
+            )
+          : portfolio,
+      ),
+    }
+
+    const result = await saveRemoteAppStateWithRetryMerge(renamedState, null)
+    const synced = await loadOrCreateRemoteAppState(seed)
+
+    expect(result.merged).toBe(true)
+    expect(synced.state.portfolios.find((portfolio) => portfolio.id === portfolioId)?.name).toBe(
+      'BrandLab Thailand',
+    )
+  })
+
+  it('does not let a stale portfolio shell erase newer remote brands, products, or team', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const shellPortfolio = markPortfolioMetadataUpdated(
+      createEmptyPortfolio('BrandLab Thai', seed.portfolios.length),
+      '2026-04-28T00:00:00.000Z',
+    )
+    const shellState = {
+      ...seed,
+      portfolios: [...seed.portfolios, shellPortfolio],
+    }
+    const shellSavedAt = await saveRemoteAppState(shellState, firstLoad.lastSyncedAt)
+    const remoteEditedState = {
+      ...shellState,
+      portfolios: shellState.portfolios.map((portfolio) =>
+        portfolio.id === shellPortfolio.id
+          ? markPortfolioMetadataUpdated(
+              {
+                ...portfolio,
+                brands: [
+                  {
+                    name: 'Nutrio',
+                    prefix: 'NT',
+                    products: ['Sleep'],
+                    driveParentFolderId: '',
+                    facebookPage: '',
+                    defaultLandingPage: '',
+                    color: '#2563eb',
+                    surfaceColor: '#eff6ff',
+                    textColor: '#1e3a8a',
+                  },
+                ],
+                team: [
+                  {
+                    id: 'member-remote-newer',
+                    name: 'Remote Newer',
+                    role: 'Manager',
+                    weeklyHours: 40,
+                    hoursPerDay: 8,
+                    workingHoursPerDay: 8,
+                    workStartHour: 9,
+                    workEndHour: 17,
+                    workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as WorkingDay[],
+                    timezone: 'UTC',
+                    wipCap: 3,
+                    active: true,
+                    accessEmail: null,
+                  },
+                ],
+                lastIdPerPrefix: {
+                  NT: 0,
+                },
+              },
+              '2026-04-28T00:00:03.000Z',
+            )
+          : portfolio,
+      ),
+    }
+    await saveRemoteAppState(remoteEditedState, shellSavedAt)
+
+    const result = await saveRemoteAppStateWithRetryMerge(shellState, shellSavedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedPortfolio = synced.state.portfolios.find(
+      (portfolio) => portfolio.id === shellPortfolio.id,
+    )
+
+    expect(result.merged).toBe(true)
+    expect(syncedPortfolio?.brands.map((brand) => brand.name)).toEqual(['Nutrio'])
+    expect(syncedPortfolio?.brands[0]?.products).toEqual(['Sleep'])
+    expect(syncedPortfolio?.team.map((member) => member.name)).toEqual(['Remote Newer'])
+  })
+
   it.each([
     { storageMode: 'full pending state' },
     { storageMode: 'small pending patch' },
   ])('rehydrates pending portfolio edits from $storageMode after a partial remote save moved the timestamp', async ({ storageMode }) => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
-    const shellPortfolio = createEmptyPortfolio('Untitled portfolio', seed.portfolios.length)
+    const shellPortfolio = markPortfolioMetadataUpdated(
+      createEmptyPortfolio('Untitled portfolio', seed.portfolios.length),
+      '2026-04-28T00:00:00.000Z',
+    )
     const shellState = {
       ...seed,
       portfolios: [...seed.portfolios, shellPortfolio],
@@ -275,7 +382,7 @@ describe('remote app state sync', () => {
       ...shellState,
       portfolios: shellState.portfolios.map((portfolio) =>
         portfolio.id === shellPortfolio.id
-          ? {
+          ? markPortfolioMetadataUpdated({
               ...portfolio,
               name: 'BrandLab Thai',
               brands: [
@@ -311,7 +418,7 @@ describe('remote app state sync', () => {
               lastIdPerPrefix: {
                 NT: 0,
               },
-            }
+            }, '2026-04-28T00:00:01.000Z')
           : portfolio,
       ),
     }

@@ -300,6 +300,7 @@ export interface Portfolio {
   cards: Card[]
   webhookUrl: string
   lastIdPerPrefix: Record<string, number>
+  metadataUpdatedAt?: string | null
 }
 
 export interface TaskType {
@@ -2169,6 +2170,7 @@ function createSeedPortfolios(taskLibrary: TaskType[]): Portfolio[] {
     cards: brandLabCards,
     webhookUrl: '',
     lastIdPerPrefix: getLastIdPerPrefix(brandLabBrands, brandLabCards),
+    metadataUpdatedAt: REFERENCE_NOW_ISO,
   }
 
   return [brandLab]
@@ -2636,6 +2638,10 @@ function normalizePortfolio(
       ...getLastIdPerPrefix(normalizedBrands, normalizedCards),
       ...(portfolio.lastIdPerPrefix ?? {}),
     },
+    metadataUpdatedAt:
+      typeof (portfolio as Portfolio & { metadataUpdatedAt?: unknown }).metadataUpdatedAt === 'string'
+        ? (portfolio as Portfolio & { metadataUpdatedAt?: string }).metadataUpdatedAt ?? null
+        : null,
   }
 }
 
@@ -2955,6 +2961,7 @@ function createPendingAppStatePatch(state: AppState): PendingAppStatePatch {
       team: portfolio.team,
       webhookUrl: portfolio.webhookUrl,
       lastIdPerPrefix: portfolio.lastIdPerPrefix,
+      metadataUpdatedAt: portfolio.metadataUpdatedAt ?? null,
     })),
     settings: state.settings,
     activePortfolioId: state.activePortfolioId,
@@ -3001,14 +3008,22 @@ export function applyPendingAppStatePatch(
   }
 
   const patchById = new Map(patch.portfolios.map((portfolio) => [portfolio.id, portfolio]))
-  const patchedPortfolioIds = new Set<string>()
+  const existingPortfolioIds = new Set(baseState.portfolios.map((portfolio) => portfolio.id))
   const portfolios = baseState.portfolios.map((portfolio) => {
     const pendingPortfolio = patchById.get(portfolio.id)
     if (!pendingPortfolio) {
       return portfolio
     }
 
-    patchedPortfolioIds.add(portfolio.id)
+    const pendingUpdatedAt = Date.parse(pendingPortfolio.metadataUpdatedAt ?? '')
+    const currentUpdatedAt = Date.parse(portfolio.metadataUpdatedAt ?? '')
+    if (
+      Number.isFinite(currentUpdatedAt) &&
+      (!Number.isFinite(pendingUpdatedAt) || pendingUpdatedAt <= currentUpdatedAt)
+    ) {
+      return portfolio
+    }
+
     return {
       ...pendingPortfolio,
       cards: portfolio.cards,
@@ -3020,7 +3035,7 @@ export function applyPendingAppStatePatch(
   })
 
   for (const pendingPortfolio of patch.portfolios) {
-    if (!patchedPortfolioIds.has(pendingPortfolio.id)) {
+    if (!existingPortfolioIds.has(pendingPortfolio.id)) {
       portfolios.push({
         ...pendingPortfolio,
         cards: [],
@@ -3035,7 +3050,6 @@ export function applyPendingAppStatePatch(
   return coerceAppState({
     ...baseState,
     portfolios,
-    settings: patch.settings,
     activePortfolioId,
   })
 }
@@ -3197,6 +3211,17 @@ export function createEmptyPortfolio(name: string, existingCount: number): Portf
     cards: [],
     webhookUrl: '',
     lastIdPerPrefix: {},
+    metadataUpdatedAt: new Date().toISOString(),
+  }
+}
+
+export function markPortfolioMetadataUpdated(
+  portfolio: Portfolio,
+  updatedAt = new Date().toISOString(),
+): Portfolio {
+  return {
+    ...portfolio,
+    metadataUpdatedAt: updatedAt,
   }
 }
 

@@ -11,6 +11,7 @@ import {
   createEmptyPortfolio,
   getBrandRemovalBlocker,
   getTeamMemberById,
+  markPortfolioMetadataUpdated,
   removeBrandFromPortfolio,
   removePortfolioFromAppState,
   removeTeamMemberFromPortfolio,
@@ -215,7 +216,9 @@ export function SettingsPage({
     onStateChange((current) => ({
       ...current,
       portfolios: current.portfolios.map((portfolio) =>
-        portfolio.id === portfolioId ? updater(portfolio) : portfolio,
+        portfolio.id === portfolioId
+          ? markPortfolioMetadataUpdated(updater(portfolio))
+          : portfolio,
       ),
     }))
   }

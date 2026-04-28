@@ -206,13 +206,22 @@ function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfol
       return remotePortfolio
     }
 
+    const remoteMetadataUpdatedAt = parseTimestamp(remotePortfolio.metadataUpdatedAt)
+    const localMetadataUpdatedAt = parseTimestamp(localPortfolio.metadataUpdatedAt)
+    const metadataPortfolio =
+      localMetadataUpdatedAt > remoteMetadataUpdatedAt ? localPortfolio : remotePortfolio
+    const lastIdPerPrefix = new Map<string, number>()
+    for (const [prefix, value] of Object.entries(remotePortfolio.lastIdPerPrefix)) {
+      lastIdPerPrefix.set(prefix, value)
+    }
+    for (const [prefix, value] of Object.entries(localPortfolio.lastIdPerPrefix)) {
+      lastIdPerPrefix.set(prefix, Math.max(lastIdPerPrefix.get(prefix) ?? 0, value))
+    }
+
     return {
-      ...localPortfolio,
+      ...metadataPortfolio,
       cards: mergeCreativeCards(remotePortfolio.cards, localPortfolio.cards),
-      lastIdPerPrefix: {
-        ...remotePortfolio.lastIdPerPrefix,
-        ...localPortfolio.lastIdPerPrefix,
-      },
+      lastIdPerPrefix: Object.fromEntries(lastIdPerPrefix),
     }
   })
 
@@ -449,6 +458,13 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
 
   if (isE2ERemoteMode()) {
     const stored = getStoredE2ERemoteState()
+    if (stored && !expectedUpdatedAt) {
+      throw new RemoteStateConflictError(
+        mergeRemoteAppStateCardLevel(stored.state, state),
+        stored.state,
+        stored.updatedAt,
+      )
+    }
     if (stored && expectedUpdatedAt && stored.updatedAt !== expectedUpdatedAt) {
       const latestRemoteState = stored.state
       throw new RemoteStateConflictError(
@@ -468,7 +484,14 @@ export async function saveRemoteAppState(state: AppState, expectedUpdatedAt: str
 
   if (!expectedUpdatedAt) {
     const loaded = await loadOrCreateRemoteAppState(state)
-    return loaded.lastSyncedAt
+    if (loaded.seeded || !loaded.lastSyncedAt) {
+      return loaded.lastSyncedAt
+    }
+    throw new RemoteStateConflictError(
+      mergeRemoteAppStateCardLevel(loaded.state, state),
+      loaded.state,
+      loaded.lastSyncedAt,
+    )
   }
 
   const { data, error } = await supabase

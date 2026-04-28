@@ -50,28 +50,8 @@ type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 
 const LOCAL_PERSIST_DEBOUNCE_MS = 200
 const REMOTE_SAVE_DEBOUNCE_MS = 2000
-const REMOTE_SAVE_TIMEOUT_MS = 15000
 const REMOTE_SAVE_RETRY_DELAYS_MS = [0, 1200, 3000]
 const REMOTE_VISIBILITY_REFRESH_COOLDOWN_MS = 30_000
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
-  return new Promise<T>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      reject(new Error(message))
-    }, timeoutMs)
-
-    promise.then(
-      (value) => {
-        window.clearTimeout(timeoutId)
-        resolve(value)
-      },
-      (error) => {
-        window.clearTimeout(timeoutId)
-        reject(error)
-      },
-    )
-  })
-}
 
 interface CopyState {
   key: string
@@ -406,11 +386,7 @@ export function useAppEffects({
           roleMode,
           cardCount: state.portfolios.reduce((count, portfolio) => count + portfolio.cards.length, 0),
         })
-        void withTimeout(
-          saveRemoteAppStateWithRetryMerge(state, lastSyncedAtRef.current, 3),
-          REMOTE_SAVE_TIMEOUT_MS,
-          'Remote workspace save timed out.',
-        )
+        void saveRemoteAppStateWithRetryMerge(state, lastSyncedAtRef.current, 3)
           .then((result) => {
             if (cancelled) {
               return
