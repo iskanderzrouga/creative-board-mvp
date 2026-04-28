@@ -7,6 +7,7 @@ const DEFAULT_WORKDAY_END_MINUTES = 18 * 60
 
 export const STORAGE_KEY = 'creative-board-state'
 export const SYNC_METADATA_KEY = 'creative-board-sync-metadata'
+export const PENDING_STATE_KEY = 'creative-board-pending-state'
 export const STATE_VERSION = 3
 
 export interface SyncMetadata {
@@ -2908,23 +2909,95 @@ export function isScriptReadyToLaunch(script: ScriptWorkshopItem) {
   return SCRIPT_REVIEWERS.every((reviewer) => getLatestScriptReview(script, reviewer.id)?.confidence === 'high')
 }
 
+function getEmptySyncMetadata(): SyncMetadata {
+  return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+}
+
+function getAppStateSignatureForStorage(state: AppState) {
+  const { strategyCycles, notifications, version, ...sharedState } = {
+    ...state,
+    activePortfolioId:
+      state.portfolios.some((portfolio) => portfolio.id === state.settings.general.defaultPortfolioId)
+        ? state.settings.general.defaultPortfolioId
+        : state.portfolios[0]?.id ?? '',
+    activeRole: {
+      mode: 'owner' as const,
+      editorId: null,
+    },
+    activePage: 'board' as const,
+    notifications: [],
+  }
+
+  return JSON.stringify({
+    ...sharedState,
+    strategyCycles: strategyCycles ?? [],
+    notifications,
+    version,
+  })
+}
+
 export function loadAppState() {
-  return createSeedState()
+  if (typeof window === 'undefined') {
+    return createSeedState()
+  }
+
+  try {
+    const syncMetadata = loadSyncMetadata()
+    const rawPendingState = window.localStorage.getItem(PENDING_STATE_KEY)
+    if (!syncMetadata.pendingRemoteSignature || !rawPendingState) {
+      if (syncMetadata.pendingRemoteSignature && !rawPendingState) {
+        persistSyncMetadata(getEmptySyncMetadata())
+      }
+      return createSeedState()
+    }
+
+    const pendingState = coerceAppState(JSON.parse(rawPendingState))
+    const pendingSignature = getAppStateSignatureForStorage(pendingState)
+    if (pendingSignature !== syncMetadata.pendingRemoteSignature) {
+      persistSyncMetadata({
+        ...syncMetadata,
+        pendingRemoteSignature: pendingSignature,
+      })
+    }
+    return pendingState
+  } catch {
+    return createSeedState()
+  }
+}
+
+export function clearPersistedAppState() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.removeItem(PENDING_STATE_KEY)
+  } catch {
+    console.warn('[storage] Remove failed, continuing:', PENDING_STATE_KEY)
+  }
 }
 
 export function persistAppState(state: AppState) {
-  void state
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(PENDING_STATE_KEY, JSON.stringify(state))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', PENDING_STATE_KEY)
+  }
 }
 
 export function loadSyncMetadata(): SyncMetadata {
   if (typeof window === 'undefined') {
-    return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+    return getEmptySyncMetadata()
   }
 
   try {
     const raw = window.localStorage.getItem(SYNC_METADATA_KEY)
     if (!raw) {
-      return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+      return getEmptySyncMetadata()
     }
 
     const parsed = JSON.parse(raw) as Partial<SyncMetadata>
@@ -2936,7 +3009,7 @@ export function loadSyncMetadata(): SyncMetadata {
         typeof parsed.pendingRemoteSignature === 'string' ? parsed.pendingRemoteSignature : null,
     }
   } catch {
-    return { lastSyncedAt: null, pendingRemoteBaseUpdatedAt: null, pendingRemoteSignature: null }
+    return getEmptySyncMetadata()
   }
 }
 
@@ -2947,6 +3020,9 @@ export function persistSyncMetadata(metadata: SyncMetadata) {
 
   try {
     window.localStorage.setItem(SYNC_METADATA_KEY, JSON.stringify(metadata))
+    if (!metadata.pendingRemoteSignature) {
+      clearPersistedAppState()
+    }
   } catch {
     console.warn('[storage] Write failed, continuing:', SYNC_METADATA_KEY)
   }

@@ -291,7 +291,8 @@ export function useAppEffects({
           return
         }
 
-        replaceStateRef.current(result.state)
+        const hydratedState = result.keptLocalChanges ? { ...result.state } : result.state
+        replaceStateRef.current(hydratedState)
         remoteHydratedRef.current = true
         setLastSyncedAt(result.lastSyncedAt)
         setSyncStatus(result.lastSyncedAt ? 'synced' : 'local')
@@ -300,7 +301,7 @@ export function useAppEffects({
           lastSyncedAt: result.lastSyncedAt,
           pendingRemoteBaseUpdatedAt: result.keptLocalChanges ? result.lastSyncedAt : null,
           pendingRemoteSignature: result.keptLocalChanges
-            ? getRemoteStateSignature(result.state)
+            ? getRemoteStateSignature(hydratedState)
             : null,
         })
         setRemoteSyncErrorShown(false)

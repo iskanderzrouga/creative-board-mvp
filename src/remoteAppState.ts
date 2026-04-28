@@ -335,17 +335,21 @@ export async function loadOrCreateRemoteAppState(
     const stored = getStoredE2ERemoteState()
     if (stored) {
       const remoteSignature = getRemoteStateSignature(stored.state)
+      const hasPendingLocalChanges = options.pendingRemoteSignature === fallbackSignature
       const shouldKeepLocalChanges =
+        hasPendingLocalChanges &&
         options.pendingRemoteBaseUpdatedAt === stored.updatedAt &&
         options.pendingRemoteSignature === fallbackSignature
 
       return {
         state: shouldKeepLocalChanges
           ? fallbackState
-          : mergeRemoteAppStateWithLocalState(stored.state, fallbackState),
+          : hasPendingLocalChanges
+            ? mergeRemoteAppStateCardLevel(stored.state, fallbackState)
+            : mergeRemoteAppStateWithLocalState(stored.state, fallbackState),
         lastSyncedAt: stored.updatedAt,
         remoteSignature,
-        keptLocalChanges: shouldKeepLocalChanges,
+        keptLocalChanges: hasPendingLocalChanges,
         seeded: false,
       }
     }
@@ -377,17 +381,21 @@ export async function loadOrCreateRemoteAppState(
   if (data) {
     const remoteState = coerceAppState(data.state)
     const remoteSignature = getRemoteStateSignature(remoteState)
+    const hasPendingLocalChanges = options.pendingRemoteSignature === fallbackSignature
     const shouldKeepLocalChanges =
+      hasPendingLocalChanges &&
       options.pendingRemoteBaseUpdatedAt === data.updated_at &&
       options.pendingRemoteSignature === fallbackSignature
 
     return {
       state: shouldKeepLocalChanges
         ? fallbackState
-        : mergeRemoteAppStateWithLocalState(remoteState, fallbackState),
+        : hasPendingLocalChanges
+          ? mergeRemoteAppStateCardLevel(remoteState, fallbackState)
+          : mergeRemoteAppStateWithLocalState(remoteState, fallbackState),
       lastSyncedAt: data.updated_at,
       remoteSignature,
-      keptLocalChanges: shouldKeepLocalChanges,
+      keptLocalChanges: hasPendingLocalChanges,
       seeded: false,
     }
   }

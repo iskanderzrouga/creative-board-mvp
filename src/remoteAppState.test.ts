@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createEmptyPortfolio, createSeedState } from './board'
+import {
+  PENDING_STATE_KEY,
+  createEmptyPortfolio,
+  createSeedState,
+  loadAppState,
+  loadSyncMetadata,
+  persistAppState,
+  persistSyncMetadata,
+  type WorkingDay,
+} from './board'
 import {
   E2E_REMOTE_STATE_KEY,
 } from './supabase'
@@ -169,6 +178,40 @@ describe('remote app state sync', () => {
     expect(synced.state.portfolios[0]?.team.some((member) => member.name === 'Naomi')).toBe(false)
   })
 
+  it('loads pending local shared changes only while matching sync metadata is present', () => {
+    const seed = createSeedState()
+    const pendingState = {
+      ...seed,
+      settings: {
+        ...seed.settings,
+        general: {
+          ...seed.settings.general,
+          appName: 'Pending shared workspace',
+        },
+      },
+    }
+
+    persistAppState(pendingState)
+    expect(loadAppState().settings.general.appName).toBe(seed.settings.general.appName)
+
+    persistSyncMetadata({
+      lastSyncedAt: '2026-04-28T00:00:00.000Z',
+      pendingRemoteBaseUpdatedAt: '2026-04-28T00:00:00.000Z',
+      pendingRemoteSignature: getRemoteStateSignature(pendingState),
+    })
+
+    expect(loadAppState().settings.general.appName).toBe('Pending shared workspace')
+
+    persistSyncMetadata({
+      lastSyncedAt: '2026-04-28T00:00:01.000Z',
+      pendingRemoteBaseUpdatedAt: null,
+      pendingRemoteSignature: null,
+    })
+
+    expect(window.localStorage.getItem(PENDING_STATE_KEY)).toBeNull()
+    expect(loadAppState().settings.general.appName).toBe(seed.settings.general.appName)
+  })
+
   it('keeps local portfolio edits when a stale in-flight shell save wins the race first', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
@@ -211,6 +254,88 @@ describe('remote app state sync', () => {
     expect(result.merged).toBe(true)
     expect(syncedPortfolio?.name).toBe('BrandLab Thai')
     expect(syncedPortfolio?.webhookUrl).toBe('https://example.com/brandlab-thai')
+  })
+
+  it('rehydrates pending portfolio edits after a partial remote save moved the timestamp', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const shellPortfolio = createEmptyPortfolio('Untitled portfolio', seed.portfolios.length)
+    const shellState = {
+      ...seed,
+      portfolios: [...seed.portfolios, shellPortfolio],
+    }
+    const pendingState = {
+      ...shellState,
+      portfolios: shellState.portfolios.map((portfolio) =>
+        portfolio.id === shellPortfolio.id
+          ? {
+              ...portfolio,
+              name: 'BrandLab Thai',
+              brands: [
+                {
+                  name: 'Nutrio',
+                  prefix: 'NT',
+                  products: ['Sleep'],
+                  driveParentFolderId: '',
+                  facebookPage: '',
+                  defaultLandingPage: '',
+                  color: '#2563eb',
+                  surfaceColor: '#eff6ff',
+                  textColor: '#1e3a8a',
+                },
+              ],
+              team: [
+                {
+                  id: 'member-refresh',
+                  name: 'Refresh QA',
+                  role: 'Editor',
+                  weeklyHours: 40,
+                  hoursPerDay: 8,
+                  workingHoursPerDay: 8,
+                  workStartHour: 9,
+                  workEndHour: 17,
+                  workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as WorkingDay[],
+                  timezone: 'UTC',
+                  wipCap: 3,
+                  active: true,
+                  accessEmail: null,
+                },
+              ],
+              lastIdPerPrefix: {
+                NT: 0,
+              },
+            }
+          : portfolio,
+      ),
+    }
+
+    await saveRemoteAppState(shellState, firstLoad.lastSyncedAt)
+    persistAppState(pendingState)
+    persistSyncMetadata({
+      lastSyncedAt: firstLoad.lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: firstLoad.lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(pendingState),
+    })
+
+    const rehydrated = await loadOrCreateRemoteAppState(loadAppState(), loadSyncMetadata())
+    const rehydratedPortfolio = rehydrated.state.portfolios.find(
+      (portfolio) => portfolio.id === shellPortfolio.id,
+    )
+
+    expect(rehydrated.keptLocalChanges).toBe(true)
+    expect(rehydratedPortfolio?.name).toBe('BrandLab Thai')
+    expect(rehydratedPortfolio?.brands.map((brand) => brand.name)).toEqual(['Nutrio'])
+    expect(rehydratedPortfolio?.team.map((member) => member.name)).toEqual(['Refresh QA'])
+
+    await saveRemoteAppState(rehydrated.state, rehydrated.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedPortfolio = synced.state.portfolios.find(
+      (portfolio) => portfolio.id === shellPortfolio.id,
+    )
+
+    expect(syncedPortfolio?.name).toBe('BrandLab Thai')
+    expect(syncedPortfolio?.brands.map((brand) => brand.name)).toEqual(['Nutrio'])
+    expect(syncedPortfolio?.team.map((member) => member.name)).toEqual(['Refresh QA'])
   })
 
   it('omits client-owned timestamps and local view state from real workspace_state write payloads', () => {
