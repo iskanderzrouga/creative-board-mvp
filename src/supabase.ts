@@ -313,7 +313,11 @@ export function isPasswordRecoveryFlowPending() {
 
 function isLegacyWorkspaceAccessError(error: { message?: string } | null) {
   const message = error?.message?.toLowerCase() ?? ''
-  return message.includes('scope_mode') || message.includes('scope_assignments')
+  return (
+    message.includes('scope_mode') ||
+    message.includes('scope_assignments') ||
+    message.includes('workspace_id')
+  )
 }
 
 function normalizeLegacyRoleMode(
@@ -463,6 +467,7 @@ export async function signInWithMagicLink(email: string) {
   }>(MAGIC_LINK_FUNCTION_NAME, {
     body: {
       email: normalizedEmail,
+      workspaceId: REMOTE_WORKSPACE_ID,
       redirectTo: getMagicLinkRedirectUrl(),
     },
   })
@@ -500,6 +505,7 @@ export async function sendPasswordSetupEmail(email: string) {
   }>(MAGIC_LINK_FUNCTION_NAME, {
     body: {
       email: normalizedEmail,
+      workspaceId: REMOTE_WORKSPACE_ID,
       redirectTo: getMagicLinkRedirectUrl(),
       action: 'password-setup',
     },
@@ -676,6 +682,7 @@ export async function getWorkspaceAccess() {
   const { data, error } = await supabase
     .from('workspace_access')
     .select('email, role_mode, editor_name, scope_mode, scope_assignments')
+    .eq('workspace_id', REMOTE_WORKSPACE_ID)
     .eq('email', email)
     .maybeSingle()
 
@@ -740,18 +747,18 @@ export async function ensureWorkspaceAccessSchema() {
   try {
     const { error } = await supabase
       .from('workspace_access')
-      .select('scope_mode')
+      .select('workspace_id, scope_mode')
       .limit(1)
 
     if (!error) return // columns exist
 
     // Columns are missing — call edge function to auto-migrate
-    console.warn('workspace_access: scope columns missing, attempting auto-migration...')
+    console.warn('workspace_access: workspace/scope columns missing, attempting auto-migration...')
     const { data, error: fnError } = await supabase.functions.invoke<{
       migrated?: boolean
       error?: string
     }>(MAGIC_LINK_FUNCTION_NAME, {
-      body: { action: 'ensure-schema' },
+      body: { action: 'ensure-schema', workspaceId: REMOTE_WORKSPACE_ID },
     })
 
     if (fnError) {
@@ -760,7 +767,7 @@ export async function ensureWorkspaceAccessSchema() {
     }
 
     if (data?.migrated) {
-      console.info('workspace_access: scope columns auto-migrated successfully.')
+      console.info('workspace_access: workspace/scope columns auto-migrated successfully.')
     } else {
       console.warn('Auto-migration returned:', data)
     }
@@ -782,6 +789,7 @@ export async function listWorkspaceAccessEntries() {
   const { data, error } = await supabase
     .from('workspace_access')
     .select('email, role_mode, editor_name, scope_mode, scope_assignments, updated_at')
+    .eq('workspace_id', REMOTE_WORKSPACE_ID)
     .order('email', { ascending: true })
 
   if (error && !isLegacyWorkspaceAccessError(error)) {
@@ -849,6 +857,7 @@ export async function upsertWorkspaceAccessEntry(entry: {
     .upsert(
       {
         email: normalizedEmail,
+        workspace_id: REMOTE_WORKSPACE_ID,
         role_mode: entry.roleMode,
         editor_name: entry.roleMode === 'contributor' ? entry.editorName?.trim() ?? null : null,
         scope_mode: entry.scopeMode,
@@ -856,7 +865,7 @@ export async function upsertWorkspaceAccessEntry(entry: {
         updated_at: new Date().toISOString(),
       },
       {
-        onConflict: 'email',
+        onConflict: 'workspace_id,email',
       },
     )
     .select('email, role_mode, editor_name, scope_mode, scope_assignments, updated_at')
@@ -926,7 +935,11 @@ export async function deleteWorkspaceAccessEntry(email: string) {
     throw new Error('Supabase is not configured.')
   }
 
-  const { error } = await supabase.from('workspace_access').delete().eq('email', normalizedEmail)
+  const { error } = await supabase
+    .from('workspace_access')
+    .delete()
+    .eq('workspace_id', REMOTE_WORKSPACE_ID)
+    .eq('email', normalizedEmail)
   if (error) {
     throw error
   }

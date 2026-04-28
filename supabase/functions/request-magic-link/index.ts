@@ -10,6 +10,7 @@ interface RequestBody {
   email?: string
   password?: string
   redirectTo?: string
+  workspaceId?: string
   action?: 'sign-in' | 'sign-up' | 'password-setup' | 'ensure-schema' | 'reload-schema'
 }
 
@@ -25,6 +26,11 @@ function json(body: Record<string, unknown>, status = 200) {
 
 function normalizeEmail(value: string | undefined) {
   return value?.trim().toLowerCase() ?? ''
+}
+
+function normalizeWorkspaceId(value: string | undefined) {
+  const workspaceId = value?.trim()
+  return workspaceId || 'primary'
 }
 
 function isAlreadyRegisteredError(message: string) {
@@ -90,6 +96,7 @@ Deno.serve(async (request) => {
 
   const body = (await request.json()) as RequestBody
   const action = body.action ?? 'sign-in'
+  const workspaceId = normalizeWorkspaceId(body.workspaceId)
 
   // ---------- Reload PostgREST schema cache ----------
   if (action === 'reload-schema') {
@@ -120,13 +127,22 @@ Deno.serve(async (request) => {
       // Add scope columns if missing (idempotent)
       await sql`
         ALTER TABLE public.workspace_access
+          ADD COLUMN IF NOT EXISTS workspace_id text NOT NULL DEFAULT 'primary',
           ADD COLUMN IF NOT EXISTS scope_mode text NOT NULL DEFAULT 'all-portfolios',
           ADD COLUMN IF NOT EXISTS scope_assignments jsonb NOT NULL DEFAULT '[]'::jsonb
+      `
+
+      await sql`
+        UPDATE public.workspace_access
+        SET workspace_id = 'primary'
+        WHERE workspace_id IS NULL OR length(trim(workspace_id)) = 0
       `
 
       // Drop old constraints FIRST so we can update role_mode values freely
       await sql`
         ALTER TABLE public.workspace_access
+          DROP CONSTRAINT IF EXISTS workspace_access_workspace_id_not_blank,
+          DROP CONSTRAINT IF EXISTS workspace_access_pkey,
           DROP CONSTRAINT IF EXISTS workspace_access_role_mode_check,
           DROP CONSTRAINT IF EXISTS workspace_access_scope_mode_check,
           DROP CONSTRAINT IF EXISTS workspace_access_scope_assignments_is_array
@@ -139,7 +155,10 @@ Deno.serve(async (request) => {
       // Promote first manager to owner if no owner exists
       await sql`
         DO $$ BEGIN
-          IF NOT EXISTS (SELECT 1 FROM public.workspace_access WHERE role_mode = 'owner') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM public.workspace_access
+            WHERE workspace_id = 'primary' AND role_mode = 'owner'
+          ) THEN
             UPDATE public.workspace_access
             SET role_mode = 'owner',
                 scope_mode = 'all-portfolios',
@@ -147,7 +166,7 @@ Deno.serve(async (request) => {
                 updated_at = timezone('utc', now())
             WHERE email = (
               SELECT email FROM public.workspace_access
-              WHERE role_mode = 'manager'
+              WHERE workspace_id = 'primary' AND role_mode = 'manager'
               ORDER BY created_at ASC, email ASC
               LIMIT 1
             );
@@ -158,6 +177,10 @@ Deno.serve(async (request) => {
       // Recreate constraints with new values
       await sql`
         ALTER TABLE public.workspace_access
+          ADD CONSTRAINT workspace_access_workspace_id_not_blank
+            CHECK (length(trim(workspace_id)) > 0),
+          ADD CONSTRAINT workspace_access_pkey
+            PRIMARY KEY (workspace_id, email),
           ADD CONSTRAINT workspace_access_role_mode_check
             CHECK (role_mode IN ('owner', 'manager', 'contributor', 'viewer')),
           ADD CONSTRAINT workspace_access_scope_mode_check
@@ -169,32 +192,47 @@ Deno.serve(async (request) => {
       // Ensure all helper functions and RLS policies exist
       await sql`
         DO $$ BEGIN
-          -- Owner check function
-          CREATE OR REPLACE FUNCTION public.current_user_is_workspace_owner()
+          -- Workspace membership check function
+          CREATE OR REPLACE FUNCTION public.current_user_can_read_workspace(target_workspace_id text)
           RETURNS boolean
           LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
           AS $fn$
             SELECT EXISTS (
               SELECT 1 FROM public.workspace_access access
-              WHERE access.email = public.current_request_email()
+              WHERE access.workspace_id = target_workspace_id
+                AND access.email = public.current_request_email()
+            );
+          $fn$;
+
+          -- Owner check function
+          CREATE OR REPLACE FUNCTION public.current_user_is_workspace_owner(target_workspace_id text)
+          RETURNS boolean
+          LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+          AS $fn$
+            SELECT EXISTS (
+              SELECT 1 FROM public.workspace_access access
+              WHERE access.workspace_id = target_workspace_id
+                AND access.email = public.current_request_email()
                 AND access.role_mode = 'owner'
             );
           $fn$;
 
           -- Write check function (owner or manager)
-          CREATE OR REPLACE FUNCTION public.current_user_can_write_workspace_state()
+          CREATE OR REPLACE FUNCTION public.current_user_can_write_workspace_state(target_workspace_id text)
           RETURNS boolean
           LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
           AS $fn$
             SELECT EXISTS (
               SELECT 1 FROM public.workspace_access access
-              WHERE access.email = public.current_request_email()
+              WHERE access.workspace_id = target_workspace_id
+                AND access.email = public.current_request_email()
                 AND access.role_mode IN ('owner', 'manager')
             );
           $fn$;
 
-          GRANT EXECUTE ON FUNCTION public.current_user_is_workspace_owner() TO authenticated;
-          GRANT EXECUTE ON FUNCTION public.current_user_can_write_workspace_state() TO authenticated;
+          GRANT EXECUTE ON FUNCTION public.current_user_can_read_workspace(text) TO authenticated;
+          GRANT EXECUTE ON FUNCTION public.current_user_is_workspace_owner(text) TO authenticated;
+          GRANT EXECUTE ON FUNCTION public.current_user_can_write_workspace_state(text) TO authenticated;
         END; $$
       `
 
@@ -209,20 +247,22 @@ Deno.serve(async (request) => {
       await sql`DROP POLICY IF EXISTS "workspace_access_owner_update" ON public.workspace_access`
       await sql`DROP POLICY IF EXISTS "workspace_access_owner_delete" ON public.workspace_access`
       await sql`CREATE POLICY "workspace_access_self_select" ON public.workspace_access FOR SELECT TO authenticated USING (email = public.current_request_email())`
-      await sql`CREATE POLICY "workspace_access_owner_select" ON public.workspace_access FOR SELECT TO authenticated USING (public.current_user_is_workspace_owner())`
-      await sql`CREATE POLICY "workspace_access_owner_insert" ON public.workspace_access FOR INSERT TO authenticated WITH CHECK (public.current_user_is_workspace_owner())`
-      await sql`CREATE POLICY "workspace_access_owner_update" ON public.workspace_access FOR UPDATE TO authenticated USING (public.current_user_is_workspace_owner()) WITH CHECK (public.current_user_is_workspace_owner())`
-      await sql`CREATE POLICY "workspace_access_owner_delete" ON public.workspace_access FOR DELETE TO authenticated USING (public.current_user_is_workspace_owner())`
+      await sql`CREATE POLICY "workspace_access_owner_select" ON public.workspace_access FOR SELECT TO authenticated USING (public.current_user_is_workspace_owner(workspace_id))`
+      await sql`CREATE POLICY "workspace_access_owner_insert" ON public.workspace_access FOR INSERT TO authenticated WITH CHECK (public.current_user_is_workspace_owner(workspace_id))`
+      await sql`CREATE POLICY "workspace_access_owner_update" ON public.workspace_access FOR UPDATE TO authenticated USING (public.current_user_is_workspace_owner(workspace_id)) WITH CHECK (public.current_user_is_workspace_owner(workspace_id))`
+      await sql`CREATE POLICY "workspace_access_owner_delete" ON public.workspace_access FOR DELETE TO authenticated USING (public.current_user_is_workspace_owner(workspace_id))`
 
       // Ensure workspace_state write policies
+      await sql`DROP POLICY IF EXISTS "workspace_state_member_select" ON public.workspace_state`
       await sql`DROP POLICY IF EXISTS "workspace_state_authenticated_insert" ON public.workspace_state`
       await sql`DROP POLICY IF EXISTS "workspace_state_authenticated_update" ON public.workspace_state`
       await sql`DROP POLICY IF EXISTS "workspace_state_manager_insert" ON public.workspace_state`
       await sql`DROP POLICY IF EXISTS "workspace_state_manager_update" ON public.workspace_state`
       await sql`DROP POLICY IF EXISTS "workspace_state_owner_manager_insert" ON public.workspace_state`
       await sql`DROP POLICY IF EXISTS "workspace_state_owner_manager_update" ON public.workspace_state`
-      await sql`CREATE POLICY "workspace_state_owner_manager_insert" ON public.workspace_state FOR INSERT TO authenticated WITH CHECK (public.current_user_can_write_workspace_state())`
-      await sql`CREATE POLICY "workspace_state_owner_manager_update" ON public.workspace_state FOR UPDATE TO authenticated USING (public.current_user_can_write_workspace_state()) WITH CHECK (public.current_user_can_write_workspace_state())`
+      await sql`CREATE POLICY "workspace_state_member_select" ON public.workspace_state FOR SELECT TO authenticated USING (public.current_user_can_read_workspace(workspace_id))`
+      await sql`CREATE POLICY "workspace_state_owner_manager_insert" ON public.workspace_state FOR INSERT TO authenticated WITH CHECK (public.current_user_can_write_workspace_state(workspace_id))`
+      await sql`CREATE POLICY "workspace_state_owner_manager_update" ON public.workspace_state FOR UPDATE TO authenticated USING (public.current_user_can_write_workspace_state(workspace_id)) WITH CHECK (public.current_user_can_write_workspace_state(workspace_id))`
 
       // Reload PostgREST schema cache so new functions/policies take effect
       await sql`NOTIFY pgrst, 'reload schema'`
@@ -252,6 +292,7 @@ Deno.serve(async (request) => {
   const { data: accessRows, error: accessError } = await admin
     .from('workspace_access')
     .select('email')
+    .eq('workspace_id', workspaceId)
     .eq('email', email)
     .limit(1)
 
