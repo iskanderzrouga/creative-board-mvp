@@ -8,6 +8,7 @@ const DEFAULT_WORKDAY_END_MINUTES = 18 * 60
 export const STORAGE_KEY = 'creative-board-state'
 export const SYNC_METADATA_KEY = 'creative-board-sync-metadata'
 export const PENDING_STATE_KEY = 'creative-board-pending-state'
+export const PENDING_STATE_PATCH_KEY = 'creative-board-pending-state-patch'
 export const STATE_VERSION = 3
 
 export interface SyncMetadata {
@@ -508,6 +509,15 @@ export interface AppState {
   activePage: AppPage
   strategyCycles?: StrategyCycle[]
   notifications: AppNotification[]
+  version: number
+}
+
+export type PendingPortfolioPatch = Omit<Portfolio, 'cards'>
+
+export interface PendingAppStatePatch {
+  portfolios: PendingPortfolioPatch[]
+  settings: GlobalSettings
+  activePortfolioId: string
   version: number
 }
 
@@ -2936,6 +2946,100 @@ function getAppStateSignatureForStorage(state: AppState) {
   })
 }
 
+function createPendingAppStatePatch(state: AppState): PendingAppStatePatch {
+  return {
+    portfolios: state.portfolios.map((portfolio) => ({
+      id: portfolio.id,
+      name: portfolio.name,
+      brands: portfolio.brands,
+      team: portfolio.team,
+      webhookUrl: portfolio.webhookUrl,
+      lastIdPerPrefix: portfolio.lastIdPerPrefix,
+    })),
+    settings: state.settings,
+    activePortfolioId: state.activePortfolioId,
+    version: STATE_VERSION,
+  }
+}
+
+export function loadPendingAppStatePatch(): PendingAppStatePatch | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PENDING_STATE_PATCH_KEY)
+    if (!raw) {
+      return null
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PendingAppStatePatch>
+    if (!Array.isArray(parsed.portfolios) || typeof parsed.settings !== 'object' || !parsed.settings) {
+      return null
+    }
+
+    return {
+      portfolios: parsed.portfolios.filter(
+        (portfolio): portfolio is PendingPortfolioPatch =>
+          Boolean(portfolio) && typeof portfolio.id === 'string',
+      ),
+      settings: parsed.settings as GlobalSettings,
+      activePortfolioId: typeof parsed.activePortfolioId === 'string' ? parsed.activePortfolioId : '',
+      version: STATE_VERSION,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function applyPendingAppStatePatch(
+  baseState: AppState,
+  patch: PendingAppStatePatch | null | undefined,
+) {
+  if (!patch) {
+    return baseState
+  }
+
+  const patchById = new Map(patch.portfolios.map((portfolio) => [portfolio.id, portfolio]))
+  const patchedPortfolioIds = new Set<string>()
+  const portfolios = baseState.portfolios.map((portfolio) => {
+    const pendingPortfolio = patchById.get(portfolio.id)
+    if (!pendingPortfolio) {
+      return portfolio
+    }
+
+    patchedPortfolioIds.add(portfolio.id)
+    return {
+      ...pendingPortfolio,
+      cards: portfolio.cards,
+      lastIdPerPrefix: {
+        ...portfolio.lastIdPerPrefix,
+        ...pendingPortfolio.lastIdPerPrefix,
+      },
+    }
+  })
+
+  for (const pendingPortfolio of patch.portfolios) {
+    if (!patchedPortfolioIds.has(pendingPortfolio.id)) {
+      portfolios.push({
+        ...pendingPortfolio,
+        cards: [],
+      })
+    }
+  }
+
+  const activePortfolioId = portfolios.some((portfolio) => portfolio.id === patch.activePortfolioId)
+    ? patch.activePortfolioId
+    : baseState.activePortfolioId
+
+  return coerceAppState({
+    ...baseState,
+    portfolios,
+    settings: patch.settings,
+    activePortfolioId,
+  })
+}
+
 export function loadAppState() {
   if (typeof window === 'undefined') {
     return createSeedState()
@@ -2944,10 +3048,19 @@ export function loadAppState() {
   try {
     const syncMetadata = loadSyncMetadata()
     const rawPendingState = window.localStorage.getItem(PENDING_STATE_KEY)
-    if (!syncMetadata.pendingRemoteSignature || !rawPendingState) {
-      if (syncMetadata.pendingRemoteSignature && !rawPendingState) {
+    const pendingPatch = loadPendingAppStatePatch()
+    if (!syncMetadata.pendingRemoteSignature || (!rawPendingState && !pendingPatch)) {
+      if (syncMetadata.pendingRemoteSignature && !rawPendingState && !pendingPatch) {
         persistSyncMetadata(getEmptySyncMetadata())
       }
+      return createSeedState()
+    }
+
+    if (!rawPendingState && pendingPatch) {
+      return applyPendingAppStatePatch(createSeedState(), pendingPatch)
+    }
+
+    if (!rawPendingState) {
       return createSeedState()
     }
 
@@ -2972,6 +3085,7 @@ export function clearPersistedAppState() {
 
   try {
     window.localStorage.removeItem(PENDING_STATE_KEY)
+    window.localStorage.removeItem(PENDING_STATE_PATCH_KEY)
   } catch {
     console.warn('[storage] Remove failed, continuing:', PENDING_STATE_KEY)
   }
@@ -2980,6 +3094,12 @@ export function clearPersistedAppState() {
 export function persistAppState(state: AppState) {
   if (typeof window === 'undefined') {
     return
+  }
+
+  try {
+    window.localStorage.setItem(PENDING_STATE_PATCH_KEY, JSON.stringify(createPendingAppStatePatch(state)))
+  } catch {
+    console.warn('[storage] Write failed, continuing:', PENDING_STATE_PATCH_KEY)
   }
 
   try {

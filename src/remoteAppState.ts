@@ -1,9 +1,11 @@
 import {
+  applyPendingAppStatePatch,
   coerceAppState,
   type AppState,
   type Card,
   type DevCard,
   type DevBoardState,
+  type PendingAppStatePatch,
   type Portfolio,
 } from './board'
 import {
@@ -98,6 +100,7 @@ export interface RemoteAppStateResult {
 interface LoadRemoteAppStateOptions {
   pendingRemoteBaseUpdatedAt?: string | null
   pendingRemoteSignature?: string | null
+  pendingStatePatch?: PendingAppStatePatch | null
 }
 
 export class RemoteStateConflictError extends Error {
@@ -335,18 +338,23 @@ export async function loadOrCreateRemoteAppState(
     const stored = getStoredE2ERemoteState()
     if (stored) {
       const remoteSignature = getRemoteStateSignature(stored.state)
-      const hasPendingLocalChanges = options.pendingRemoteSignature === fallbackSignature
+      const patchedRemoteState = options.pendingRemoteSignature && options.pendingStatePatch
+        ? applyPendingAppStatePatch(stored.state, options.pendingStatePatch)
+        : null
+      const hasPendingPatch = Boolean(options.pendingRemoteSignature && options.pendingStatePatch)
+      const hasPendingLocalChanges = hasPendingPatch || options.pendingRemoteSignature === fallbackSignature
       const shouldKeepLocalChanges =
+        !hasPendingPatch &&
         hasPendingLocalChanges &&
         options.pendingRemoteBaseUpdatedAt === stored.updatedAt &&
         options.pendingRemoteSignature === fallbackSignature
 
       return {
-        state: shouldKeepLocalChanges
+        state: patchedRemoteState ?? (shouldKeepLocalChanges
           ? fallbackState
           : hasPendingLocalChanges
             ? mergeRemoteAppStateCardLevel(stored.state, fallbackState)
-            : mergeRemoteAppStateWithLocalState(stored.state, fallbackState),
+            : mergeRemoteAppStateWithLocalState(stored.state, fallbackState)),
         lastSyncedAt: stored.updatedAt,
         remoteSignature,
         keptLocalChanges: hasPendingLocalChanges,
@@ -381,18 +389,23 @@ export async function loadOrCreateRemoteAppState(
   if (data) {
     const remoteState = coerceAppState(data.state)
     const remoteSignature = getRemoteStateSignature(remoteState)
-    const hasPendingLocalChanges = options.pendingRemoteSignature === fallbackSignature
+    const patchedRemoteState = options.pendingRemoteSignature && options.pendingStatePatch
+      ? applyPendingAppStatePatch(remoteState, options.pendingStatePatch)
+      : null
+    const hasPendingPatch = Boolean(options.pendingRemoteSignature && options.pendingStatePatch)
+    const hasPendingLocalChanges = hasPendingPatch || options.pendingRemoteSignature === fallbackSignature
     const shouldKeepLocalChanges =
+      !hasPendingPatch &&
       hasPendingLocalChanges &&
       options.pendingRemoteBaseUpdatedAt === data.updated_at &&
       options.pendingRemoteSignature === fallbackSignature
 
     return {
-      state: shouldKeepLocalChanges
+      state: patchedRemoteState ?? (shouldKeepLocalChanges
         ? fallbackState
         : hasPendingLocalChanges
           ? mergeRemoteAppStateCardLevel(remoteState, fallbackState)
-          : mergeRemoteAppStateWithLocalState(remoteState, fallbackState),
+          : mergeRemoteAppStateWithLocalState(remoteState, fallbackState)),
       lastSyncedAt: data.updated_at,
       remoteSignature,
       keptLocalChanges: hasPendingLocalChanges,

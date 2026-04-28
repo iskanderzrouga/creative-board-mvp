@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  PENDING_STATE_PATCH_KEY,
   PENDING_STATE_KEY,
   createEmptyPortfolio,
   createSeedState,
   loadAppState,
+  loadPendingAppStatePatch,
   loadSyncMetadata,
   persistAppState,
   persistSyncMetadata,
@@ -192,6 +194,7 @@ describe('remote app state sync', () => {
     }
 
     persistAppState(pendingState)
+    expect(window.localStorage.getItem(PENDING_STATE_PATCH_KEY)).toBeTruthy()
     expect(loadAppState().settings.general.appName).toBe(seed.settings.general.appName)
 
     persistSyncMetadata({
@@ -209,6 +212,7 @@ describe('remote app state sync', () => {
     })
 
     expect(window.localStorage.getItem(PENDING_STATE_KEY)).toBeNull()
+    expect(window.localStorage.getItem(PENDING_STATE_PATCH_KEY)).toBeNull()
     expect(loadAppState().settings.general.appName).toBe(seed.settings.general.appName)
   })
 
@@ -256,7 +260,10 @@ describe('remote app state sync', () => {
     expect(syncedPortfolio?.webhookUrl).toBe('https://example.com/brandlab-thai')
   })
 
-  it('rehydrates pending portfolio edits after a partial remote save moved the timestamp', async () => {
+  it.each([
+    { storageMode: 'full pending state' },
+    { storageMode: 'small pending patch' },
+  ])('rehydrates pending portfolio edits from $storageMode after a partial remote save moved the timestamp', async ({ storageMode }) => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
     const shellPortfolio = createEmptyPortfolio('Untitled portfolio', seed.portfolios.length)
@@ -311,13 +318,19 @@ describe('remote app state sync', () => {
 
     await saveRemoteAppState(shellState, firstLoad.lastSyncedAt)
     persistAppState(pendingState)
+    if (storageMode === 'small pending patch') {
+      window.localStorage.removeItem(PENDING_STATE_KEY)
+    }
     persistSyncMetadata({
       lastSyncedAt: firstLoad.lastSyncedAt,
       pendingRemoteBaseUpdatedAt: firstLoad.lastSyncedAt,
       pendingRemoteSignature: getRemoteStateSignature(pendingState),
     })
 
-    const rehydrated = await loadOrCreateRemoteAppState(loadAppState(), loadSyncMetadata())
+    const rehydrated = await loadOrCreateRemoteAppState(loadAppState(), {
+      ...loadSyncMetadata(),
+      pendingStatePatch: loadPendingAppStatePatch(),
+    })
     const rehydratedPortfolio = rehydrated.state.portfolios.find(
       (portfolio) => portfolio.id === shellPortfolio.id,
     )

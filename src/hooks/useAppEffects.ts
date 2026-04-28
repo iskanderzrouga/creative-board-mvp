@@ -11,6 +11,7 @@ import {
   archiveEligibleCards,
   coerceAppState,
   getQuickCreateDefaults,
+  loadPendingAppStatePatch,
   loadSyncMetadata,
   persistAppState,
   persistSyncMetadata,
@@ -285,6 +286,7 @@ export function useAppEffects({
     void loadOrCreateRemoteAppState(localFallbackStateRef.current, {
       pendingRemoteBaseUpdatedAt: syncMetadata.pendingRemoteBaseUpdatedAt,
       pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
+      pendingStatePatch: loadPendingAppStatePatch(),
     })
       .then((result) => {
         if (cancelled) {
@@ -495,6 +497,7 @@ export function useAppEffects({
       void loadOrCreateRemoteAppState(localFallbackStateRef.current, {
         pendingRemoteBaseUpdatedAt: syncMetadata.pendingRemoteBaseUpdatedAt,
         pendingRemoteSignature: syncMetadata.pendingRemoteSignature,
+        pendingStatePatch: loadPendingAppStatePatch(),
       })
         .then((result) => {
           lastFetchTimestampRef.current = Date.now()
