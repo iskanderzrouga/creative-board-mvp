@@ -83,7 +83,7 @@ export function getVisiblePortfolioIds(
   portfolios: Portfolio[],
   access: AccessRecordLike | null,
 ) {
-  if (!access || access.roleMode === 'owner') {
+  if (!access) {
     return portfolios.map((portfolio) => portfolio.id)
   }
 
@@ -115,7 +115,7 @@ export function getVisibleBrandNamesForPortfolio(
 ) {
   const allBrandNames = portfolio.brands.map((brand) => brand.name)
 
-  if (!access || access.roleMode === 'owner') {
+  if (!access) {
     return allBrandNames
   }
 
@@ -205,10 +205,6 @@ export function getScopeLabel(
   access: AccessRecordLike,
   portfolios: Portfolio[],
 ) {
-  if (access.roleMode === 'owner') {
-    return 'All portfolios'
-  }
-
   if (access.roleMode === 'contributor') {
     return 'Assigned cards only'
   }
@@ -256,7 +252,12 @@ export function getEffectiveAccessSummary(
 ) {
   switch (access.roleMode) {
     case 'owner':
-      return 'Can see and manage everything across all portfolios.'
+      {
+        const scopeLabel = getScopeLabel(access, portfolios)
+        return scopeLabel === 'All portfolios'
+          ? 'Can see and manage everything across all portfolios.'
+          : `Can see and manage ${scopeLabel}.`
+      }
     case 'contributor':
       return access.editorName
         ? `Can work only on cards assigned to ${access.editorName}.`

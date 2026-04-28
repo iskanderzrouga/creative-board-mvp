@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   getAccessLevelLabel,
   getEffectiveAccessSummary,
+  getVisiblePortfolioIds,
   getScopeLabel,
   normalizeScopeAssignments,
 } from '../accessHelpers'
@@ -29,6 +30,7 @@ interface PeopleSectionProps {
   accessPendingEmail: string | null
   authEnabled: boolean
   headerUtilityContent?: ReactNode
+  selectedPortfolioId?: string
   onAccessSave: (entry: {
     email: string
     roleMode: RoleMode
@@ -299,7 +301,7 @@ function getNormalizedScopeState(
   draft: PersonDraft,
   portfolios: Portfolio[],
 ): { scopeMode: AccessScopeMode; scopeAssignments: PortfolioAccessScope[] } {
-  if (draft.accessLevel === 'owner' || draft.accessLevel === 'contributor') {
+  if (draft.accessLevel === 'contributor') {
     return { scopeMode: 'all-portfolios', scopeAssignments: [] }
   }
 
@@ -346,7 +348,11 @@ function ScopeTreeField({
   portfolios: Portfolio[]
   onChange: (d: PersonDraft) => void
 }) {
-  if (draft.accessLevel !== 'manager' && draft.accessLevel !== 'viewer') return null
+  if (
+    draft.accessLevel !== 'owner' &&
+    draft.accessLevel !== 'manager' &&
+    draft.accessLevel !== 'viewer'
+  ) return null
 
   const allChecked = draft.scopeMode === 'all-portfolios'
   const assignments = allChecked
@@ -485,7 +491,11 @@ function getValidationMessage(
       return 'Contributors need a board team member.'
     }
 
-    if (draft.accessLevel === 'manager' || draft.accessLevel === 'viewer') {
+    if (
+      draft.accessLevel === 'owner' ||
+      draft.accessLevel === 'manager' ||
+      draft.accessLevel === 'viewer'
+    ) {
       const scope = getNormalizedScopeState(draft, portfolios)
       if (scope.scopeMode !== 'all-portfolios' && scope.scopeAssignments.length === 0) {
         return 'Choose at least one portfolio or brand.'
@@ -687,11 +697,11 @@ function PersonDrawer({
                       accessLevel: nextLevel,
                       hasTeamProfile: nextLevel === 'contributor' ? true : draft.hasTeamProfile,
                       scopeMode:
-                        nextLevel === 'owner' || nextLevel === 'contributor'
+                        nextLevel === 'contributor'
                           ? 'all-portfolios'
                           : draft.scopeMode,
                       scopeAssignments:
-                        nextLevel === 'owner' || nextLevel === 'contributor'
+                        nextLevel === 'contributor'
                           ? []
                           : draft.scopeAssignments,
                     })
@@ -1005,12 +1015,16 @@ export function PeopleSection({
   accessPendingEmail,
   authEnabled,
   headerUtilityContent,
+  selectedPortfolioId,
   onAccessSave,
   onAccessDelete,
   onPortfolioUpdate,
   showToast,
 }: PeopleSectionProps) {
   const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [activePortfolioId, setActivePortfolioId] = useState(
+    () => selectedPortfolioId || portfolios[0]?.id || '',
+  )
   const [newDraft, setNewDraft] = useState<PersonDraft>(() =>
     createEmptyDraft(portfolios),
   )
@@ -1020,7 +1034,20 @@ export function PeopleSection({
   const [revokeConfirming, setRevokeConfirming] = useState(false)
 
   const isCreate = activeKey === '__new__'
-  const personRows = buildPersonRows(portfolios, accessEntries)
+  const personRows = useMemo(
+    () => buildPersonRows(portfolios, accessEntries),
+    [accessEntries, portfolios],
+  )
+  const activePortfolio = activePortfolioId === '__access__'
+    ? null
+    : portfolios.find((portfolio) => portfolio.id === activePortfolioId) ?? portfolios[0] ?? null
+  const portfolioRows = personRows.filter((row) => row.portfolioId === activePortfolio?.id)
+  const accessOnlyRows = personRows.filter((row) => row.portfolioId === null)
+  const visibleAccessEntries = activePortfolio
+    ? accessEntries.filter((entry) =>
+        getVisiblePortfolioIds([activePortfolio], entry).includes(activePortfolio.id),
+      )
+    : []
   const activeRow = !isCreate
     ? personRows.find((r) => r.key === activeKey) ?? null
     : null
@@ -1031,7 +1058,25 @@ export function PeopleSection({
       ? drafts[activeRow.key] ?? draftFromPersonRow(activeRow)
       : null
 
+  useEffect(() => {
+    if (selectedPortfolioId && portfolios.some((portfolio) => portfolio.id === selectedPortfolioId)) {
+      setActivePortfolioId(selectedPortfolioId)
+    }
+  }, [portfolios, selectedPortfolioId])
+
+  useEffect(() => {
+    if (!portfolios.some((portfolio) => portfolio.id === activePortfolioId)) {
+      setActivePortfolioId(portfolios[0]?.id ?? '')
+    }
+  }, [activePortfolioId, portfolios])
+
   function openDrawer(key: string) {
+    if (key === '__new__') {
+      setNewDraft((current) => ({
+        ...current,
+        portfolioId: activePortfolio?.id ?? portfolios[0]?.id ?? '',
+      }))
+    }
     setActiveKey(key)
     setSaveAttempted(false)
     setDrawerError(null)
@@ -1264,7 +1309,7 @@ export function PeopleSection({
         <div className="settings-section-header">
           <h2>People</h2>
           <p className="muted-copy">
-            Everyone who works on or can sign in to this workspace.
+            Manage board teammates by portfolio and keep login visibility explicit.
           </p>
         </div>
         <div className="settings-page-toolbar-actions">
@@ -1286,50 +1331,164 @@ export function PeopleSection({
         <p className="auth-error">{accessErrorMessage}</p>
       ) : null}
 
-      <div className="people-table">
-        <div className="people-table-head">
-          <span>Name</span>
-          <span>Email</span>
-          <span>Board role</span>
-          <span>Access level</span>
-          <span>Visibility</span>
-          <span />
-        </div>
-
-        {personRows.length === 0 ? (
-          <div className="workspace-access-empty">
-            <strong>No people yet.</strong>
-            <p>Add someone to get started.</p>
-          </div>
-        ) : null}
-
-        {personRows.map((row) => (
-          <div
-            key={row.key}
-            className={`people-table-row ${activeKey === row.key ? 'is-active' : ''} ${!row.isActive ? 'is-inactive' : ''}`}
-          >
-            <span className="people-table-primary">{row.displayName}</span>
-            <span className="people-table-email">{row.email ?? '—'}</span>
-            <span>{row.boardRole}</span>
-            <span>
-              {row.accessLevel ? getAccessLevelLabel(row.accessLevel) : '—'}
-            </span>
-            <span className="people-table-muted">
-              {row.accessEntry
-                ? getScopeLabel(row.accessEntry, portfolios)
-                : '—'}
-            </span>
-            <span className="people-row-actions-cell">
+      <div className="people-layout">
+        <aside className="people-portfolio-nav" aria-label="People by portfolio">
+          {portfolios.map((portfolio) => {
+            const teamCount = portfolio.team.length
+            const visibleCount = accessEntries.filter((entry) =>
+              getVisiblePortfolioIds([portfolio], entry).includes(portfolio.id),
+            ).length
+            return (
               <button
+                key={portfolio.id}
                 type="button"
-                className="ghost-button workspace-access-edit-button"
-                onClick={() => openDrawer(row.key)}
+                className={`people-portfolio-nav-item${
+                  activePortfolio?.id === portfolio.id ? ' is-active' : ''
+                }`}
+                onClick={() => setActivePortfolioId(portfolio.id)}
               >
-                Edit
+                <span className="people-portfolio-nav-name">{portfolio.name}</span>
+                <span>{teamCount} team · {visibleCount} can see</span>
               </button>
-            </span>
-          </div>
-        ))}
+            )
+          })}
+          {accessOnlyRows.length > 0 ? (
+            <button
+              type="button"
+              className={`people-portfolio-nav-item${activePortfolioId === '__access__' ? ' is-active' : ''}`}
+              onClick={() => setActivePortfolioId('__access__')}
+            >
+              <span className="people-portfolio-nav-name">Login access</span>
+              <span>{accessOnlyRows.length} without board lane</span>
+            </button>
+          ) : null}
+        </aside>
+
+        <section className="people-portfolio-panel">
+          {activePortfolio ? (
+            <>
+              <div className="people-portfolio-head">
+                <div>
+                  <h3>{activePortfolio.name}</h3>
+                  <p className="muted-copy">
+                    {portfolioRows.length} team members · {visibleAccessEntries.length} login accounts can see this portfolio
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => openDrawer('__new__')}
+                >
+                  Add to portfolio
+                </button>
+              </div>
+
+              <div className="people-access-strip">
+                {visibleAccessEntries.length > 0 ? (
+                  visibleAccessEntries.map((entry) => (
+                    <button
+                      key={entry.email}
+                      type="button"
+                      className="people-access-chip"
+                      onClick={() => {
+                        const row = personRows.find(
+                          (item) => item.accessEntry?.email === entry.email,
+                        )
+                        if (row) openDrawer(row.key)
+                      }}
+                    >
+                      <strong>{entry.editorName ?? entry.email.split('@')[0]}</strong>
+                      <span>{getAccessLevelLabel(entry.roleMode)}</span>
+                    </button>
+                  ))
+                ) : (
+                  <span className="people-empty-inline">No login access scoped here.</span>
+                )}
+              </div>
+
+              <div className="people-table">
+                <div className="people-table-head">
+                  <span>Name</span>
+                  <span>Email</span>
+                  <span>Board role</span>
+                  <span>Access level</span>
+                  <span>Visibility</span>
+                  <span />
+                </div>
+
+                {portfolioRows.length === 0 ? (
+                  <div className="workspace-access-empty">
+                    <strong>No team members in this portfolio.</strong>
+                    <p>Add the first person when this portfolio is ready for work.</p>
+                  </div>
+                ) : null}
+
+                {portfolioRows.map((row) => (
+                  <div
+                    key={row.key}
+                    className={`people-table-row ${activeKey === row.key ? 'is-active' : ''} ${!row.isActive ? 'is-inactive' : ''}`}
+                  >
+                    <span className="people-table-primary">{row.displayName}</span>
+                    <span className="people-table-email">{row.email ?? '—'}</span>
+                    <span>{row.boardRole}</span>
+                    <span>
+                      {row.accessLevel ? getAccessLevelLabel(row.accessLevel) : '—'}
+                    </span>
+                    <span className="people-table-muted">
+                      {row.accessEntry
+                        ? getScopeLabel(row.accessEntry, portfolios)
+                        : 'Board only'}
+                    </span>
+                    <span className="people-row-actions-cell">
+                      <button
+                        type="button"
+                        className="ghost-button workspace-access-edit-button"
+                        onClick={() => openDrawer(row.key)}
+                      >
+                        Edit
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="people-table">
+              <div className="people-table-head">
+                <span>Name</span>
+                <span>Email</span>
+                <span>Board role</span>
+                <span>Access level</span>
+                <span>Visibility</span>
+                <span />
+              </div>
+
+              {accessOnlyRows.map((row) => (
+                <div
+                  key={row.key}
+                  className={`people-table-row ${activeKey === row.key ? 'is-active' : ''}`}
+                >
+                  <span className="people-table-primary">{row.displayName}</span>
+                  <span className="people-table-email">{row.email ?? '—'}</span>
+                  <span>{row.boardRole}</span>
+                  <span>{row.accessLevel ? getAccessLevelLabel(row.accessLevel) : '—'}</span>
+                  <span className="people-table-muted">
+                    {row.accessEntry ? getScopeLabel(row.accessEntry, portfolios) : '—'}
+                  </span>
+                  <span className="people-row-actions-cell">
+                    <button
+                      type="button"
+                      className="ghost-button workspace-access-edit-button"
+                      onClick={() => openDrawer(row.key)}
+                    >
+                      Edit
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       <PersonDrawer

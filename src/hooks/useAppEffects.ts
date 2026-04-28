@@ -350,6 +350,13 @@ export function useAppEffects({
     const currentRemoteStateSignature = getRemoteStateSignature(state)
 
     if (lastRemoteStateSignatureRef.current === currentRemoteStateSignature) {
+      mainDirtyRef.current = false
+      setSyncStatus(lastSyncedAtRef.current ? 'synced' : 'local')
+      persistSyncMetadata({
+        lastSyncedAt: lastSyncedAtRef.current,
+        pendingRemoteBaseUpdatedAt: null,
+        pendingRemoteSignature: null,
+      })
       return
     }
 

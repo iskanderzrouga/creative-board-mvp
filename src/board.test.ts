@@ -30,6 +30,7 @@ import {
   startEditorTimerForCard,
   type ViewerContext,
 } from './board'
+import { getVisiblePortfolioIds } from './accessHelpers'
 
 const MANAGER_VIEWER: ViewerContext = {
   mode: 'manager',
@@ -103,6 +104,21 @@ describe('board integrity helpers', () => {
     expect(reducedState.portfolios).toHaveLength(1)
     expect(reducedState.activePortfolioId).toBe(state.portfolios[0]?.id)
     expect(reducedState.settings.general.defaultPortfolioId).toBe(state.portfolios[0]?.id)
+  })
+
+  it('respects selected portfolio visibility for owner access records', () => {
+    const state = createSeedState()
+    const secondPortfolio = createEmptyPortfolio('BrandLab Thai', state.portfolios.length)
+    const portfolios = [...state.portfolios, secondPortfolio]
+
+    expect(
+      getVisiblePortfolioIds(portfolios, {
+        roleMode: 'owner',
+        editorName: null,
+        scopeMode: 'selected-portfolios',
+        scopeAssignments: [{ portfolioId: state.portfolios[0]!.id, brandNames: [] }],
+      }),
+    ).toEqual([state.portfolios[0]!.id])
   })
 
   it('creates a fresh-start state that keeps brands and products but clears cards and team members', () => {

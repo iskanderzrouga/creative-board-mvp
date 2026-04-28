@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createSeedState } from './board'
+import { createEmptyPortfolio, createSeedState } from './board'
 import {
   E2E_REMOTE_STATE_KEY,
 } from './supabase'
@@ -10,6 +10,7 @@ import {
   loadOrCreateRemoteAppState,
   RemoteStateConflictError,
   saveRemoteAppState,
+  saveRemoteAppStateWithRetryMerge,
 } from './remoteAppState'
 
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
@@ -166,6 +167,50 @@ describe('remote app state sync', () => {
 
     expect(updatedAt).toBeTruthy()
     expect(synced.state.portfolios[0]?.team.some((member) => member.name === 'Naomi')).toBe(false)
+  })
+
+  it('keeps local portfolio edits when a stale in-flight shell save wins the race first', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const shellPortfolio = createEmptyPortfolio('Untitled portfolio', seed.portfolios.length)
+    const shellState = {
+      ...seed,
+      portfolios: [...seed.portfolios, shellPortfolio],
+    }
+    const renamedState = {
+      ...shellState,
+      portfolios: shellState.portfolios.map((portfolio) =>
+        portfolio.id === shellPortfolio.id
+          ? {
+              ...portfolio,
+              name: 'BrandLab Thai',
+              webhookUrl: 'https://example.com/brandlab-thai',
+            }
+          : portfolio,
+      ),
+    }
+
+    await saveRemoteAppState(shellState, firstLoad.lastSyncedAt)
+    const storedShell = JSON.parse(window.localStorage.getItem(E2E_REMOTE_STATE_KEY) ?? '{}') as {
+      state: unknown
+    }
+    window.localStorage.setItem(
+      E2E_REMOTE_STATE_KEY,
+      JSON.stringify({
+        state: storedShell.state,
+        updatedAt: '2099-01-01T00:00:00.000Z',
+      }),
+    )
+
+    const result = await saveRemoteAppStateWithRetryMerge(renamedState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedPortfolio = synced.state.portfolios.find(
+      (portfolio) => portfolio.id === shellPortfolio.id,
+    )
+
+    expect(result.merged).toBe(true)
+    expect(syncedPortfolio?.name).toBe('BrandLab Thai')
+    expect(syncedPortfolio?.webhookUrl).toBe('https://example.com/brandlab-thai')
   })
 
   it('omits client-owned timestamps and local view state from real workspace_state write payloads', () => {

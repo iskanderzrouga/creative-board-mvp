@@ -204,8 +204,12 @@ function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfol
     }
 
     return {
-      ...remotePortfolio,
+      ...localPortfolio,
       cards: mergeCreativeCards(remotePortfolio.cards, localPortfolio.cards),
+      lastIdPerPrefix: {
+        ...remotePortfolio.lastIdPerPrefix,
+        ...localPortfolio.lastIdPerPrefix,
+      },
     }
   })
 

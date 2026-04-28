@@ -5736,6 +5736,106 @@ button {
 
 /* ── Unified people table ─────────────────────────── */
 
+.people-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.28fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.people-portfolio-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.people-portfolio-nav-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.people-portfolio-nav-item:hover,
+.people-portfolio-nav-item.is-active {
+  border-color: var(--ink);
+  background: var(--surface-tint);
+}
+
+.people-portfolio-nav-name {
+  font-weight: 700;
+}
+
+.people-portfolio-nav-item span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.people-portfolio-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.people-portfolio-head {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  background: var(--surface);
+}
+
+.people-portfolio-head h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.people-access-strip {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--surface-subtle);
+}
+
+.people-access-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.people-access-chip:hover {
+  border-color: var(--ink);
+}
+
+.people-access-chip span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.people-empty-inline {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 5px 2px;
+}
+
 .people-table {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -7005,6 +7105,20 @@ button {
   .analytics-team-grid,
   .brand-health-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .people-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .people-portfolio-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .people-portfolio-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .organization-grid {

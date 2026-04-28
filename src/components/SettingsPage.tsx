@@ -1029,7 +1029,7 @@ export function SettingsPage({
                         className="ghost-button compact-button"
                         onClick={() => onTabChange('people')}
                       >
-                        Open people
+                        Manage team
                       </button>
                     </div>
 
@@ -1308,6 +1308,7 @@ export function SettingsPage({
           <div className="settings-stack">
             <PeopleSection
               portfolios={state.portfolios}
+              selectedPortfolioId={selectedPortfolioId}
               accessEntries={workspaceAccessEntries}
               accessStatus={workspaceAccessStatus}
               accessErrorMessage={workspaceAccessErrorMessage}

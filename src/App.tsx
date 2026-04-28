@@ -496,7 +496,8 @@ function App() {
         routePage === 'scripts' ||
         routePage === 'strategy' ||
         routePage === 'finance' ||
-        routePage === 'pulse'
+        routePage === 'pulse' ||
+        routePage === 'settings'
       ? routePage
       : productionPage
   const isLaunchOpsActive =

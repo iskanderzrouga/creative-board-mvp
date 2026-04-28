@@ -2995,7 +2995,7 @@ export function createEmptyPortfolio(name: string, existingCount: number): Portf
     id: `portfolio-${slugify(name || `portfolio-${existingCount + 1}`)}-${Date.now()}`,
     name: name || `Portfolio ${existingCount + 1}`,
     brands: [],
-    team: [createDefaultTeamMember('naomi', 'Naomi', 'Manager', null, null, null)],
+    team: [],
     cards: [],
     webhookUrl: '',
     lastIdPerPrefix: {},
