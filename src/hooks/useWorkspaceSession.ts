@@ -15,7 +15,6 @@ import {
   isPasswordRecoveryFlowPending,
   listWorkspaceAccessEntries,
   onAuthStateChange,
-  REMOTE_WORKSPACE_ID,
   sendPasswordSetupEmail,
   signInWithMagicLink,
   signInWithPassword,
@@ -37,7 +36,7 @@ import {
 
 const EMAIL_RATE_LIMIT_COOLDOWN_MS = 60_000
 const ACCESS_REFETCH_COOLDOWN_MS = 30_000
-const ACCESS_CACHE_KEY = `eb_workspace_access_cache:${REMOTE_WORKSPACE_ID}`
+const ACCESS_CACHE_KEY = 'eb_workspace_access_cache'
 
 type ToastTone = 'green' | 'amber' | 'red' | 'blue'
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'

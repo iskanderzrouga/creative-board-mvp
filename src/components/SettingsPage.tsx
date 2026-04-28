@@ -173,34 +173,11 @@ export function SettingsPage({
   onWorkspaceAccessDelete,
   showToast,
 }: SettingsPageProps) {
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState(
-    () => state.activePortfolioId || state.portfolios[0]?.id || '',
-  )
+  const [collapsedPortfolioIds, setCollapsedPortfolioIds] = useState<string[]>([])
   const [colorPickerOpenKey, setColorPickerOpenKey] = useState<string | null>(null)
   const [pendingSettingsDelete, setPendingSettingsDelete] = useState<PendingSettingsDelete | null>(
     null,
   )
-  const selectedPortfolio =
-    state.portfolios.find((portfolio) => portfolio.id === selectedPortfolioId) ??
-    state.portfolios[0] ??
-    null
-  const totalBrandCount = state.portfolios.reduce(
-    (sum, portfolio) => sum + portfolio.brands.length,
-    0,
-  )
-  const totalMemberCount = state.portfolios.reduce(
-    (sum, portfolio) => sum + portfolio.team.length,
-    0,
-  )
-  const totalActiveCardCount = state.portfolios.reduce(
-    (sum, portfolio) => sum + portfolio.cards.filter((card) => !card.archivedAt).length,
-    0,
-  )
-
-  function selectPortfolio(portfolioId: string) {
-    setSelectedPortfolioId(portfolioId)
-    onSettingsPortfolioChange(portfolioId)
-  }
 
   function updatePortfolio(portfolioId: string, updater: (portfolio: Portfolio) => Portfolio) {
     onStateChange((current) => ({
@@ -863,11 +840,11 @@ export function SettingsPage({
         ) : null}
 
         {settingsTab === 'portfolios' ? (
-          <div className="settings-stack organization-settings">
-            <div className="settings-block organization-shell">
+          <div className="settings-stack">
+            <div className="settings-block">
               <SettingsToolbar
-                title="Organization"
-                description="Portfolios, brands, team lanes, and workspace integrations."
+                title="Portfolios"
+                description="Portfolio, brand, product, and Drive structure."
                 actions={
                   <>
                     {headerUtilityContent}
@@ -883,7 +860,6 @@ export function SettingsPage({
                           ...current,
                           portfolios: [...current.portfolios, nextPortfolio],
                         }))
-                        setSelectedPortfolioId(nextPortfolio.id)
                         onSettingsPortfolioChange(nextPortfolio.id)
                       }}
                     >
@@ -893,225 +869,93 @@ export function SettingsPage({
                 }
               />
 
-              <div className="organization-summary-row">
-                <span>
-                  <strong>{state.portfolios.length}</strong>
-                  portfolios
-                </span>
-                <span>
-                  <strong>{totalBrandCount}</strong>
-                  brands
-                </span>
-                <span>
-                  <strong>{totalMemberCount}</strong>
-                  members
-                </span>
-                <span>
-                  <strong>{totalActiveCardCount}</strong>
-                  active cards
-                </span>
-              </div>
-
-              <div className="organization-grid">
-                <aside className="organization-index" aria-label="Portfolios">
-                  <div className="organization-index-header">
-                    <span>Portfolios</span>
-                    <span>{state.portfolios.length}</span>
-                  </div>
-                  <div className="organization-index-list">
-                    {state.portfolios.map((portfolio) => {
-                      const activeCards = portfolio.cards.filter((card) => !card.archivedAt).length
-                      return (
+              <div className="settings-stack">
+                {state.portfolios.map((portfolio) => {
+                  const isCollapsed = collapsedPortfolioIds.includes(portfolio.id)
+                  return (
+                    <div key={portfolio.id} className="portfolio-settings-card">
+                      <div className="portfolio-settings-head">
                         <button
-                          key={portfolio.id}
                           type="button"
-                          className={`organization-index-item${
-                            selectedPortfolio?.id === portfolio.id ? ' is-active' : ''
-                          }`}
-                          onClick={() => selectPortfolio(portfolio.id)}
+                          className="portfolio-collapse-toggle"
+                          aria-label={isCollapsed ? 'Expand portfolio' : 'Collapse portfolio'}
+                          onClick={() =>
+                            setCollapsedPortfolioIds((current) =>
+                              current.includes(portfolio.id)
+                                ? current.filter((item) => item !== portfolio.id)
+                                : [...current, portfolio.id],
+                            )
+                          }
                         >
-                          <span className="organization-index-name">{portfolio.name}</span>
-                          <span className="organization-index-meta">
-                            {portfolio.brands.length} brands · {portfolio.team.length} members
-                          </span>
-                          <span className="organization-index-foot">
-                            <span>{activeCards} active cards</span>
-                            <span>{portfolio.webhookUrl.trim() ? 'Drive connected' : 'No webhook'}</span>
-                          </span>
+                          {isCollapsed ? '▸' : '▾'}
                         </button>
-                      )
-                    })}
-                  </div>
-                </aside>
-
-                {selectedPortfolio ? (
-                  <section className="portfolio-settings-card organization-detail">
-                    <div className="portfolio-settings-head organization-detail-head">
-                      <div className="organization-title-cluster">
-                        <span className="organization-eyebrow">Selected portfolio</span>
                         <input
-                          className="portfolio-title-input organization-title-input"
-                          value={selectedPortfolio.name}
-                          aria-label={`${selectedPortfolio.name} portfolio name`}
+                          className="portfolio-title-input"
+                          value={portfolio.name}
+                          aria-label={`${portfolio.name} portfolio name`}
                           onChange={(event) =>
-                            updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
+                            updatePortfolio(portfolio.id, (currentPortfolio) => ({
                               ...currentPortfolio,
                               name: event.target.value,
                             }))
                           }
                         />
-                      </div>
-                      <button
-                        type="button"
-                        className="clear-link danger-link"
-                        onClick={() => {
-                          if (state.portfolios.length === 1) {
-                            showToast('At least one portfolio is required.', 'red')
-                            return
-                          }
-                          setPendingSettingsDelete({
-                            kind: 'portfolio',
-                            portfolioId: selectedPortfolio.id,
-                          })
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-
-                    <div className="organization-metric-grid">
-                      <span>
-                        <strong>{selectedPortfolio.brands.length}</strong>
-                        Brands
-                      </span>
-                      <span>
-                        <strong>
-                          {selectedPortfolio.brands.reduce(
-                            (sum, brand) => sum + brand.products.length,
-                            0,
-                          )}
-                        </strong>
-                        Products
-                      </span>
-                      <span>
-                        <strong>{selectedPortfolio.team.length}</strong>
-                        Members
-                      </span>
-                      <span>
-                        <strong>
-                          {selectedPortfolio.cards.filter((card) => !card.archivedAt).length}
-                        </strong>
-                        Active cards
-                      </span>
-                    </div>
-
-                    <div className="organization-team-strip">
-                      <div className="organization-team-copy">
-                        <span className="nested-settings-title">Team lanes</span>
-                        <div className="organization-member-chips">
-                          {selectedPortfolio.team.length > 0 ? (
-                            selectedPortfolio.team.slice(0, 8).map((member) => (
-                              <span
-                                key={member.id}
-                                className={`organization-member-chip${member.active ? '' : ' is-muted'}`}
-                              >
-                                {member.name}
-                                <small>{member.role}</small>
-                              </span>
-                            ))
-                          ) : (
-                            <span className="organization-empty-inline">No team members yet</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="ghost-button compact-button"
-                        onClick={() => onTabChange('people')}
-                      >
-                        Open people
-                      </button>
-                    </div>
-
-                    <div className="nested-settings-block organization-brand-block">
-                      <div className="organization-section-bar">
-                        <div>
-                          <div className="nested-settings-title">Brands</div>
-                          <p className="muted-copy">
-                            Prefixes, product tags, source folders, and paid-social destinations.
-                          </p>
-                        </div>
                         <button
                           type="button"
-                          className="ghost-button compact-button"
+                          className="clear-link danger-link"
                           onClick={() => {
-                            const nextPrefix = getSuggestedPrefix()
-                            const nextPalette =
-                              BRAND_PALETTES[selectedPortfolio.brands.length % BRAND_PALETTES.length]
-                            updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
-                              ...currentPortfolio,
-                              brands: [
-                                ...currentPortfolio.brands,
-                                {
-                                  name: 'Untitled brand',
-                                  prefix: nextPrefix,
-                                  products: [],
-                                  driveParentFolderId: '',
-                                  facebookPage: '',
-                                  defaultLandingPage: '',
-                                  color: nextPalette.color,
-                                  surfaceColor: nextPalette.surfaceColor,
-                                  textColor: nextPalette.textColor,
-                                },
-                              ],
-                              lastIdPerPrefix: {
-                                ...currentPortfolio.lastIdPerPrefix,
-                                [nextPrefix]: currentPortfolio.lastIdPerPrefix[nextPrefix] ?? 0,
-                              },
-                            }))
+                            if (state.portfolios.length === 1) {
+                              showToast('At least one portfolio is required.', 'red')
+                              return
+                            }
+                            setPendingSettingsDelete({
+                              kind: 'portfolio',
+                              portfolioId: portfolio.id,
+                            })
                           }}
                         >
-                          Add brand
+                          Delete
                         </button>
                       </div>
 
-                      <div className="settings-table full-table organization-brand-table">
-                        <div className="settings-row settings-head brand-head">
-                          <span />
-                          <span>Name</span>
-                          <span>Prefix</span>
-                          <span>Products</span>
-                          <span>Drive folder</span>
-                          <span>Facebook Page</span>
-                          <span>Default Landing Page</span>
-                          <span />
-                        </div>
-                        {selectedPortfolio.brands.length === 0 ? (
-                          <div className="organization-empty-state">No brands in this portfolio.</div>
-                        ) : null}
-                        {selectedPortfolio.brands.map((brand, brandIndex) => {
-                          const pickerKey = `${selectedPortfolio.id}-${brandIndex}`
-                          const isPickerOpen = colorPickerOpenKey === pickerKey
-                          return (
-                            <Fragment key={`${selectedPortfolio.id}-${brand.prefix}-${brandIndex}`}>
-                              <div className="settings-row brand-row">
-                                <div className="brand-color-cell">
-                                  <button
-                                    type="button"
-                                    className="brand-color-swatch"
-                                    style={{ background: brand.color }}
-                                    aria-label={`Pick color for ${brand.name || 'brand'}`}
-                                    onClick={() =>
-                                      setColorPickerOpenKey(isPickerOpen ? null : pickerKey)
-                                    }
-                                  />
-                                </div>
+                      {!isCollapsed ? (
+                        <>
+                          <div className="nested-settings-block">
+                            <div className="nested-settings-title">Brands</div>
+                            <div className="settings-table full-table">
+                              <div className="settings-row settings-head brand-head">
+                                <span />
+                                <span>Name</span>
+                                <span>Prefix</span>
+                                <span>Products</span>
+                                <span>Drive folder</span>
+                                <span>Facebook Page</span>
+                                <span>Default Landing Page</span>
+                                <span />
+                              </div>
+                              {portfolio.brands.map((brand, brandIndex) => {
+                                const pickerKey = `${portfolio.id}-${brandIndex}`
+                                const isPickerOpen = colorPickerOpenKey === pickerKey
+                                return (
+                                  <Fragment key={`${portfolio.id}-${brand.prefix}-${brandIndex}`}>
+                                    <div className="settings-row brand-row">
+                                      <div className="brand-color-cell">
+                                        <button
+                                          type="button"
+                                          className="brand-color-swatch"
+                                          style={{ background: brand.color }}
+                                          aria-label={`Pick color for ${brand.name || 'brand'}`}
+                                          onClick={() =>
+                                            setColorPickerOpenKey(isPickerOpen ? null : pickerKey)
+                                          }
+                                        />
+                                      </div>
                                       <input
-                                        aria-label={`${selectedPortfolio.name} brand name`}
+                                        aria-label={`${portfolio.name} brand name`}
                                         value={brand.name}
                                         placeholder="Brand name"
                                         onChange={(event) =>
-                                          updatePortfolio(selectedPortfolio.id, (currentPortfolio) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) =>
                                             renameBrandInPortfolio(
                                               currentPortfolio,
                                               brandIndex,
@@ -1131,14 +975,14 @@ export function SettingsPage({
                                           if (
                                             nextPrefix &&
                                             getAllBrandPrefixes({
-                                              portfolioId: selectedPortfolio.id,
+                                              portfolioId: portfolio.id,
                                               brandIndex,
                                             }).includes(nextPrefix)
                                           ) {
                                             showToast('That prefix is already in use.', 'red')
                                             return
                                           }
-                                          updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
                                             ...currentPortfolio,
                                             brands: currentPortfolio.brands.map((item, index) =>
                                               index === brandIndex
@@ -1152,7 +996,7 @@ export function SettingsPage({
                                         products={brand.products}
                                         brandName={brand.name}
                                         onChange={(nextProducts) =>
-                                          updatePortfolio(selectedPortfolio.id, (currentPortfolio) =>
+                                          updatePortfolio(portfolio.id, (currentPortfolio) =>
                                             syncPortfolioCardProducts({
                                               ...currentPortfolio,
                                               brands: currentPortfolio.brands.map((item, index) =>
@@ -1169,7 +1013,7 @@ export function SettingsPage({
                                         value={brand.driveParentFolderId}
                                         placeholder="Folder ID"
                                         onChange={(event) =>
-                                          updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
                                             ...currentPortfolio,
                                             brands: currentPortfolio.brands.map((item, index) =>
                                               index === brandIndex
@@ -1187,7 +1031,7 @@ export function SettingsPage({
                                         value={brand.facebookPage ?? ''}
                                         placeholder="Facebook page"
                                         onChange={(event) =>
-                                          updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
                                             ...currentPortfolio,
                                             brands: currentPortfolio.brands.map((item, index) =>
                                               index === brandIndex
@@ -1205,7 +1049,7 @@ export function SettingsPage({
                                         value={brand.defaultLandingPage ?? ''}
                                         placeholder="https://example.com"
                                         onChange={(event) =>
-                                          updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
+                                          updatePortfolio(portfolio.id, (currentPortfolio) => ({
                                             ...currentPortfolio,
                                             brands: currentPortfolio.brands.map((item, index) =>
                                               index === brandIndex
@@ -1223,7 +1067,7 @@ export function SettingsPage({
                                         className="clear-link danger-link"
                                         onClick={() => {
                                           const blocker = getBrandRemovalBlocker(
-                                            selectedPortfolio,
+                                            portfolio,
                                             brandIndex,
                                           )
                                           if (blocker) {
@@ -1232,73 +1076,107 @@ export function SettingsPage({
                                           }
                                           setPendingSettingsDelete({
                                             kind: 'brand',
-                                            portfolioId: selectedPortfolio.id,
+                                            portfolioId: portfolio.id,
                                             brandIndex,
                                           })
                                         }}
                                       >
                                         Delete
                                       </button>
-                              </div>
-                              {isPickerOpen ? (
-                                <div className="brand-color-picker">
-                                  {BRAND_PALETTES.map((palette) => (
-                                    <button
-                                      key={palette.color}
-                                      type="button"
-                                      className={`brand-color-option${palette.color === brand.color ? ' is-selected' : ''}`}
-                                      style={{ background: palette.color }}
-                                      aria-label={`Select color ${palette.color}`}
-                                      onClick={() => {
-                                        updatePortfolio(
-                                          selectedPortfolio.id,
-                                          (currentPortfolio) => ({
-                                            ...currentPortfolio,
-                                            brands: currentPortfolio.brands.map((item, index) =>
-                                              index === brandIndex
-                                                ? {
-                                                    ...item,
-                                                    color: palette.color,
-                                                    surfaceColor: palette.surfaceColor,
-                                                    textColor: palette.textColor,
-                                                  }
-                                                : item,
-                                            ),
-                                          }),
-                                        )
-                                        setColorPickerOpenKey(null)
-                                      }}
-                                    />
-                                  ))}
-                                </div>
-                              ) : null}
-                            </Fragment>
-                          )
-                        })}
-                      </div>
-                    </div>
+                                    </div>
+                                    {isPickerOpen ? (
+                                      <div className="brand-color-picker">
+                                        {BRAND_PALETTES.map((palette) => (
+                                          <button
+                                            key={palette.color}
+                                            type="button"
+                                            className={`brand-color-option${palette.color === brand.color ? ' is-selected' : ''}`}
+                                            style={{ background: palette.color }}
+                                            aria-label={`Select color ${palette.color}`}
+                                            onClick={() => {
+                                              updatePortfolio(
+                                                portfolio.id,
+                                                (currentPortfolio) => ({
+                                                  ...currentPortfolio,
+                                                  brands: currentPortfolio.brands.map(
+                                                    (item, index) =>
+                                                      index === brandIndex
+                                                        ? {
+                                                            ...item,
+                                                            color: palette.color,
+                                                            surfaceColor: palette.surfaceColor,
+                                                            textColor: palette.textColor,
+                                                          }
+                                                        : item,
+                                                  ),
+                                                }),
+                                              )
+                                              setColorPickerOpenKey(null)
+                                            }}
+                                          />
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </Fragment>
+                                )
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => {
+                                const nextPrefix = getSuggestedPrefix()
+                                const nextPalette =
+                                  BRAND_PALETTES[portfolio.brands.length % BRAND_PALETTES.length]
+                                updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                  ...currentPortfolio,
+                                  brands: [
+                                    ...currentPortfolio.brands,
+                                    {
+                                      name: 'Untitled brand',
+                                      prefix: nextPrefix,
+                                      products: [],
+                                      driveParentFolderId: '',
+                                      facebookPage: '',
+                                      defaultLandingPage: '',
+                                      color: nextPalette.color,
+                                      surfaceColor: nextPalette.surfaceColor,
+                                      textColor: nextPalette.textColor,
+                                    },
+                                  ],
+                                  lastIdPerPrefix: {
+                                    ...currentPortfolio.lastIdPerPrefix,
+                                    [nextPrefix]:
+                                      currentPortfolio.lastIdPerPrefix[nextPrefix] ?? 0,
+                                  },
+                                }))
+                              }}
+                            >
+                              Add brand
+                            </button>
+                          </div>
 
-                    <div className="nested-settings-block organization-integration-row">
-                      <div>
-                        <div className="nested-settings-title">Drive webhook</div>
-                        <p className="muted-copy">Used when creating folders for this portfolio.</p>
-                      </div>
-                      <label className="full-width">
-                        <input
-                          aria-label={`${selectedPortfolio.name} Drive webhook URL`}
-                          value={selectedPortfolio.webhookUrl}
-                          onChange={(event) =>
-                            updatePortfolio(selectedPortfolio.id, (currentPortfolio) => ({
-                              ...currentPortfolio,
-                              webhookUrl: event.target.value,
-                            }))
-                          }
-                          placeholder="https://script.google.com/macros/..."
-                        />
-                      </label>
+                          <div className="nested-settings-block">
+                            <div className="nested-settings-title">Drive webhook</div>
+                            <label className="full-width">
+                              <input
+                                aria-label={`${portfolio.name} Drive webhook URL`}
+                                value={portfolio.webhookUrl}
+                                onChange={(event) =>
+                                  updatePortfolio(portfolio.id, (currentPortfolio) => ({
+                                    ...currentPortfolio,
+                                    webhookUrl: event.target.value,
+                                  }))
+                                }
+                                placeholder="https://script.google.com/macros/..."
+                              />
+                            </label>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
-                  </section>
-                ) : null}
+                  )
+                })}
               </div>
             </div>
           </div>
