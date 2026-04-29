@@ -645,6 +645,11 @@ function App() {
     authSession?.email?.trim().toLowerCase() ?? workspaceAccess?.email?.trim().toLowerCase() ?? null
   const canAccessPerformance = canAccessPerformanceByEmail(backlogAccessEmail)
   const dailyCheckinEmail = isDailyCheckinExemptUser(backlogAccessEmail) ? null : backlogAccessEmail
+  const dailyCheckinViewerTimezone = resolveViewerTimezone(
+    scopedTeamMembers,
+    dailyCheckinEmail,
+    workspaceAccess?.editorName ?? null,
+  )
   const checkinIdentityKeys = useMemo(() => {
     const keys = new Set<string>()
     const normalizedEmail = dailyCheckinEmail?.trim().toLowerCase()
@@ -1219,7 +1224,7 @@ function App() {
       return
     }
 
-    const timezone = resolveViewerTimezone(scopedTeamMembers, dailyCheckinEmail, workspaceAccess?.editorName ?? null)
+    const timezone = dailyCheckinViewerTimezone
     const { today, yesterday } = getCheckinDates(timezone)
     setDailyCheckinTimezone(timezone)
     setDailyCheckinToday(today)
@@ -1266,8 +1271,7 @@ function App() {
     authEnabled,
     authStatus,
     dailyCheckinEmail,
-    scopedTeamMembers,
-    workspaceAccess?.editorName,
+    dailyCheckinViewerTimezone,
   ])
 
   useEffect(() => {
