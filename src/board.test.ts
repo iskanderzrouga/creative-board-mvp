@@ -622,6 +622,9 @@ describe('board integrity helpers', () => {
     )
 
     expect(titleUpdated.cards.find((card) => card.id === sourceCard!.id)?.title).toBe('Edited title')
+    expect(titleUpdated.cards.find((card) => card.id === sourceCard!.id)?.updatedAt).toBe(
+      '2026-03-12T14:10:00Z',
+    )
 
     const ownerUpdated = applyCardUpdates(
       portfolio,
@@ -850,6 +853,7 @@ describe('board integrity helpers', () => {
     expect(movedCard?.dateAssigned).toBe('2026-03-12')
     expect(movedCard?.stageHistory.at(-1)?.stage).toBe('Briefed')
     expect(movedCard?.stageHistory.at(-1)?.enteredAt).toBe('2026-03-12T15:15:00Z')
+    expect(movedCard?.updatedAt).toBe('2026-03-12T15:15:00Z')
     expect(movedCard?.activityLog.some((entry) => entry.type === 'assigned')).toBe(true)
     expect(movedCard?.activityLog.some((entry) => entry.type === 'moved-forward')).toBe(true)
   })
@@ -1265,6 +1269,7 @@ describe('backlog to production helpers', () => {
 
     const mapped = {
       ...created,
+      sourceBacklogCardId: 'BL0007',
       brief: 'Creative brief',
       audience: 'Busy parents',
       platform: 'TikTok' as const,
@@ -1285,6 +1290,7 @@ describe('backlog to production helpers', () => {
       title: 'Backlog concept',
       brand: portfolio.brands[0]!.name,
       product: portfolio.brands[0]!.products[0]!,
+      sourceBacklogCardId: 'BL0007',
       taskTypeId: 'video-ugc-short',
       brief: 'Creative brief',
       audience: 'Busy parents',

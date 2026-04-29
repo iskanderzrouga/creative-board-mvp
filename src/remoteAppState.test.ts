@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   PENDING_STATE_PATCH_KEY,
   PENDING_STATE_KEY,
+  addDevCard,
   createEmptyPortfolio,
   createSeedState,
   loadAppState,
@@ -26,6 +27,22 @@ import {
 } from './remoteAppState'
 
 const E2E_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
+
+function bumpStoredRemoteUpdatedAt(updatedAt = '2099-01-01T00:00:00.000Z') {
+  const raw = window.localStorage.getItem(E2E_REMOTE_STATE_KEY)
+  if (!raw) {
+    return
+  }
+
+  const parsed = JSON.parse(raw) as { state: unknown; updatedAt: string }
+  window.localStorage.setItem(
+    E2E_REMOTE_STATE_KEY,
+    JSON.stringify({
+      ...parsed,
+      updatedAt,
+    }),
+  )
+}
 
 function createLocalStorageMock() {
   const store = new Map<string, string>()
@@ -362,6 +379,117 @@ describe('remote app state sync', () => {
     expect(syncedPortfolio?.brands.map((brand) => brand.name)).toEqual(['Nutrio'])
     expect(syncedPortfolio?.brands[0]?.products).toEqual(['Sleep'])
     expect(syncedPortfolio?.team.map((member) => member.name)).toEqual(['Remote Newer'])
+  })
+
+  it('keeps newer creative card field edits when a stale save conflicts with remote state', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const portfolio = seed.portfolios[0]!
+    const card = portfolio.cards[0]!
+    const remoteEditedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      brief: 'Remote older brief',
+                      updatedAt: '2026-04-29T00:00:01.000Z',
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+    const localEditedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      brief: 'Local newer brief',
+                      updatedAt: '2026-04-29T00:00:02.000Z',
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+
+    await saveRemoteAppState(remoteEditedState, firstLoad.lastSyncedAt)
+    bumpStoredRemoteUpdatedAt()
+    const result = await saveRemoteAppStateWithRetryMerge(localEditedState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCard = synced.state.portfolios[0]?.cards.find((candidate) => candidate.id === card.id)
+
+    expect(result.merged).toBe(true)
+    expect(syncedCard?.brief).toBe('Local newer brief')
+    expect(syncedCard?.updatedAt).toBe('2026-04-29T00:00:02.000Z')
+  })
+
+  it('keeps newer dev card field edits when a stale save conflicts with remote state', async () => {
+    const seed = createSeedState()
+    const brand = seed.portfolios[0]!.brands[0]!.name
+    const devBoard = addDevCard(seed.devBoard, {
+      title: 'Dev conflict request',
+      brand,
+      sourceBacklogCardId: 'BL0099',
+    })
+    const baseState = {
+      ...seed,
+      devBoard,
+    }
+    const firstLoad = await loadOrCreateRemoteAppState(baseState)
+    const card = devBoard.cards[0]!
+    const remoteEditedState = {
+      ...baseState,
+      devBoard: {
+        ...devBoard,
+        cards: devBoard.cards.map((candidate) =>
+          candidate.id === card.id
+            ? {
+                ...candidate,
+                taskDescription: 'Remote older dev context',
+                updatedAt: '2026-04-29T00:00:01.000Z',
+              }
+            : candidate,
+        ),
+      },
+    }
+    const localEditedState = {
+      ...baseState,
+      devBoard: {
+        ...devBoard,
+        cards: devBoard.cards.map((candidate) =>
+          candidate.id === card.id
+            ? {
+                ...candidate,
+                taskDescription: 'Local newer dev context',
+                updatedAt: '2026-04-29T00:00:02.000Z',
+              }
+            : candidate,
+        ),
+      },
+    }
+
+    await saveRemoteAppState(remoteEditedState, firstLoad.lastSyncedAt)
+    bumpStoredRemoteUpdatedAt()
+    const result = await saveRemoteAppStateWithRetryMerge(localEditedState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCard = synced.state.devBoard.cards.find((candidate) => candidate.id === card.id)
+
+    expect(result.merged).toBe(true)
+    expect(syncedCard?.sourceBacklogCardId).toBe('BL0099')
+    expect(syncedCard?.taskDescription).toBe('Local newer dev context')
   })
 
   it.each([

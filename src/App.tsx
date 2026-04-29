@@ -2082,9 +2082,20 @@ function App() {
     card: BacklogCard,
   ): { ok: true; cardId: string } | { ok: false; message: string } {
     beginTransferWindow('backlog->dev')
+    const existingDevCard = state.devBoard.cards.find((item) => item.sourceBacklogCardId === card.id)
+    if (existingDevCard) {
+      return { ok: true, cardId: existingDevCard.id }
+    }
+
     let createdCardId: string | null = null
     try {
       updateState((current) => {
+        const existingCard = current.devBoard.cards.find((item) => item.sourceBacklogCardId === card.id)
+        if (existingCard) {
+          createdCardId = existingCard.id
+          return current
+        }
+
         const nextDevBoard = addDevCard(current.devBoard, {
           title: card.name,
           brand: card.brand,
@@ -2115,7 +2126,6 @@ function App() {
   function handleBacklogToProduction(
     card: BacklogCard,
   ): { ok: true; cardId: string; portfolioId: string } | { ok: false; message: string } {
-    beginTransferWindow('backlog->production')
     if (card.taskType === 'dev-cro') {
       const devResult = handleBacklogToDev(card)
       if (!devResult.ok) {
@@ -2128,6 +2138,7 @@ function App() {
       }
     }
 
+    beginTransferWindow('backlog->production')
     console.log('[Backlog→Production] handleBacklogToProduction called', {
       backlogCardId: card.id,
       backlogCardName: card.name,
@@ -2168,6 +2179,16 @@ function App() {
       })
       console.log('[Backlog→Production] returning', { ok: false, message })
       return { ok: false, message }
+    }
+
+    const existingProductionCard =
+      portfolioSource.cards.find((existingCard) => existingCard.sourceBacklogCardId === card.id) ?? null
+    if (existingProductionCard) {
+      return {
+        ok: true,
+        cardId: existingProductionCard.id,
+        portfolioId: portfolioSource.id,
+      }
     }
 
     const quickCreateDefaults = getQuickCreateDefaults(portfolioSource, state.settings)
@@ -2223,6 +2244,7 @@ function App() {
 
     productionCard = {
       ...productionCard,
+      sourceBacklogCardId: card.id,
       brief: card.taskType === 'creative' ? card.brief ?? '' : card.taskDescription ?? '',
       audience: card.targetAudience ?? '',
       platform: (card.platform as Card['platform'] | undefined) ?? productionCard.platform,

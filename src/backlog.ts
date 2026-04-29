@@ -35,6 +35,7 @@ export interface BacklogCard {
   brand: string
   addedBy: string
   dateAdded: string
+  updatedAt: string
   column: BacklogColumnId
   opsSubStage?: OpsSubStage
   productionTaskType?: string
@@ -54,9 +55,15 @@ export interface BacklogCard {
   linkForChanges?: string
 }
 
+export interface BacklogDeletedCard {
+  cardId: string
+  deletedAt: string
+}
+
 export interface BacklogState {
   cards: BacklogCard[]
   lastCardNumber: number
+  deletedCards: BacklogDeletedCard[]
 }
 
 const CREATIVE_PRODUCTION_REQUIRED_FIELDS: Array<{ key: keyof BacklogCard; label: string }> = [
@@ -109,6 +116,18 @@ function normalizeOptionalString(value: unknown) {
   return typeof value === 'string' ? value : undefined
 }
 
+function normalizeTimestamp(value: unknown, fallback: string) {
+  if (typeof value !== 'string') {
+    return fallback
+  }
+
+  return Number.isFinite(Date.parse(value)) ? value : fallback
+}
+
+function getBacklogCardFallbackUpdatedAt(record: Record<string, unknown>) {
+  return normalizeTimestamp(record.updatedAt, normalizeTimestamp(record.dateAdded, new Date().toISOString()))
+}
+
 function hasNonEmptyValue(value: string | undefined) {
   return Boolean(value?.trim())
 }
@@ -148,6 +167,7 @@ function coerceBacklogCard(candidate: unknown): BacklogCard | null {
     brand: record.brand,
     addedBy: record.addedBy,
     dateAdded: record.dateAdded,
+    updatedAt: getBacklogCardFallbackUpdatedAt(record),
     column: record.column,
     opsSubStage,
     productionTaskType: normalizeOptionalString(record.productionTaskType),
@@ -168,6 +188,39 @@ function coerceBacklogCard(candidate: unknown): BacklogCard | null {
   }
 }
 
+function coerceBacklogDeletedCard(candidate: unknown): BacklogDeletedCard | null {
+  if (!candidate || typeof candidate !== 'object') {
+    return null
+  }
+
+  const record = candidate as Record<string, unknown>
+  if (typeof record.cardId !== 'string' || typeof record.deletedAt !== 'string') {
+    return null
+  }
+
+  if (!Number.isFinite(Date.parse(record.deletedAt))) {
+    return null
+  }
+
+  return {
+    cardId: record.cardId,
+    deletedAt: record.deletedAt,
+  }
+}
+
+function dedupeDeletedCards(deletedCards: BacklogDeletedCard[]) {
+  const byCardId = new Map<string, BacklogDeletedCard>()
+
+  for (const deletedCard of deletedCards) {
+    const existing = byCardId.get(deletedCard.cardId)
+    if (!existing || Date.parse(deletedCard.deletedAt) >= Date.parse(existing.deletedAt)) {
+      byCardId.set(deletedCard.cardId, deletedCard)
+    }
+  }
+
+  return Array.from(byCardId.values())
+}
+
 export function coerceBacklogState(candidate: unknown): BacklogState {
   if (!candidate || typeof candidate !== 'object') {
     return createBacklogSeedState()
@@ -176,6 +229,13 @@ export function coerceBacklogState(candidate: unknown): BacklogState {
   const record = candidate as Record<string, unknown>
   const cards = Array.isArray(record.cards)
     ? record.cards.map((card) => coerceBacklogCard(card)).filter((card): card is BacklogCard => card !== null)
+    : []
+  const deletedCards = Array.isArray(record.deletedCards)
+    ? dedupeDeletedCards(
+        record.deletedCards
+          .map((deletedCard) => coerceBacklogDeletedCard(deletedCard))
+          .filter((deletedCard): deletedCard is BacklogDeletedCard => deletedCard !== null),
+      )
     : []
   const highestCardNumber = cards.reduce((highest, card) => {
     const numericPart = Number(card.id.replace('BL', ''))
@@ -189,7 +249,18 @@ export function coerceBacklogState(candidate: unknown): BacklogState {
   return {
     cards,
     lastCardNumber,
+    deletedCards,
   }
+}
+
+export function getBacklogCardUpdatedAt(card: BacklogCard) {
+  const updatedAt = Date.parse(card.updatedAt)
+  if (Number.isFinite(updatedAt)) {
+    return updatedAt
+  }
+
+  const dateAdded = Date.parse(card.dateAdded)
+  return Number.isFinite(dateAdded) ? dateAdded : 0
 }
 
 function getNextBacklogCardId(state: BacklogState) {
@@ -200,6 +271,7 @@ export function createBacklogSeedState(): BacklogState {
   return {
     cards: [],
     lastCardNumber: 0,
+    deletedCards: [],
   }
 }
 
@@ -222,6 +294,7 @@ export function addBacklogCard(state: BacklogState, input: AddBacklogCardInput):
     brand: input.brand,
     addedBy: input.addedBy,
     dateAdded: createdAt,
+    updatedAt: createdAt,
     column: 'new-idea',
     productionTaskType: undefined,
   }
@@ -229,6 +302,7 @@ export function addBacklogCard(state: BacklogState, input: AddBacklogCardInput):
   return {
     cards: [...state.cards, nextCard],
     lastCardNumber: state.lastCardNumber + 1,
+    deletedCards: state.deletedCards,
   }
 }
 
@@ -249,6 +323,7 @@ export function moveBacklogCard(
     ...card,
     column,
     opsSubStage: column === 'ops-priority' ? opsSubStage ?? card.opsSubStage ?? 'todo' : undefined,
+    updatedAt: new Date().toISOString(),
   }
 
   return {
@@ -274,6 +349,7 @@ export function updateBacklogCard(state: BacklogState, cardId: string, updates: 
         nextColumn === 'ops-priority'
           ? updates.opsSubStage ?? card.opsSubStage ?? 'todo'
           : undefined,
+      updatedAt: updates.updatedAt ?? new Date().toISOString(),
     }
   })
 
@@ -286,12 +362,14 @@ export function updateBacklogCard(state: BacklogState, cardId: string, updates: 
 }
 
 export function deleteBacklogCard(state: BacklogState, cardId: string) {
+  const deletedAt = new Date().toISOString()
   const cards = state.cards.filter((card) => card.id !== cardId)
   return cards.length === state.cards.length
     ? state
     : {
         ...state,
         cards,
+        deletedCards: dedupeDeletedCards([...state.deletedCards, { cardId, deletedAt }]),
       }
 }
 

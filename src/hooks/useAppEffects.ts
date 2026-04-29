@@ -40,7 +40,7 @@ import {
   getRemoteBacklogSignature,
   loadOrCreateRemoteBacklogState,
   RemoteBacklogConflictError,
-  saveRemoteBacklogState,
+  saveRemoteBacklogStateWithRetryMerge,
 } from '../remoteBacklogState'
 
 type AuthStatus = 'disabled' | 'checking' | 'signed-out' | 'signed-in'
@@ -658,18 +658,22 @@ export function useAppEffects({
       backlogRemoteSaveTimerRef.current = null
 
       const attemptSave = (attemptIndex: number) => {
-        void saveRemoteBacklogState(backlogState, backlogLastSyncedAtRef.current)
-          .then((updatedAt) => {
+        void saveRemoteBacklogStateWithRetryMerge(backlogState, backlogLastSyncedAtRef.current)
+          .then((result) => {
             if (cancelled) {
               return
             }
 
-            backlogLastRemoteSignatureRef.current = currentSignature
-            backlogLastSyncedAtRef.current = updatedAt
+            backlogLastRemoteSignatureRef.current = getRemoteBacklogSignature(result.savedState)
+            backlogLastSyncedAtRef.current = result.updatedAt
             backlogDirtyRef.current = false
-            console.log('[backlog save] success', { updatedAt })
+            if (result.merged) {
+              setBacklogState(result.savedState)
+              showToastRef.current('Backlog synced with latest changes.', 'green')
+            }
+            console.log('[backlog save] success', { updatedAt: result.updatedAt })
             persistBacklogSyncMetadata({
-              lastSyncedAt: updatedAt,
+              lastSyncedAt: result.updatedAt,
               pendingRemoteBaseUpdatedAt: null,
               pendingRemoteSignature: null,
             })
@@ -680,19 +684,6 @@ export function useAppEffects({
             }
 
             if (error instanceof RemoteBacklogConflictError) {
-              if (backlogDirtyRef.current || transferInProgressRef.current) {
-                console.warn(
-                  backlogDirtyRef.current
-                    ? '[backlog sync] skipping remote replace — dirty'
-                    : '[backlog sync] skipping remote replace — transfer in progress',
-                )
-                return
-              }
-              setBacklogState(error.latestState)
-              // Use the REMOTE-ONLY signature (not the merged state's).
-              // This ensures the save effect detects a difference between
-              // local (merged) and remote, and re-saves the merged result.
-              backlogLastRemoteSignatureRef.current = error.latestRemoteSignature
               backlogLastSyncedAtRef.current = error.latestUpdatedAt
               persistBacklogSyncMetadata({
                 lastSyncedAt: error.latestUpdatedAt,
@@ -700,7 +691,7 @@ export function useAppEffects({
                 pendingRemoteSignature: getRemoteBacklogSignature(error.latestState),
               })
               showToastRef.current(
-                'Another session saved newer backlog changes. The latest version has been loaded.',
+                'Sync conflict — your backlog changes are saved locally and will sync shortly.',
                 'amber',
               )
               return

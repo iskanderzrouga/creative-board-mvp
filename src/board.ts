@@ -184,6 +184,7 @@ export interface ColumnMoveEntry {
 
 export interface Card {
   id: string
+  sourceBacklogCardId: string | null
   title: string
   brand: string
   product: string
@@ -221,6 +222,7 @@ export interface Card {
   frameioLink: string[] | string
   dateAssigned: string
   dateCreated: string
+  updatedAt: string
   positionInSection: number
   estimatedHours: number
   revisionEstimatedHours: number | null
@@ -401,6 +403,7 @@ export interface DevCard {
   attachments?: string[]
   column: DevBoardColumnId
   dateCreated: string
+  updatedAt: string
 }
 
 export interface DevBoardState {
@@ -1062,6 +1065,7 @@ function createActivityEntry(
 function appendActivity(card: Card, entry: ActivityEntry) {
   return {
     ...card,
+    updatedAt: entry.timestamp,
     activityLog: [entry, ...card.activityLog],
   }
 }
@@ -1918,6 +1922,7 @@ function inflateSeedCard(
 
   const card: Card = {
     id: seed.id,
+    sourceBacklogCardId: null,
     title: seed.title,
     brand: seed.brand,
     product: seed.product,
@@ -1968,6 +1973,14 @@ function inflateSeedCard(
     frameioLink: frameioLinks,
     dateAssigned: seed.dateAssigned,
     dateCreated,
+    updatedAt: getLatestTimestampString(
+      [
+        stageEnteredAt,
+        ...activityLog.map((entry) => entry.timestamp),
+        ...((seed.comments ?? []).map((comment) => comment.timestamp)),
+      ],
+      `${dateCreated}T00:00:00Z`,
+    ),
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
     revisionEstimatedHours: null,
@@ -2305,6 +2318,70 @@ function coerceCardLinksField(value: unknown): CardLink[] {
     .filter((entry): entry is CardLink => entry !== null)
 }
 
+function getLatestTimestampString(candidates: unknown[], fallback: string) {
+  let latestValue = fallback
+  let latestMs = Date.parse(fallback)
+  if (!Number.isFinite(latestMs)) {
+    latestMs = 0
+  }
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') {
+      continue
+    }
+
+    const candidateMs = Date.parse(candidate)
+    if (Number.isFinite(candidateMs) && candidateMs >= latestMs) {
+      latestMs = candidateMs
+      latestValue = candidate
+    }
+  }
+
+  return latestValue
+}
+
+function getLegacyCardUpdatedAt(raw: Partial<Card> & Record<string, unknown>) {
+  const explicitUpdatedAt = getLatestTimestampString([raw.updatedAt], '')
+  if (explicitUpdatedAt) {
+    return explicitUpdatedAt
+  }
+
+  const fallback = typeof raw.dateCreated === 'string' ? raw.dateCreated : new Date().toISOString()
+  const candidates: unknown[] = [
+    raw.stageEnteredAt,
+    raw.dateAssigned,
+    raw.dateCreated,
+    raw.blocked && typeof raw.blocked === 'object' ? (raw.blocked as BlockedState).at : null,
+  ]
+
+  if (Array.isArray(raw.columnMovementHistory)) {
+    candidates.push(...raw.columnMovementHistory.map((entry) => (entry as Partial<ColumnMoveEntry>)?.timestamp))
+  }
+  if (Array.isArray(raw.stageHistory)) {
+    for (const entry of raw.stageHistory) {
+      const candidate = entry as Partial<StageHistoryEntry>
+      candidates.push(candidate.enteredAt, candidate.exitedAt)
+    }
+  }
+  if (Array.isArray(raw.comments)) {
+    candidates.push(...raw.comments.map((entry) => (entry as Partial<CommentEntry>)?.timestamp))
+  }
+  if (Array.isArray(raw.activityLog)) {
+    candidates.push(...raw.activityLog.map((entry) => (entry as Partial<ActivityEntry>)?.timestamp))
+  }
+
+  return getLatestTimestampString(candidates, fallback)
+}
+
+function getLegacyDevCardUpdatedAt(raw: Partial<DevCard> & Record<string, unknown>) {
+  const explicitUpdatedAt = getLatestTimestampString([raw.updatedAt], '')
+  if (explicitUpdatedAt) {
+    return explicitUpdatedAt
+  }
+
+  return getLatestTimestampString([raw.dateCreated], new Date().toISOString())
+}
+
 function normalizeRevisionReasons(raw: RevisionReason[] | undefined) {
   const seed = createSeedRevisionReasons()
   const source = Array.isArray(raw) && raw.length > 0 ? raw : seed
@@ -2456,6 +2533,10 @@ function normalizePortfolio(
 
         return syncGeneratedNames({
           ...rawCard,
+          sourceBacklogCardId:
+            typeof raw.sourceBacklogCardId === 'string' && raw.sourceBacklogCardId
+              ? raw.sourceBacklogCardId
+              : null,
           taskTypeId,
           estimatedHours:
             typeof rawCard.estimatedHours === 'number'
@@ -2471,6 +2552,7 @@ function normalizePortfolio(
           p1AssignedAt: typeof raw.p1AssignedAt === 'string' ? raw.p1AssignedAt : null,
           p1Deadline: typeof raw.p1Deadline === 'string' ? raw.p1Deadline : null,
           actualHoursLogged: typeof raw.actualHoursLogged === 'number' ? raw.actualHoursLogged : 0,
+          updatedAt: getLegacyCardUpdatedAt(raw),
           dueDate: rawCard.dueDate ?? null,
           designType:
             raw.designType === 'Packaging' ||
@@ -2552,6 +2634,10 @@ function normalizePortfolio(
         return {
           ...rawCard,
           id: typeof raw?.id === 'string' ? raw.id : `card-${Math.random().toString(36).slice(2, 10)}`,
+          sourceBacklogCardId:
+            typeof raw?.sourceBacklogCardId === 'string' && raw.sourceBacklogCardId
+              ? raw.sourceBacklogCardId
+              : null,
           title: typeof raw?.title === 'string' ? raw.title : '',
           brand: typeof raw?.brand === 'string' ? raw.brand : '',
           product: typeof raw?.product === 'string' ? raw.product : '',
@@ -2611,6 +2697,7 @@ function normalizePortfolio(
           frameioLink: coerceStringArrayField(raw?.frameioLink),
           dateAssigned: typeof raw?.dateAssigned === 'string' ? raw.dateAssigned : fallbackDateCreated,
           dateCreated: fallbackDateCreated,
+          updatedAt: getLegacyCardUpdatedAt(raw),
           positionInSection: typeof raw?.positionInSection === 'number' ? raw.positionInSection : 0,
           estimatedHours: typeof raw?.estimatedHours === 'number' ? raw.estimatedHours : 0,
           revisionEstimatedHours: typeof raw?.revisionEstimatedHours === 'number' ? raw.revisionEstimatedHours : null,
@@ -2763,6 +2850,7 @@ export function coerceAppState(raw: unknown): AppState {
             attachments: Array.isArray(card.attachments) ? card.attachments : [],
             column: card.column as DevBoardColumnId,
             dateCreated: typeof card.dateCreated === 'string' ? card.dateCreated : new Date().toISOString(),
+            updatedAt: getLegacyDevCardUpdatedAt(card as Partial<DevCard> & Record<string, unknown>),
           } satisfies DevCard
         })
         .filter((card): card is DevCard => card !== null)
@@ -3291,6 +3379,7 @@ interface CreateDevCardInput {
 }
 
 export function addDevCard(state: DevBoardState, input: CreateDevCardInput): DevBoardState {
+  const createdAt = new Date().toISOString()
   const nextCard: DevCard = {
     id: createDevCardId(state),
     title: input.title.trim() || 'Untitled Dev Task',
@@ -3306,7 +3395,8 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
     customBlocker: input.customBlocker?.trim() ?? '',
     status: 'not-started',
     column: 'To Brief',
-    dateCreated: new Date().toISOString(),
+    dateCreated: createdAt,
+    updatedAt: createdAt,
   }
 
   return {
@@ -3317,6 +3407,7 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
 
 export function updateDevCard(state: DevBoardState, cardId: string, updates: Partial<DevCard>): DevBoardState {
   let changed = false
+  const updatedAt = updates.updatedAt ?? new Date().toISOString()
   const cards = state.cards.map((card) => {
     if (card.id !== cardId) {
       return card
@@ -3325,6 +3416,7 @@ export function updateDevCard(state: DevBoardState, cardId: string, updates: Par
     return {
       ...card,
       ...updates,
+      updatedAt,
     }
   })
   return changed ? { ...state, cards } : state
@@ -3349,7 +3441,9 @@ export function moveDevCard(state: DevBoardState, cardId: string, destinationCol
   }
   return {
     ...state,
-    cards: state.cards.map((item) => (item.id === cardId ? { ...item, column: destinationColumn } : item)),
+    cards: state.cards.map((item) =>
+      item.id === cardId ? { ...item, column: destinationColumn, updatedAt: new Date().toISOString() } : item,
+    ),
   }
 }
 
@@ -3723,6 +3817,7 @@ export function createCardFromQuickInput(
 
   const baseCard: Card = {
     id: cardId,
+    sourceBacklogCardId: null,
     title,
     brand: brand?.name ?? input.brand,
     product: input.product || brand?.products[0] || '',
@@ -3767,6 +3862,7 @@ export function createCardFromQuickInput(
     frameioLink: [],
     dateAssigned: dateOnly,
     dateCreated: dateOnly,
+    updatedAt: createdAt,
     positionInSection: 0,
     estimatedHours: taskType.estimatedHours,
     revisionEstimatedHours: null,
@@ -4865,6 +4961,7 @@ export function startEditorTimerForCard(
       card.id === cardId
         ? {
             ...card,
+            updatedAt: startedAt,
             editorTimer: {
               startedAt,
               stoppedAt: null,
@@ -4986,6 +5083,7 @@ export function moveCardInPortfolio(
         ? movedAt.slice(0, 10)
         : existingCard.dateAssigned,
     positionInSection: positionMap.get(cardId) ?? existingCard.positionInSection,
+    updatedAt: movedAt,
     revisionEstimatedHours: isBackwardMove
       ? revisionEstimatedHours ?? existingCard.revisionEstimatedHours
       : isForwardMove
@@ -5095,11 +5193,11 @@ export function setInProductionCardPriority(
   const nowIso = new Date().toISOString()
   const nextCards = portfolio.cards.map((card) => {
     if (card.id === targetCard.id) {
-      const updated = { ...card, priority: nextPriority }
+      const updated = { ...card, priority: nextPriority, updatedAt: nowIso }
       return syncP1TimingForCard(updated, card, portfolio, nowIso)
     }
     if (conflictingCard && card.id === conflictingCard.id) {
-      const updated = { ...card, priority: replacementPriority }
+      const updated = { ...card, priority: replacementPriority, updatedAt: nowIso }
       return syncP1TimingForCard(updated, card, portfolio, nowIso)
     }
     return card
@@ -5145,6 +5243,7 @@ export function applyCardUpdates(
         {
           ...card,
           ...normalizedUpdates,
+          updatedAt: timestamp,
         },
         settings,
       )

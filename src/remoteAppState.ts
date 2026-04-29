@@ -126,6 +126,11 @@ function parseTimestamp(value: string | null | undefined) {
 }
 
 function getCreativeCardUpdatedAt(card: Card) {
+  const explicitUpdatedAt = parseTimestamp(card.updatedAt)
+  if (explicitUpdatedAt > 0) {
+    return explicitUpdatedAt
+  }
+
   let latest = Math.max(
     parseTimestamp(card.stageEnteredAt),
     parseTimestamp(card.dateAssigned),
@@ -153,7 +158,8 @@ function getCreativeCardUpdatedAt(card: Card) {
 }
 
 function getDevCardUpdatedAt(card: DevCard) {
-  return parseTimestamp(card.dateCreated)
+  const explicitUpdatedAt = parseTimestamp(card.updatedAt)
+  return explicitUpdatedAt > 0 ? explicitUpdatedAt : parseTimestamp(card.dateCreated)
 }
 
 function mergeCreativeCards(remoteCards: Card[], localCards: Card[]) {

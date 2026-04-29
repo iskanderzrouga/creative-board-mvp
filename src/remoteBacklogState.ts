@@ -1,6 +1,8 @@
 import {
   coerceBacklogState,
+  getBacklogCardUpdatedAt,
   type BacklogCard,
+  type BacklogDeletedCard,
   type BacklogState,
 } from './backlog'
 import {
@@ -56,17 +58,61 @@ export function getRemoteBacklogSignature(state: BacklogState) {
   return JSON.stringify(state)
 }
 
+function parseTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return 0
+  }
+
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getLatestDeletedCards(
+  remoteDeletedCards: BacklogDeletedCard[],
+  localDeletedCards: BacklogDeletedCard[],
+) {
+  const byCardId = new Map<string, BacklogDeletedCard>()
+
+  for (const deletedCard of [...remoteDeletedCards, ...localDeletedCards]) {
+    const existing = byCardId.get(deletedCard.cardId)
+    if (!existing || parseTimestamp(deletedCard.deletedAt) >= parseTimestamp(existing.deletedAt)) {
+      byCardId.set(deletedCard.cardId, deletedCard)
+    }
+  }
+
+  return byCardId
+}
+
+function isDeletedByNewerTombstone(card: BacklogCard, deletedCards: Map<string, BacklogDeletedCard>) {
+  const deletedCard = deletedCards.get(card.id)
+  return Boolean(deletedCard && parseTimestamp(deletedCard.deletedAt) >= getBacklogCardUpdatedAt(card))
+}
+
 export function mergeRemoteBacklogWithLocal(
   remoteState: BacklogState,
   localState: BacklogState,
 ): BacklogState {
+  const deletedByCardId = getLatestDeletedCards(remoteState.deletedCards, localState.deletedCards)
   const remoteCardMap = new Map<string, BacklogCard>()
   for (const card of remoteState.cards) {
-    remoteCardMap.set(card.id, card)
+    if (!isDeletedByNewerTombstone(card, deletedByCardId)) {
+      remoteCardMap.set(card.id, card)
+    }
   }
 
   for (const card of localState.cards) {
-    if (!remoteCardMap.has(card.id)) {
+    if (isDeletedByNewerTombstone(card, deletedByCardId)) {
+      remoteCardMap.delete(card.id)
+      continue
+    }
+
+    const remoteCard = remoteCardMap.get(card.id)
+    if (remoteCard) {
+      remoteCardMap.set(
+        card.id,
+        getBacklogCardUpdatedAt(card) >= getBacklogCardUpdatedAt(remoteCard) ? card : remoteCard,
+      )
+    } else {
       // Only re-add a local card if it's genuinely NEW (created locally
       // after the last sync).  A card whose numeric ID is ≤ the remote's
       // lastCardNumber was previously synced and then deleted remotely —
@@ -84,6 +130,7 @@ export function mergeRemoteBacklogWithLocal(
   return {
     cards: mergedCards,
     lastCardNumber,
+    deletedCards: Array.from(deletedByCardId.values()),
   }
 }
 
@@ -113,9 +160,6 @@ function getStoredE2ERemoteBacklog(): StoredRemoteBacklog | null {
 }
 
 function setStoredE2ERemoteBacklog(state: BacklogState, updatedAt: string) {
-  void state
-  void updatedAt
-  return
   if (!hasBrowser()) {
     return
   }
@@ -270,7 +314,14 @@ export async function saveRemoteBacklogState(
 
   if (!expectedUpdatedAt) {
     const loaded = await loadOrCreateRemoteBacklogState(state)
-    return loaded.lastSyncedAt
+    if (loaded.seeded || !loaded.lastSyncedAt) {
+      return loaded.lastSyncedAt
+    }
+    throw new RemoteBacklogConflictError(
+      mergeRemoteBacklogWithLocal(loaded.state, state),
+      loaded.lastSyncedAt,
+      loaded.remoteSignature,
+    )
   }
 
   const { data, error } = await supabase
@@ -301,4 +352,43 @@ export async function saveRemoteBacklogState(
 
   const loaded = await loadOrCreateRemoteBacklogState(state)
   return loaded.lastSyncedAt
+}
+
+export interface SaveRemoteBacklogStateWithMergeResult {
+  updatedAt: string | null
+  savedState: BacklogState
+  merged: boolean
+}
+
+export async function saveRemoteBacklogStateWithRetryMerge(
+  state: BacklogState,
+  expectedUpdatedAt: string | null,
+  maxConflictRetries = 3,
+): Promise<SaveRemoteBacklogStateWithMergeResult> {
+  let candidateState = state
+  let candidateExpectedUpdatedAt = expectedUpdatedAt
+  let latestRemoteUpdatedAt = expectedUpdatedAt ?? ''
+  let latestRemoteSignature = getRemoteBacklogSignature(state)
+
+  for (let attempt = 0; attempt < maxConflictRetries; attempt += 1) {
+    try {
+      const updatedAt = await saveRemoteBacklogState(candidateState, candidateExpectedUpdatedAt)
+      return {
+        updatedAt,
+        savedState: candidateState,
+        merged: attempt > 0,
+      }
+    } catch (error) {
+      if (!(error instanceof RemoteBacklogConflictError)) {
+        throw error
+      }
+
+      latestRemoteUpdatedAt = error.latestUpdatedAt
+      latestRemoteSignature = error.latestRemoteSignature
+      candidateState = error.latestState
+      candidateExpectedUpdatedAt = error.latestUpdatedAt
+    }
+  }
+
+  throw new RemoteBacklogConflictError(candidateState, latestRemoteUpdatedAt, latestRemoteSignature)
 }
