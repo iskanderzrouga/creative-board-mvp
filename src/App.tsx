@@ -66,6 +66,7 @@ import {
   type BacklogState,
 } from './backlog'
 import {
+  getSupabaseClient,
   isSupabaseConfigured,
 } from './supabase'
 import {
@@ -435,6 +436,7 @@ function App() {
   const [expandedStages, setExpandedStages] = useState<StageId[]>([])
   const [pendingBackwardMove, setPendingBackwardMove] = useState<PendingBackwardMove | null>(null)
   const [pendingDeleteCard, setPendingDeleteCard] = useState<PendingDeleteCard | null>(null)
+  const [deleteCardPending, setDeleteCardPending] = useState(false)
   const [backwardMoveForm, setBackwardMoveForm] = useState<BackwardMoveFormState>(() =>
     getDefaultBackwardMoveForm(loadAppState().settings),
   )
@@ -2594,8 +2596,52 @@ function App() {
     setPendingDeleteCard(selectedCard)
   }
 
-  function handleDeleteCard() {
+  async function persistRemoteCardDeletion(portfolioId: string, cardId: string) {
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      return null
+    }
+
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      throw error
+    }
+
+    const token = data.session?.access_token
+    if (!token) {
+      throw new Error('Sign in again before deleting this card.')
+    }
+
+    const response = await fetch('/api/workspace/delete-card', {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ portfolioId, cardId }),
+    })
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean
+      updatedAt?: unknown
+      error?: unknown
+    }
+
+    if (!response.ok || !payload.success) {
+      const message = typeof payload.error === 'string' ? payload.error : 'Card delete did not reach the shared board.'
+      throw new Error(message)
+    }
+
+    return typeof payload.updatedAt === 'string' ? payload.updatedAt : null
+  }
+
+  async function handleDeleteCard() {
     if (!pendingDeleteCard) {
+      return
+    }
+    if (deleteCardPending) {
       return
     }
 
@@ -2628,16 +2674,39 @@ function App() {
       ),
     }
 
+    const shouldUseRemoteDelete =
+      authEnabled &&
+      authStatus === 'signed-in' &&
+      accessStatus === 'granted' &&
+      isSupabaseConfigured()
+
+    setDeleteCardPending(true)
+    let remoteUpdatedAt: string | null = null
+    try {
+      if (shouldUseRemoteDelete) {
+        remoteUpdatedAt = await persistRemoteCardDeletion(portfolio.id, deletedCardId)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Card delete did not reach the shared board.'
+      showToast(`Delete failed: ${message}`, 'red')
+      setDeleteCardPending(false)
+      return
+    }
+
     markMainDirty('delete card')
     replaceState(nextState)
     persistAppState(nextState)
     persistSyncMetadata({
-      lastSyncedAt,
-      pendingRemoteBaseUpdatedAt: lastSyncedAt,
-      pendingRemoteSignature: getRemoteStateSignature(nextState),
+      lastSyncedAt: remoteUpdatedAt ?? lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: remoteUpdatedAt ? null : lastSyncedAt,
+      pendingRemoteSignature: remoteUpdatedAt ? null : getRemoteStateSignature(nextState),
     })
+    if (remoteUpdatedAt) {
+      setLastSyncedAt(remoteUpdatedAt)
+    }
 
     setPendingDeleteCard(null)
+    setDeleteCardPending(false)
     setSelectedCard(null)
 
     if (targetCard) {
@@ -3678,6 +3747,7 @@ function App() {
       {pendingDeleteCardData ? (
         <DeleteCardModal
           card={pendingDeleteCardData}
+          pending={deleteCardPending}
           onCancel={() => setPendingDeleteCard(null)}
           onConfirm={handleDeleteCard}
         />

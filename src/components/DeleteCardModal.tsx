@@ -5,11 +5,12 @@ import { XIcon } from './icons/AppIcons'
 
 interface DeleteCardModalProps {
   card: Card
+  pending?: boolean
   onCancel: () => void
   onConfirm: () => void
 }
 
-export function DeleteCardModal({ card, onCancel, onConfirm }: DeleteCardModalProps) {
+export function DeleteCardModal({ card, pending = false, onCancel, onConfirm }: DeleteCardModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
   const descriptionId = useId()
@@ -17,7 +18,7 @@ export function DeleteCardModal({ card, onCancel, onConfirm }: DeleteCardModalPr
 
   return (
     <>
-      <div className="modal-overlay" aria-hidden="true" onClick={onCancel} />
+      <div className="modal-overlay" aria-hidden="true" onClick={pending ? undefined : onCancel} />
       <div
         ref={modalRef}
         className="backward-move-modal delete-card-modal"
@@ -33,6 +34,7 @@ export function DeleteCardModal({ card, onCancel, onConfirm }: DeleteCardModalPr
             type="button"
             className="close-icon-button"
             aria-label="Close delete card dialog"
+            disabled={pending}
             onClick={onCancel}
           >
             <XIcon />
@@ -42,11 +44,11 @@ export function DeleteCardModal({ card, onCancel, onConfirm }: DeleteCardModalPr
           {`This will permanently remove "${card.title}" (${card.id}) from the board.`}
         </p>
         <div className="quick-create-actions">
-          <button type="button" className="ghost-button" onClick={onCancel}>
+          <button type="button" className="ghost-button" disabled={pending} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="primary-button danger-solid" onClick={onConfirm}>
-            Delete card
+          <button type="button" className="primary-button danger-solid" disabled={pending} onClick={onConfirm}>
+            {pending ? 'Deleting...' : 'Delete card'}
           </button>
         </div>
       </div>
