@@ -118,6 +118,8 @@ import {
   dismissNotification,
   loadAppState,
   loadSyncMetadata,
+  persistAppState,
+  persistSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
   shouldAutoCreateCreativeDriveFolder,
@@ -141,6 +143,7 @@ import {
   type Timeframe,
   type ViewerContext,
 } from './board'
+import { getRemoteStateSignature } from './remoteAppState'
 import {
   notifyCreativeBlockerAdded,
   notifyCreativeBlockerRemoved,
@@ -2596,8 +2599,9 @@ function App() {
       return
     }
 
+    const currentState = localFallbackStateRef.current
     const portfolio =
-      state.portfolios.find((item) => item.id === pendingDeleteCard.portfolioId) ?? null
+      currentState.portfolios.find((item) => item.id === pendingDeleteCard.portfolioId) ?? null
     if (!portfolio) {
       setPendingDeleteCard(null)
       return
@@ -2614,15 +2618,24 @@ function App() {
       return
     }
 
-    updateState((current) => ({
-      ...current,
-      deletedCardIds: Array.from(new Set([...(current.deletedCardIds ?? []), deletedCardId])),
-      portfolios: current.portfolios.map((currentPortfolio) =>
+    const nextState = {
+      ...currentState,
+      deletedCardIds: Array.from(new Set([...(currentState.deletedCardIds ?? []), deletedCardId])),
+      portfolios: currentState.portfolios.map((currentPortfolio) =>
         currentPortfolio.id === portfolio.id
           ? removeCardFromPortfolio(currentPortfolio, deletedCardId, viewerContext)
           : currentPortfolio,
       ),
-    }))
+    }
+
+    markMainDirty('delete card')
+    replaceState(nextState)
+    persistAppState(nextState)
+    persistSyncMetadata({
+      lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(nextState),
+    })
 
     setPendingDeleteCard(null)
     setSelectedCard(null)
