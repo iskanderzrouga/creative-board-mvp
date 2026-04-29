@@ -390,6 +390,8 @@ export interface DevCard {
   id: string
   title: string
   sourceBacklogCardId: string | null
+  sourceProductionCardId: string | null
+  sourceProductionPortfolioId: string | null
   brand: string
   taskDescription: string
   loomVideoUrl: string[] | string
@@ -2826,6 +2828,10 @@ export function coerceAppState(raw: unknown): AppState {
             id: card.id,
             title: card.title,
             sourceBacklogCardId: typeof card.sourceBacklogCardId === 'string' ? card.sourceBacklogCardId : null,
+            sourceProductionCardId:
+              typeof card.sourceProductionCardId === 'string' ? card.sourceProductionCardId : null,
+            sourceProductionPortfolioId:
+              typeof card.sourceProductionPortfolioId === 'string' ? card.sourceProductionPortfolioId : null,
             brand: card.brand,
             taskDescription: typeof card.taskDescription === 'string' ? card.taskDescription : '',
             loomVideoUrl: coerceStringArrayField(card.loomVideoUrl),
@@ -3364,10 +3370,12 @@ export function createDevCardId(state: DevBoardState) {
   return `DV${String(state.lastCardNumber + 1).padStart(4, '0')}`
 }
 
-interface CreateDevCardInput {
+export interface CreateDevCardInput {
   title: string
   brand: string
   sourceBacklogCardId?: string | null
+  sourceProductionCardId?: string | null
+  sourceProductionPortfolioId?: string | null
   taskDescription?: string
   loomVideoUrl?: string | string[]
   newUrlToUse?: string | string[]
@@ -3384,6 +3392,8 @@ export function addDevCard(state: DevBoardState, input: CreateDevCardInput): Dev
     id: createDevCardId(state),
     title: input.title.trim() || 'Untitled Dev Task',
     sourceBacklogCardId: input.sourceBacklogCardId ?? null,
+    sourceProductionCardId: input.sourceProductionCardId ?? null,
+    sourceProductionPortfolioId: input.sourceProductionPortfolioId ?? null,
     brand: input.brand.trim() || 'Unknown',
     taskDescription: input.taskDescription?.trim() ?? '',
     loomVideoUrl: coerceStringArrayField(input.loomVideoUrl),
@@ -3420,6 +3430,222 @@ export function updateDevCard(state: DevBoardState, cardId: string, updates: Par
     }
   })
   return changed ? { ...state, cards } : state
+}
+
+function getDevChangeRequestTypeForTaskType(taskType: TaskType): DevChangeRequestType {
+  const normalized = `${taskType.id} ${taskType.name}`.toLowerCase()
+  if (normalized.includes('bug')) {
+    return 'Bug Fix'
+  }
+  if (normalized.includes('cro')) {
+    return 'CRO Test'
+  }
+  if (normalized.includes('advertorial')) {
+    return 'New Advertorial'
+  }
+  if (normalized.includes('listicle')) {
+    return 'New Listicle'
+  }
+  if (normalized.includes('product page')) {
+    return 'New Product Page'
+  }
+  if (normalized.includes('lp') || normalized.includes('landing page')) {
+    return 'Landing Page Update'
+  }
+  return 'New Feature'
+}
+
+function normalizeGeneratedDescription(value: string | undefined) {
+  return (value ?? '').replace(/\r\n/g, '\n').trim()
+}
+
+function getDevUrlListForProductionCard(card: Card) {
+  return [card.landingPage, card.figmaUrl].map((value) => value.trim()).filter(Boolean)
+}
+
+function areStringListsEqual(left: string[] | string | undefined, right: string[] | string | undefined) {
+  const leftItems = coerceStringArrayField(left).map((value) => value.trim()).filter(Boolean)
+  const rightItems = coerceStringArrayField(right).map((value) => value.trim()).filter(Boolean)
+  return leftItems.length === rightItems.length && leftItems.every((value, index) => value === rightItems[index])
+}
+
+export function isProductionDevHandoffCard(settings: GlobalSettings, card: Card) {
+  return getTaskTypeById(settings, card.taskTypeId).category === 'Dev'
+}
+
+export function buildDevTaskDescriptionFromProductionCard(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  card: Card,
+) {
+  const taskType = getTaskTypeById(settings, card.taskTypeId)
+  const relatedLpDesignCard = card.relatedLpDesignCardId
+    ? portfolio.cards.find((candidate) => candidate.id === card.relatedLpDesignCardId) ?? null
+    : null
+  const frameioLinks = coerceStringArrayField(card.frameioLink).join('\n')
+  const relatedLpDesignLabel = relatedLpDesignCard
+    ? `${relatedLpDesignCard.id} - ${relatedLpDesignCard.title}`
+    : card.relatedLpDesignCardId ?? ''
+
+  const singleLineRows: Array<[string, string | null | undefined]> = [
+    ['Source production card', `${card.id} - ${card.title}`],
+    ['Portfolio', portfolio.name],
+    ['Brand', card.brand],
+    ['Product', card.product],
+    ['Task type', taskType.name],
+    ['Stage', card.stage],
+    ['Assigned from production', card.owner ?? 'Unassigned'],
+    ['Due date', card.dueDate ?? 'No due date'],
+    ['Landing page', card.landingPage],
+    ['Figma', card.figmaUrl],
+    ['Related LP design', relatedLpDesignLabel],
+  ]
+
+  const multiLineRows: Array<[string, string | null | undefined]> = [
+    ['Brief', card.brief],
+    ['Key message', card.keyMessage],
+    ['Visual direction', card.visualDirection],
+    ['CTA', card.cta],
+    ['Reference links', card.referenceLinks],
+    ['Ad copy', card.adCopy],
+    ['Notes', card.notes],
+    ['Frame.io links', frameioLinks],
+  ]
+
+  const sections = [
+    ...singleLineRows
+      .map(([label, value]) => [label, value?.trim() ?? ''] as const)
+      .filter(([, value]) => value.length > 0)
+      .map(([label, value]) => `${label}: ${value}`),
+    ...multiLineRows
+      .map(([label, value]) => [label, value?.trim() ?? ''] as const)
+      .filter(([, value]) => value.length > 0)
+      .map(([label, value]) => `${label}:\n${value}`),
+  ]
+
+  return sections.join('\n\n')
+}
+
+export function buildDevCardInputFromProductionCard(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  card: Card,
+): CreateDevCardInput | null {
+  if (!isProductionDevHandoffCard(settings, card)) {
+    return null
+  }
+
+  const taskType = getTaskTypeById(settings, card.taskTypeId)
+  const assignee = getTeamMemberByName(portfolio, card.owner)
+  return {
+    title: card.title,
+    brand: card.brand,
+    sourceBacklogCardId: card.sourceBacklogCardId,
+    sourceProductionCardId: card.id,
+    sourceProductionPortfolioId: portfolio.id,
+    taskDescription: buildDevTaskDescriptionFromProductionCard(portfolio, settings, card),
+    newUrlToUse: getDevUrlListForProductionCard(card),
+    assigneeId: assignee?.id ?? null,
+    dueDate: card.dueDate,
+    changeRequestType: getDevChangeRequestTypeForTaskType(taskType),
+  }
+}
+
+export interface UpsertDevCardFromProductionResult {
+  devBoard: DevBoardState
+  devCardId: string | null
+  created: boolean
+  updated: boolean
+  assigneeChanged: boolean
+}
+
+export function upsertDevCardFromProductionCard(
+  devBoard: DevBoardState,
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  card: Card,
+  previousCard?: Card | null,
+): UpsertDevCardFromProductionResult {
+  const input = buildDevCardInputFromProductionCard(portfolio, settings, card)
+  if (!input) {
+    return {
+      devBoard,
+      devCardId: null,
+      created: false,
+      updated: false,
+      assigneeChanged: false,
+    }
+  }
+
+  const existingCard = devBoard.cards.find(
+    (candidate) =>
+      candidate.sourceProductionCardId === card.id &&
+      candidate.sourceProductionPortfolioId === portfolio.id,
+  )
+
+  if (!existingCard) {
+    const nextDevBoard = addDevCard(devBoard, input)
+    return {
+      devBoard: nextDevBoard,
+      devCardId: nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null,
+      created: true,
+      updated: false,
+      assigneeChanged: Boolean(input.assigneeId),
+    }
+  }
+
+  const previousInput = previousCard
+    ? buildDevCardInputFromProductionCard(portfolio, settings, previousCard)
+    : null
+  const nextDescription = normalizeGeneratedDescription(input.taskDescription)
+  const previousDescription = normalizeGeneratedDescription(previousInput?.taskDescription)
+  const existingDescription = normalizeGeneratedDescription(existingCard.taskDescription)
+  const shouldRefreshDescription =
+    !existingDescription || (previousDescription.length > 0 && existingDescription === previousDescription)
+  const shouldRefreshUrls =
+    coerceStringArrayField(existingCard.newUrlToUse).length === 0 ||
+    (previousInput ? areStringListsEqual(existingCard.newUrlToUse, previousInput.newUrlToUse) : false)
+
+  const updates: Partial<DevCard> = {}
+  if (existingCard.title !== input.title) {
+    updates.title = input.title
+  }
+  if (existingCard.brand !== input.brand) {
+    updates.brand = input.brand
+  }
+  if (existingCard.sourceBacklogCardId !== input.sourceBacklogCardId) {
+    updates.sourceBacklogCardId = input.sourceBacklogCardId ?? null
+  }
+  if (existingCard.sourceProductionCardId !== input.sourceProductionCardId) {
+    updates.sourceProductionCardId = input.sourceProductionCardId ?? null
+  }
+  if (existingCard.sourceProductionPortfolioId !== input.sourceProductionPortfolioId) {
+    updates.sourceProductionPortfolioId = input.sourceProductionPortfolioId ?? null
+  }
+  if (shouldRefreshDescription && existingDescription !== nextDescription) {
+    updates.taskDescription = nextDescription
+  }
+  if (shouldRefreshUrls && !areStringListsEqual(existingCard.newUrlToUse, input.newUrlToUse)) {
+    updates.newUrlToUse = input.newUrlToUse
+  }
+  if (existingCard.assigneeId !== input.assigneeId) {
+    updates.assigneeId = input.assigneeId ?? null
+  }
+  if (existingCard.dueDate !== input.dueDate) {
+    updates.dueDate = input.dueDate ?? null
+  }
+  if (existingCard.changeRequestType !== input.changeRequestType) {
+    updates.changeRequestType = input.changeRequestType
+  }
+
+  const updated = Object.keys(updates).length > 0
+  return {
+    devBoard: updated ? updateDevCard(devBoard, existingCard.id, updates) : devBoard,
+    devCardId: existingCard.id,
+    created: false,
+    updated,
+    assigneeChanged: existingCard.assigneeId !== input.assigneeId && Boolean(input.assigneeId),
+  }
 }
 
 export function deleteDevCard(state: DevBoardState, cardId: string): DevBoardState {

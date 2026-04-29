@@ -360,6 +360,9 @@ export function DevCardDetailPanel({
               </h2>
             )}
             <p className="muted-copy">Brand: {card.brand}</p>
+            {card.sourceProductionCardId ? (
+              <p className="muted-copy">Source: {card.sourceProductionCardId}</p>
+            ) : null}
           </div>
           <button type="button" className="icon-button" onClick={handleCloseWithSave} aria-label="Close card details">
             ×

@@ -106,6 +106,7 @@ import {
   getTeamMemberById,
   getVisibleCards,
   getVisibleColumns,
+  isProductionDevHandoffCard,
   getLatestScriptReview,
   isLaunchOpsRole,
   SCRIPT_REVIEWERS,
@@ -126,6 +127,7 @@ import {
   startEditorTimerForCard,
   setInProductionCardPriority,
   updateDevCard,
+  upsertDevCardFromProductionCard,
   type ActiveRole,
   type AppNotification,
   type AppPage,
@@ -227,7 +229,16 @@ if (typeof window !== 'undefined') {
 
 function hasDeveloperBoardRole(role: string | null | undefined) {
   const normalizedRole = role?.trim().toLowerCase() ?? null
-  return normalizedRole === 'developer' || isDeveloperRole(role ?? null)
+  return (
+    normalizedRole === 'developer' ||
+    normalizedRole === 'dev' ||
+    normalizedRole === 'development' ||
+    normalizedRole === 'engineer' ||
+    normalizedRole === 'dev/cro' ||
+    normalizedRole === 'cro/dev' ||
+    Boolean(normalizedRole?.includes('developer')) ||
+    isDeveloperRole(role ?? null)
+  )
 }
 
 function getPathForPage(page: ExtendedPage) {
@@ -478,10 +489,7 @@ function App() {
     }) ?? null
   const isDeveloperUser =
     hasDeveloperBoardRole(currentEditor?.role ?? null) || hasDeveloperBoardRole(accessMatchedMember?.role ?? null)
-  const developerTeamMembers = useMemo(
-    () => allTeamMembers.filter((member) => hasDeveloperBoardRole(member.role)),
-    [allTeamMembers],
-  )
+  const devAssignableTeamMembers = allTeamMembers
   const devBoardCanEdit =
     state.activeRole.mode === 'owner' ||
     state.activeRole.mode === 'manager' ||
@@ -2487,6 +2495,81 @@ function App() {
       return
     }
 
+    const devHandoffResultRef: {
+      current: {
+        cardId: string
+        cardTitle: string
+        assigneeName: string
+        created: boolean
+        assigneeChanged: boolean
+      } | null
+    } = { current: null }
+    if (isProductionDevHandoffCard(state.settings, nextCard)) {
+      updateState((current) => {
+        const sourcePortfolio =
+          current.portfolios.find((portfolio) => portfolio.id === activeSelectedPortfolio.id) ?? null
+        const sourceCard =
+          sourcePortfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
+        if (!sourcePortfolio || !sourceCard) {
+          return current
+        }
+
+        const result = upsertDevCardFromProductionCard(
+          current.devBoard,
+          sourcePortfolio,
+          current.settings,
+          sourceCard,
+          previousCard,
+        )
+        if (result.devBoard === current.devBoard || !result.devCardId) {
+          return current
+        }
+
+        const linkedDevCard =
+          result.devBoard.cards.find((card) => card.id === result.devCardId) ?? null
+        const assigneeName =
+          linkedDevCard?.assigneeId
+            ? allTeamMembers.find((member) => member.id === linkedDevCard.assigneeId)?.name ??
+              getTeamMemberById(sourcePortfolio, linkedDevCard.assigneeId)?.name ??
+              'Unassigned'
+            : 'Unassigned'
+        devHandoffResultRef.current = linkedDevCard
+          ? {
+              cardId: linkedDevCard.id,
+              cardTitle: linkedDevCard.title,
+              assigneeName,
+              created: result.created,
+              assigneeChanged: result.assigneeChanged,
+            }
+          : null
+
+        return {
+          ...current,
+          devBoard: result.devBoard,
+        }
+      })
+    }
+
+    const devHandoffResult = devHandoffResultRef.current
+    if (devHandoffResult?.created) {
+      showToast(`${devHandoffResult.cardId} sent to Dev board`, 'green')
+    }
+
+    if (
+      devHandoffResult &&
+      devHandoffResult.assigneeName !== 'Unassigned' &&
+      (devHandoffResult.created || devHandoffResult.assigneeChanged)
+    ) {
+      try {
+        notifyDevTaskAssigned({
+          cardTitle: devHandoffResult.cardTitle,
+          assigneeName: devHandoffResult.assigneeName,
+        })
+      } catch (error) {
+        console.error('Dev task assignment notification trigger failed.', error)
+      }
+    }
+
     const resolveCreativeMemberName = (memberId: string | null | undefined) => {
       if (!memberId) {
         return 'Unassigned'
@@ -3446,7 +3529,7 @@ function App() {
         {currentPage === 'dev' ? (
           <DevBoardPage
             devBoard={state.devBoard}
-            teamMembers={developerTeamMembers}
+            teamMembers={devAssignableTeamMembers}
             canEdit={devBoardCanEdit}
             showToast={showToast}
             headerUtilityContent={headerUtilityContent}
@@ -3671,7 +3754,7 @@ function App() {
         <DevCardDetailPanel
           key={selectedDevCardData.id}
           card={selectedDevCardData}
-          teamMembers={developerTeamMembers}
+          teamMembers={devAssignableTeamMembers}
           activeRoleMode={state.activeRole.mode}
           activeContributorId={state.activeRole.editorId}
           isOpen={!isClosingCardPanel}
