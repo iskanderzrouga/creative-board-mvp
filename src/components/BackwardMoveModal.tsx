@@ -60,7 +60,7 @@ export function BackwardMoveModal({
       <div className="modal-overlay" aria-hidden="true" onClick={onCancel} />
       <div
         ref={modalRef}
-        className="backward-move-modal"
+        className={`backward-move-modal ${simpleReasonMode ? 'backward-move-modal-simple' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

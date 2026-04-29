@@ -4334,6 +4334,11 @@ button {
   color: var(--muted);
 }
 
+.backward-move-modal-simple {
+  width: min(460px, calc(100vw - 24px));
+  padding: 20px;
+}
+
 .shortcut-modal {
   width: min(460px, calc(100vw - 24px));
 }
@@ -4425,6 +4430,43 @@ button {
 .backward-move-body {
   display: grid;
   gap: 10px;
+}
+
+.backward-move-feedback {
+  display: grid;
+  gap: 6px;
+}
+
+.backward-move-feedback span,
+.backward-move-estimate span {
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.backward-move-modal-simple .backward-move-body {
+  gap: 14px;
+}
+
+.backward-move-modal-simple .backward-move-feedback textarea {
+  width: 100%;
+  min-height: 112px;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.backward-move-modal-simple .backward-move-estimate {
+  margin-top: 0;
+}
+
+.backward-move-modal-simple .quick-create-actions {
+  padding-top: 2px;
 }
 
 .backward-move-fieldset {
