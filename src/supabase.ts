@@ -167,6 +167,44 @@ function isE2ESupabaseMode() {
   return isE2EAuthOverrideEnabled()
 }
 
+function getFriendlyAuthFunctionMessage(message: string) {
+  const normalizedMessage = message.trim().toLowerCase()
+  if (normalizedMessage.includes('error sending recovery email')) {
+    return 'Could not send the password email right now. Ask the workspace owner to check auth email delivery.'
+  }
+
+  return message
+}
+
+async function getAuthFunctionErrorMessage(error: unknown) {
+  const context =
+    typeof error === 'object' && error !== null && 'context' in error
+      ? (error as { context?: unknown }).context
+      : null
+
+  if (context instanceof Response) {
+    try {
+      const contentType = context.headers.get('content-type') ?? ''
+      if (contentType.includes('application/json')) {
+        const payload = (await context.clone().json()) as { error?: unknown; message?: unknown }
+        const message = payload.error ?? payload.message
+        if (typeof message === 'string' && message.trim()) {
+          return getFriendlyAuthFunctionMessage(message)
+        }
+      }
+
+      const text = await context.clone().text()
+      if (text.trim()) {
+        return getFriendlyAuthFunctionMessage(text)
+      }
+    } catch {
+      // Fall through to the wrapped Supabase error below.
+    }
+  }
+
+  return error instanceof Error ? getFriendlyAuthFunctionMessage(error.message) : null
+}
+
 function isE2ELocalMode() {
   return getBrowserAuthModeOverride() === 'disabled'
 }
@@ -477,7 +515,7 @@ export async function signInWithMagicLink(email: string) {
   })
 
   if (error) {
-    throw error
+    throw new Error((await getAuthFunctionErrorMessage(error)) ?? error.message)
   }
 
   return { deliveredInstantly: data?.deliveredInstantly ?? false }
@@ -515,7 +553,7 @@ export async function sendPasswordSetupEmail(email: string) {
   })
 
   if (fnError) {
-    throw fnError
+    throw new Error((await getAuthFunctionErrorMessage(fnError)) ?? fnError.message)
   }
 
   if (data?.error) {

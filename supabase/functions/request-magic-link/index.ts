@@ -288,6 +288,16 @@ Deno.serve(async (request) => {
       })
 
       if (error) {
+        if (error.message.toLowerCase().includes('error sending recovery email')) {
+          return json(
+            {
+              error:
+                'Could not send the password email right now. Ask the workspace owner to check auth email delivery.',
+            },
+            502,
+          )
+        }
+
         return json({ error: error.message }, 400)
       }
 
