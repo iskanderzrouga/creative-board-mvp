@@ -132,6 +132,7 @@ import {
   type AppState,
   type BoardFilters,
   type Card,
+  type CommentEntry,
   type DailyCheckinFormValues,
   type DailyPulseFeedItem,
   type GlobalSettings,
@@ -2637,6 +2638,46 @@ function App() {
     return typeof payload.updatedAt === 'string' ? payload.updatedAt : null
   }
 
+  async function persistRemoteCardComment(portfolioId: string, cardId: string, comment: CommentEntry) {
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      return null
+    }
+
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      throw error
+    }
+
+    const token = data.session?.access_token
+    if (!token) {
+      throw new Error('Sign in again before posting this comment.')
+    }
+
+    const response = await fetch('/api/workspace/add-card-comment', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ portfolioId, cardId, comment }),
+    })
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean
+      updatedAt?: unknown
+      error?: unknown
+    }
+
+    if (!response.ok || !payload.success) {
+      const message = typeof payload.error === 'string' ? payload.error : 'Comment did not reach the shared board.'
+      throw new Error(message)
+    }
+
+    return typeof payload.updatedAt === 'string' ? payload.updatedAt : null
+  }
+
   async function handleDeleteCard() {
     if (!pendingDeleteCard) {
       return
@@ -2714,44 +2755,87 @@ function App() {
     }
   }
 
-  function addCommentToCard(text: string, imageDataUrl?: string) {
+  async function addCommentToCard(text: string, imageDataUrl?: string) {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
+    const trimmedText = text.trim()
+    if (!trimmedText && !imageDataUrl) {
+      return
+    }
+
     const author = getActorName(activeSelectedPortfolio)
     const timestamp = new Date().toISOString()
-    const commentCard = activeSelectedPortfolio.cards.find((c) => c.id === selectedCard.cardId)
-    updatePortfolio(activeSelectedPortfolio.id, (portfolio) => ({
-      ...portfolio,
-      cards: portfolio.cards.map((card) =>
-        card.id === selectedCard.cardId
+    const comment = {
+      author,
+      text: trimmedText,
+      timestamp,
+      ...(imageDataUrl ? { imageDataUrl } : {}),
+    } satisfies CommentEntry
+    const currentState = localFallbackStateRef.current
+    const portfolio =
+      currentState.portfolios.find((item) => item.id === selectedCard.portfolioId) ?? null
+    const commentCard = portfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
+
+    if (!portfolio || !commentCard) {
+      showToast('That card could not be commented on.', 'red')
+      return
+    }
+
+    const shouldUseRemoteComment =
+      authEnabled &&
+      authStatus === 'signed-in' &&
+      accessStatus === 'granted' &&
+      isSupabaseConfigured()
+
+    let remoteUpdatedAt: string | null = null
+    try {
+      if (shouldUseRemoteComment) {
+        remoteUpdatedAt = await persistRemoteCardComment(portfolio.id, commentCard.id, comment)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
+      showToast(`Comment failed: ${message}`, 'red')
+      return
+    }
+
+    const notification = createNotification(
+      'comment_added',
+      `New comment on "${commentCard.title}"`,
+      commentCard.id,
+      portfolio.id,
+    )
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolio.id
           ? {
-              ...card,
-              comments: [
-                ...card.comments,
-                {
-                  author,
-                  text,
-                  timestamp,
-                  ...(imageDataUrl ? { imageDataUrl } : {}),
-                },
-              ],
-              updatedAt: timestamp,
+              ...currentPortfolio,
+              cards: currentPortfolio.cards.map((card) =>
+                card.id === commentCard.id
+                  ? {
+                      ...card,
+                      comments: [...card.comments, comment],
+                      updatedAt: timestamp,
+                    }
+                  : card,
+              ),
             }
-          : card,
+          : currentPortfolio,
       ),
-    }))
-    if (commentCard) {
-      const notification = createNotification(
-        'comment_added',
-        `New comment on "${commentCard.title}"`,
-        selectedCard.cardId,
-        activeSelectedPortfolio.id,
-      )
-      setState((prev) => ({
-        ...prev,
-        notifications: [...prev.notifications, notification],
-      }))
+      notifications: [...currentState.notifications, notification],
+    }
+
+    markMainDirty('add card comment')
+    replaceState(nextState)
+    persistAppState(nextState)
+    persistSyncMetadata({
+      lastSyncedAt: remoteUpdatedAt ?? lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: remoteUpdatedAt ? null : lastSyncedAt,
+      pendingRemoteSignature: remoteUpdatedAt ? null : getRemoteStateSignature(nextState),
+    })
+    if (remoteUpdatedAt) {
+      setLastSyncedAt(remoteUpdatedAt)
     }
   }
 
