@@ -488,6 +488,73 @@ describe('remote app state sync', () => {
     expect(syncedCard?.updatedAt).toBe('2026-04-29T00:00:02.000Z')
   })
 
+  it('merges card comments during stale saves instead of dropping either side', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const portfolio = seed.portfolios[0]!
+    const card = portfolio.cards[0]!
+    const remoteComment = {
+      author: 'Remote reviewer',
+      text: 'Remote comment should stay',
+      timestamp: '2026-04-29T00:00:03.000Z',
+    }
+    const localComment = {
+      author: 'Local reviewer',
+      text: 'Local comment should survive refresh',
+      timestamp: '2026-04-29T00:00:01.000Z',
+    }
+    const remoteEditedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      comments: [remoteComment],
+                      updatedAt: '2026-04-29T00:00:04.000Z',
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+    const localEditedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      comments: [localComment],
+                      updatedAt: '2026-04-29T00:00:01.000Z',
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+
+    await saveRemoteAppState(remoteEditedState, firstLoad.lastSyncedAt)
+    bumpStoredRemoteUpdatedAt()
+    const result = await saveRemoteAppStateWithRetryMerge(localEditedState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCard = synced.state.portfolios[0]?.cards.find((candidate) => candidate.id === card.id)
+
+    expect(result.merged).toBe(true)
+    expect(syncedCard?.comments.map((comment) => comment.text)).toEqual([
+      'Local comment should survive refresh',
+      'Remote comment should stay',
+    ])
+  })
+
   it('keeps newer legacy Dev board field edits by migrating them into main-board cards during conflicts', async () => {
     const seed = createSeedState()
     const brand = seed.portfolios[0]!.brands[0]!.name

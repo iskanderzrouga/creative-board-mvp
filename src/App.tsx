@@ -336,6 +336,8 @@ function buildDriveWebhookPayload(
   const brand = portfolio.brands.find((item) => item.name === card.brand)
   const taskType = getTaskTypeById(settings, card.taskTypeId)
   const creativeFolder = shouldAutoCreateCreativeDriveFolder(taskType.id)
+  const thaiCreativeFolder = creativeFolder && isThaiEditingPortfolio(portfolio)
+  const folderName = creativeFolder ? getCreativeDriveFolderName(card) : ''
 
   return {
     cardId: card.id,
@@ -350,16 +352,20 @@ function buildDriveWebhookPayload(
     taskCategory: taskType.category,
     folderKind: creativeFolder ? 'creative' : 'manual',
     rootFolderName: creativeFolder ? 'Creatives' : '',
-    folderName: creativeFolder ? getCreativeDriveFolderName(card) : '',
-    driveTemplateVersion: creativeFolder ? 'creative-simple-v1' : 'manual-v1',
-    requestedItems: creativeFolder
+    folderName,
+    driveTemplateVersion: thaiCreativeFolder
+      ? 'brandlab-thai-creative-simple-v2'
+      : creativeFolder
+        ? 'creative-v1'
+        : 'manual-v1',
+    requestedItems: thaiCreativeFolder
       ? {
           briefDoc: {
-            name: 'Brief',
+            name: folderName,
             type: 'google-doc',
           },
           finalFolder: {
-            name: 'Final',
+            name: 'Final Work',
           },
         }
       : null,
@@ -694,6 +700,9 @@ function App() {
     ? state.portfolios
         .find((portfolio) => portfolio.id === pendingBackwardMove.portfolioId)
         ?.cards.find((card) => card.id === pendingBackwardMove.cardId) ?? null
+    : null
+  const pendingBackwardPortfolio = pendingBackwardMove
+    ? state.portfolios.find((portfolio) => portfolio.id === pendingBackwardMove.portfolioId) ?? null
     : null
   const pendingDeleteCardData = pendingDeleteCard
     ? state.portfolios
@@ -2626,6 +2635,7 @@ function App() {
       return
     }
     const author = getActorName(activeSelectedPortfolio)
+    const timestamp = new Date().toISOString()
     const commentCard = activeSelectedPortfolio.cards.find((c) => c.id === selectedCard.cardId)
     updatePortfolio(activeSelectedPortfolio.id, (portfolio) => ({
       ...portfolio,
@@ -2638,10 +2648,11 @@ function App() {
                 {
                   author,
                   text,
-                  timestamp: new Date().toISOString(),
+                  timestamp,
                   ...(imageDataUrl ? { imageDataUrl } : {}),
                 },
               ],
+              updatedAt: timestamp,
             }
           : card,
       ),
@@ -3058,7 +3069,16 @@ function App() {
         destinationIndex,
         movedAt,
       })
-      setBackwardMoveForm(getDefaultBackwardMoveForm(state.settings, card.stage))
+      setBackwardMoveForm(
+        isThaiEditingPortfolio(activePortfolioView)
+          ? {
+              reasonId: '',
+              otherReason: '',
+              estimatedHours: '',
+              feedback: '',
+            }
+          : getDefaultBackwardMoveForm(state.settings, card.stage),
+      )
       return
     }
 
@@ -3108,18 +3128,30 @@ function App() {
     if (!pendingBackwardMove) {
       return
     }
-    const reasonOptions = getBackwardMoveReasonOptions(pendingBackwardMove.sourceStage)
-    const selectedReason = reasonOptions.find((reason) => reason.id === backwardMoveForm.reasonId) ?? null
-    const reason =
-      isBackwardMoveOtherReasonId(selectedReason?.id)
-        ? backwardMoveForm.otherReason.trim()
-        : selectedReason?.name ?? ''
-    const revisionEstimatedHours =
-      backwardMoveForm.estimatedHours === '' ? Number.NaN : Number(backwardMoveForm.estimatedHours)
+    const simpleThaiMoveBack = isThaiEditingPortfolio(pendingBackwardPortfolio)
+    let reason = ''
+    let revisionEstimatedHours = 0
+    let revisionFeedback = ''
+
+    if (simpleThaiMoveBack) {
+      reason = backwardMoveForm.feedback.trim()
+      revisionEstimatedHours =
+        backwardMoveForm.estimatedHours === '' ? 0 : Number(backwardMoveForm.estimatedHours)
+    } else {
+      const reasonOptions = getBackwardMoveReasonOptions(pendingBackwardMove.sourceStage)
+      const selectedReason = reasonOptions.find((item) => item.id === backwardMoveForm.reasonId) ?? null
+      reason =
+        isBackwardMoveOtherReasonId(selectedReason?.id)
+          ? backwardMoveForm.otherReason.trim()
+          : selectedReason?.name ?? ''
+      revisionEstimatedHours =
+        backwardMoveForm.estimatedHours === '' ? Number.NaN : Number(backwardMoveForm.estimatedHours)
+      revisionFeedback = backwardMoveForm.feedback.trim()
+    }
+
     if (!reason || !Number.isFinite(revisionEstimatedHours) || revisionEstimatedHours < 0) {
       return
     }
-    const revisionFeedback = backwardMoveForm.feedback.trim()
     applyMove(
       pendingBackwardMove.portfolioId,
       pendingBackwardMove.cardId,
@@ -3616,6 +3648,7 @@ function App() {
           sourceStage={pendingBackwardMove.sourceStage}
           destinationStage={pendingBackwardMove.destinationStage}
           formState={backwardMoveForm}
+          simpleReasonMode={isThaiEditingPortfolio(pendingBackwardPortfolio)}
           onChange={(updates) =>
             setBackwardMoveForm((current) => ({
               ...current,

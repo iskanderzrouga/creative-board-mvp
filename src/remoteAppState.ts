@@ -4,6 +4,7 @@ import {
   migrateLegacyDevBoardIntoMainBoard,
   type AppState,
   type Card,
+  type CommentEntry,
   type DevCard,
   type DevBoardState,
   type PendingAppStatePatch,
@@ -160,6 +161,29 @@ function getCreativeCardUpdatedAt(card: Card) {
   return latest
 }
 
+function getCommentMergeKey(comment: CommentEntry) {
+  return [
+    comment.timestamp,
+    comment.author,
+    comment.text,
+    comment.imageDataUrl ?? '',
+  ].join('\u0000')
+}
+
+function mergeComments(remoteComments: CommentEntry[], localComments: CommentEntry[]) {
+  const merged = new Map<string, CommentEntry>()
+  for (const comment of remoteComments) {
+    merged.set(getCommentMergeKey(comment), comment)
+  }
+  for (const comment of localComments) {
+    merged.set(getCommentMergeKey(comment), comment)
+  }
+
+  return Array.from(merged.values()).sort(
+    (left, right) => parseTimestamp(left.timestamp) - parseTimestamp(right.timestamp),
+  )
+}
+
 function getDevCardUpdatedAt(card: DevCard) {
   const explicitUpdatedAt = parseTimestamp(card.updatedAt)
   return explicitUpdatedAt > 0 ? explicitUpdatedAt : parseTimestamp(card.dateCreated)
@@ -180,7 +204,11 @@ function mergeCreativeCards(remoteCards: Card[], localCards: Card[]) {
 
     const remoteUpdatedAt = getCreativeCardUpdatedAt(remoteCard)
     const localUpdatedAt = getCreativeCardUpdatedAt(localCard)
-    merged.set(localCard.id, localUpdatedAt >= remoteUpdatedAt ? localCard : remoteCard)
+    const selectedCard = localUpdatedAt >= remoteUpdatedAt ? localCard : remoteCard
+    merged.set(localCard.id, {
+      ...selectedCard,
+      comments: mergeComments(remoteCard.comments, localCard.comments),
+    })
   }
 
   return Array.from(merged.values())

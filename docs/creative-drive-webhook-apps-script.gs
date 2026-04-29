@@ -25,7 +25,7 @@ function doPost(e) {
       data.requestedItems.finalFolder &&
       data.requestedItems.finalFolder.name
         ? data.requestedItems.finalFolder.name
-        : 'Final';
+        : 'Final Work';
     const finalFolder = getOrCreateFolder(folder, safeName(finalFolderName));
 
     const briefDocName =
@@ -33,7 +33,7 @@ function doPost(e) {
       data.requestedItems.briefDoc &&
       data.requestedItems.briefDoc.name
         ? data.requestedItems.briefDoc.name
-        : 'Brief';
+        : folderName;
     const briefDoc = getOrCreateBriefDoc(folder, safeName(briefDocName), data);
 
     return json({

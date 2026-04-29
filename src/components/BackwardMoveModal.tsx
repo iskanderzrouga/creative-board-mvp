@@ -23,6 +23,7 @@ interface BackwardMoveModalProps {
   sourceStage: StageId
   destinationStage: StageId
   formState: BackwardMoveFormState
+  simpleReasonMode?: boolean
   onChange: (updates: Partial<BackwardMoveFormState>) => void
   onCancel: () => void
   onConfirm: () => void
@@ -33,6 +34,7 @@ export function BackwardMoveModal({
   sourceStage,
   destinationStage,
   formState,
+  simpleReasonMode = false,
   onChange,
   onCancel,
   onConfirm,
@@ -42,11 +44,14 @@ export function BackwardMoveModal({
   const reasons = getBackwardMoveReasonOptions(sourceStage)
   const selectedReason = reasons.find((reason) => reason.id === formState.reasonId) ?? null
   const otherSelected = isBackwardMoveOtherReasonId(selectedReason?.id)
-  const canConfirm =
-    Boolean(selectedReason) &&
-    formState.estimatedHours !== '' &&
-    Number(formState.estimatedHours) >= 0 &&
-    (!otherSelected || formState.otherReason.trim())
+  const hasValidEstimate =
+    formState.estimatedHours === '' || Number(formState.estimatedHours) >= 0
+  const canConfirm = simpleReasonMode
+    ? Boolean(formState.feedback.trim()) && hasValidEstimate
+    : Boolean(selectedReason) &&
+      formState.estimatedHours !== '' &&
+      Number(formState.estimatedHours) >= 0 &&
+      (!otherSelected || formState.otherReason.trim())
 
   useModalAccessibility(modalRef, true)
 
@@ -74,57 +79,88 @@ export function BackwardMoveModal({
         </div>
 
         <div className="backward-move-body">
-          <fieldset className="backward-move-fieldset">
-            <legend>Why?</legend>
-            {reasons.map((reason) => (
-              <label key={reason.id} className="radio-option">
+          {simpleReasonMode ? (
+            <>
+              <label className="backward-move-feedback">
+                <span>Reason</span>
+                <textarea
+                  rows={4}
+                  maxLength={1000}
+                  placeholder="Write why this is moving back..."
+                  value={formState.feedback}
+                  onChange={(event) => onChange({ feedback: event.target.value })}
+                />
+              </label>
+              <label className="backward-move-estimate">
+                <span>How long would this change take? (optional)</span>
                 <input
-                  type="radio"
-                  name="revision-reason"
-                  checked={formState.reasonId === reason.id}
-                  onChange={() =>
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={formState.estimatedHours}
+                  onChange={(event) =>
                     onChange({
-                      reasonId: reason.id,
-                      estimatedHours: reason.estimatedHours,
-                      otherReason: isBackwardMoveOtherReasonId(reason.id) ? formState.otherReason : '',
+                      estimatedHours: event.target.value ? Number(event.target.value) : '',
                     })
                   }
                 />
-                <span>{`${reason.name} · ${formatHours(reason.estimatedHours)}`}</span>
               </label>
-            ))}
-          </fieldset>
-          {otherSelected ? (
-            <input
-              value={formState.otherReason}
-              onChange={(event) => onChange({ otherReason: event.target.value })}
-              placeholder="Other reason"
-            />
-          ) : null}
-          <label className="backward-move-feedback">
-            <span>Detailed Feedback</span>
-            <textarea
-              rows={3}
-              maxLength={1000}
-              placeholder="Describe what needs to change..."
-              value={formState.feedback}
-              onChange={(event) => onChange({ feedback: event.target.value })}
-            />
-          </label>
-          <label className="backward-move-estimate">
-            <span>Estimated revision time (hours)</span>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={formState.estimatedHours}
-              onChange={(event) =>
-                onChange({
-                  estimatedHours: event.target.value ? Number(event.target.value) : '',
-                })
-              }
-            />
-          </label>
+            </>
+          ) : (
+            <>
+              <fieldset className="backward-move-fieldset">
+                <legend>Why?</legend>
+                {reasons.map((reason) => (
+                  <label key={reason.id} className="radio-option">
+                    <input
+                      type="radio"
+                      name="revision-reason"
+                      checked={formState.reasonId === reason.id}
+                      onChange={() =>
+                        onChange({
+                          reasonId: reason.id,
+                          estimatedHours: reason.estimatedHours,
+                          otherReason: isBackwardMoveOtherReasonId(reason.id) ? formState.otherReason : '',
+                        })
+                      }
+                    />
+                    <span>{`${reason.name} · ${formatHours(reason.estimatedHours)}`}</span>
+                  </label>
+                ))}
+              </fieldset>
+              {otherSelected ? (
+                <input
+                  value={formState.otherReason}
+                  onChange={(event) => onChange({ otherReason: event.target.value })}
+                  placeholder="Other reason"
+                />
+              ) : null}
+              <label className="backward-move-feedback">
+                <span>Detailed Feedback</span>
+                <textarea
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="Describe what needs to change..."
+                  value={formState.feedback}
+                  onChange={(event) => onChange({ feedback: event.target.value })}
+                />
+              </label>
+              <label className="backward-move-estimate">
+                <span>Estimated revision time (hours)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={formState.estimatedHours}
+                  onChange={(event) =>
+                    onChange({
+                      estimatedHours: event.target.value ? Number(event.target.value) : '',
+                    })
+                  }
+                />
+              </label>
+            </>
+          )}
         </div>
 
         <div className="quick-create-actions">
