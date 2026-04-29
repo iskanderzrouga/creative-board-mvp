@@ -308,6 +308,7 @@ interface DriveWebhookResult {
   success?: boolean
   folderUrl?: string
   subfolderUrl?: string
+  finalFolderUrl?: string
   briefDocUrl?: string
   message?: string
 }
@@ -350,6 +351,18 @@ function buildDriveWebhookPayload(
     folderKind: creativeFolder ? 'creative' : 'manual',
     rootFolderName: creativeFolder ? 'Creatives' : '',
     folderName: creativeFolder ? getCreativeDriveFolderName(card) : '',
+    driveTemplateVersion: creativeFolder ? 'creative-simple-v1' : 'manual-v1',
+    requestedItems: creativeFolder
+      ? {
+          briefDoc: {
+            name: 'Brief',
+            type: 'google-doc',
+          },
+          finalFolder: {
+            name: 'Final',
+          },
+        }
+      : null,
     trigger,
     brief: card.brief,
     targetAudience: card.audience,
@@ -1699,6 +1712,7 @@ function App() {
       return
     }
 
+    setCreatingDriveCardId(card.id)
     void (async () => {
       try {
         const created = await createDriveFolderForCard(portfolio, card, 'auto')
@@ -1714,6 +1728,8 @@ function App() {
           'Card created but Drive folder creation failed. Use the manual Create Drive Folder button.',
           'amber',
         )
+      } finally {
+        setCreatingDriveCardId((currentCardId) => (currentCardId === card.id ? null : currentCardId))
       }
     })()
   }

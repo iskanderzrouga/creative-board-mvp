@@ -4273,6 +4273,15 @@ button {
   gap: 10px;
 }
 
+.drive-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .activity-list {
   display: grid;
   gap: 8px;

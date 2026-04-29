@@ -1070,22 +1070,19 @@ export function CardDetailPanel({
                 {card.driveFolderUrl}
               </a>
             </div>
+          ) : isCreatingDriveFolder ? (
+            <div className="drive-pending" role="status" aria-live="polite">
+              <span className="button-spinner" aria-hidden="true" />
+              <span>Creating Drive folder...</span>
+            </div>
           ) : canManage ? (
             <div className="drive-actions">
               <button
                 type="button"
-                className={`primary-button ${isCreatingDriveFolder ? 'is-loading' : ''}`}
+                className="primary-button"
                 onClick={onCreateDriveFolder}
-                disabled={isCreatingDriveFolder}
               >
-                {isCreatingDriveFolder ? (
-                  <>
-                    <span className="button-spinner" aria-hidden="true" />
-                    <span>Creating...</span>
-                  </>
-                ) : (
-                  'Create Drive Folder'
-                )}
+                Create Drive Folder
               </button>
               <div className="copy-field compact">
                 <div>
