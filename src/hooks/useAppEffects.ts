@@ -367,7 +367,6 @@ export function useAppEffects({
       window.clearTimeout(remoteSaveTimerRef.current)
     }
 
-    setSyncStatus('syncing')
     persistSyncMetadata({
       lastSyncedAt: lastSyncedAtRef.current,
       pendingRemoteBaseUpdatedAt: lastSyncedAtRef.current,
@@ -486,6 +485,7 @@ export function useAppEffects({
       if (
         document.visibilityState !== 'visible' ||
         syncStatus === 'syncing' ||
+        mainDirtyRef.current ||
         remoteSaveTimerRef.current !== null ||
         now - lastFetchTimestampRef.current < REMOTE_VISIBILITY_REFRESH_COOLDOWN_MS
       ) {
@@ -551,6 +551,7 @@ export function useAppEffects({
     localFallbackStateRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
+    mainDirtyRef,
     setLastSyncedAt,
     setRemoteSyncErrorShown,
     setSyncStatus,
