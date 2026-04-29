@@ -2976,7 +2976,7 @@ export function coerceAppState(raw: unknown): AppState {
     scripts: scriptWorkshopScripts,
   }
 
-  return {
+  return migrateLegacyDevBoardIntoMainBoard({
     portfolios,
     devBoard,
     scriptWorkshop,
@@ -3004,7 +3004,7 @@ export function coerceAppState(raw: unknown): AppState {
       ? ((candidate as Record<string, unknown>).notifications as AppNotification[])
       : [],
     version: STATE_VERSION,
-  }
+  })
 }
 
 export function getLatestScriptReview(
@@ -3432,220 +3432,8 @@ export function updateDevCard(state: DevBoardState, cardId: string, updates: Par
   return changed ? { ...state, cards } : state
 }
 
-function getDevChangeRequestTypeForTaskType(taskType: TaskType): DevChangeRequestType {
-  const normalized = `${taskType.id} ${taskType.name}`.toLowerCase()
-  if (normalized.includes('bug')) {
-    return 'Bug Fix'
-  }
-  if (normalized.includes('cro')) {
-    return 'CRO Test'
-  }
-  if (normalized.includes('advertorial')) {
-    return 'New Advertorial'
-  }
-  if (normalized.includes('listicle')) {
-    return 'New Listicle'
-  }
-  if (normalized.includes('product page')) {
-    return 'New Product Page'
-  }
-  if (normalized.includes('lp') || normalized.includes('landing page')) {
-    return 'Landing Page Update'
-  }
-  return 'New Feature'
-}
-
-function normalizeGeneratedDescription(value: string | undefined) {
-  return (value ?? '').replace(/\r\n/g, '\n').trim()
-}
-
-function getDevUrlListForProductionCard(card: Card) {
-  return [card.landingPage, card.figmaUrl].map((value) => value.trim()).filter(Boolean)
-}
-
-function areStringListsEqual(left: string[] | string | undefined, right: string[] | string | undefined) {
-  const leftItems = coerceStringArrayField(left).map((value) => value.trim()).filter(Boolean)
-  const rightItems = coerceStringArrayField(right).map((value) => value.trim()).filter(Boolean)
-  return leftItems.length === rightItems.length && leftItems.every((value, index) => value === rightItems[index])
-}
-
 export function isProductionDevHandoffCard(settings: GlobalSettings, card: Card) {
   return getTaskTypeById(settings, card.taskTypeId).category === 'Dev'
-}
-
-export function buildDevTaskDescriptionFromProductionCard(
-  portfolio: Portfolio,
-  settings: GlobalSettings,
-  card: Card,
-) {
-  const taskType = getTaskTypeById(settings, card.taskTypeId)
-  const relatedLpDesignCard = card.relatedLpDesignCardId
-    ? portfolio.cards.find((candidate) => candidate.id === card.relatedLpDesignCardId) ?? null
-    : null
-  const frameioLinks = coerceStringArrayField(card.frameioLink).join('\n')
-  const relatedLpDesignLabel = relatedLpDesignCard
-    ? `${relatedLpDesignCard.id} - ${relatedLpDesignCard.title}`
-    : card.relatedLpDesignCardId ?? ''
-
-  const singleLineRows: Array<[string, string | null | undefined]> = [
-    ['Source production card', `${card.id} - ${card.title}`],
-    ['Portfolio', portfolio.name],
-    ['Brand', card.brand],
-    ['Product', card.product],
-    ['Task type', taskType.name],
-    ['Stage', card.stage],
-    ['Assigned from production', card.owner ?? 'Unassigned'],
-    ['Due date', card.dueDate ?? 'No due date'],
-    ['Landing page', card.landingPage],
-    ['Figma', card.figmaUrl],
-    ['Related LP design', relatedLpDesignLabel],
-  ]
-
-  const multiLineRows: Array<[string, string | null | undefined]> = [
-    ['Brief', card.brief],
-    ['Key message', card.keyMessage],
-    ['Visual direction', card.visualDirection],
-    ['CTA', card.cta],
-    ['Reference links', card.referenceLinks],
-    ['Ad copy', card.adCopy],
-    ['Notes', card.notes],
-    ['Frame.io links', frameioLinks],
-  ]
-
-  const sections = [
-    ...singleLineRows
-      .map(([label, value]) => [label, value?.trim() ?? ''] as const)
-      .filter(([, value]) => value.length > 0)
-      .map(([label, value]) => `${label}: ${value}`),
-    ...multiLineRows
-      .map(([label, value]) => [label, value?.trim() ?? ''] as const)
-      .filter(([, value]) => value.length > 0)
-      .map(([label, value]) => `${label}:\n${value}`),
-  ]
-
-  return sections.join('\n\n')
-}
-
-export function buildDevCardInputFromProductionCard(
-  portfolio: Portfolio,
-  settings: GlobalSettings,
-  card: Card,
-): CreateDevCardInput | null {
-  if (!isProductionDevHandoffCard(settings, card)) {
-    return null
-  }
-
-  const taskType = getTaskTypeById(settings, card.taskTypeId)
-  const assignee = getTeamMemberByName(portfolio, card.owner)
-  return {
-    title: card.title,
-    brand: card.brand,
-    sourceBacklogCardId: card.sourceBacklogCardId,
-    sourceProductionCardId: card.id,
-    sourceProductionPortfolioId: portfolio.id,
-    taskDescription: buildDevTaskDescriptionFromProductionCard(portfolio, settings, card),
-    newUrlToUse: getDevUrlListForProductionCard(card),
-    assigneeId: assignee?.id ?? null,
-    dueDate: card.dueDate,
-    changeRequestType: getDevChangeRequestTypeForTaskType(taskType),
-  }
-}
-
-export interface UpsertDevCardFromProductionResult {
-  devBoard: DevBoardState
-  devCardId: string | null
-  created: boolean
-  updated: boolean
-  assigneeChanged: boolean
-}
-
-export function upsertDevCardFromProductionCard(
-  devBoard: DevBoardState,
-  portfolio: Portfolio,
-  settings: GlobalSettings,
-  card: Card,
-  previousCard?: Card | null,
-): UpsertDevCardFromProductionResult {
-  const input = buildDevCardInputFromProductionCard(portfolio, settings, card)
-  if (!input) {
-    return {
-      devBoard,
-      devCardId: null,
-      created: false,
-      updated: false,
-      assigneeChanged: false,
-    }
-  }
-
-  const existingCard = devBoard.cards.find(
-    (candidate) =>
-      candidate.sourceProductionCardId === card.id &&
-      candidate.sourceProductionPortfolioId === portfolio.id,
-  )
-
-  if (!existingCard) {
-    const nextDevBoard = addDevCard(devBoard, input)
-    return {
-      devBoard: nextDevBoard,
-      devCardId: nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null,
-      created: true,
-      updated: false,
-      assigneeChanged: Boolean(input.assigneeId),
-    }
-  }
-
-  const previousInput = previousCard
-    ? buildDevCardInputFromProductionCard(portfolio, settings, previousCard)
-    : null
-  const nextDescription = normalizeGeneratedDescription(input.taskDescription)
-  const previousDescription = normalizeGeneratedDescription(previousInput?.taskDescription)
-  const existingDescription = normalizeGeneratedDescription(existingCard.taskDescription)
-  const shouldRefreshDescription =
-    !existingDescription || (previousDescription.length > 0 && existingDescription === previousDescription)
-  const shouldRefreshUrls =
-    coerceStringArrayField(existingCard.newUrlToUse).length === 0 ||
-    (previousInput ? areStringListsEqual(existingCard.newUrlToUse, previousInput.newUrlToUse) : false)
-
-  const updates: Partial<DevCard> = {}
-  if (existingCard.title !== input.title) {
-    updates.title = input.title
-  }
-  if (existingCard.brand !== input.brand) {
-    updates.brand = input.brand
-  }
-  if (existingCard.sourceBacklogCardId !== input.sourceBacklogCardId) {
-    updates.sourceBacklogCardId = input.sourceBacklogCardId ?? null
-  }
-  if (existingCard.sourceProductionCardId !== input.sourceProductionCardId) {
-    updates.sourceProductionCardId = input.sourceProductionCardId ?? null
-  }
-  if (existingCard.sourceProductionPortfolioId !== input.sourceProductionPortfolioId) {
-    updates.sourceProductionPortfolioId = input.sourceProductionPortfolioId ?? null
-  }
-  if (shouldRefreshDescription && existingDescription !== nextDescription) {
-    updates.taskDescription = nextDescription
-  }
-  if (shouldRefreshUrls && !areStringListsEqual(existingCard.newUrlToUse, input.newUrlToUse)) {
-    updates.newUrlToUse = input.newUrlToUse
-  }
-  if (existingCard.assigneeId !== input.assigneeId) {
-    updates.assigneeId = input.assigneeId ?? null
-  }
-  if (existingCard.dueDate !== input.dueDate) {
-    updates.dueDate = input.dueDate ?? null
-  }
-  if (existingCard.changeRequestType !== input.changeRequestType) {
-    updates.changeRequestType = input.changeRequestType
-  }
-
-  const updated = Object.keys(updates).length > 0
-  return {
-    devBoard: updated ? updateDevCard(devBoard, existingCard.id, updates) : devBoard,
-    devCardId: existingCard.id,
-    created: false,
-    updated,
-    assigneeChanged: existingCard.assigneeId !== input.assigneeId && Boolean(input.assigneeId),
-  }
 }
 
 export function deleteDevCard(state: DevBoardState, cardId: string): DevBoardState {
@@ -3686,6 +3474,418 @@ export function getDevBoardStats(state: DevBoardState): DevBoardStats {
   return {
     total: state.cards.length,
     byColumn,
+  }
+}
+
+const LEGACY_DEV_MIGRATION_VIEWER: ViewerContext = {
+  mode: 'manager',
+  editorName: null,
+  memberRole: 'Manager',
+  visibleBrandNames: null,
+}
+
+function normalizeTextBlock(value: string | null | undefined) {
+  return (value ?? '').replace(/\r\n/g, '\n').trim()
+}
+
+function appendUniqueTextBlock(existing: string, nextBlock: string) {
+  const normalizedBlock = normalizeTextBlock(nextBlock)
+  if (!normalizedBlock) {
+    return existing
+  }
+
+  const normalizedExisting = normalizeTextBlock(existing)
+  if (normalizedExisting.includes(normalizedBlock)) {
+    return existing
+  }
+
+  return normalizedExisting ? `${normalizedExisting}\n\n${normalizedBlock}` : normalizedBlock
+}
+
+function mergeCardLinks(existing: CardLink[] | undefined, additions: CardLink[]) {
+  const merged = [...(existing ?? [])]
+  const seen = new Set(merged.map((link) => link.url.trim()).filter(Boolean))
+
+  for (const link of additions) {
+    const url = link.url.trim()
+    if (!url || seen.has(url)) {
+      continue
+    }
+    seen.add(url)
+    merged.push(link.label?.trim() ? { url, label: link.label.trim() } : { url })
+  }
+
+  return merged
+}
+
+function mergeStringList(existing: string[] | string | undefined, additions: string[]) {
+  const merged = coerceStringArrayField(existing).map((value) => value.trim()).filter(Boolean)
+  const seen = new Set(merged)
+  for (const value of additions.map((item) => item.trim()).filter(Boolean)) {
+    if (!seen.has(value)) {
+      seen.add(value)
+      merged.push(value)
+    }
+  }
+  return merged
+}
+
+function getLegacyDevCardTaskTypeId(settings: GlobalSettings, card: DevCard) {
+  if (card.changeRequestType === 'Bug Fix') {
+    return settings.taskLibrary.find((taskType) => taskType.id === 'bug-fix')?.id ??
+      settings.taskLibrary.find((taskType) => taskType.category === 'Dev')?.id ??
+      settings.taskLibrary[0]?.id ??
+      'custom'
+  }
+
+  return settings.taskLibrary.find((taskType) => taskType.id === 'lp-dev')?.id ??
+    settings.taskLibrary.find((taskType) => taskType.category === 'Dev')?.id ??
+    settings.taskLibrary[0]?.id ??
+    'custom'
+}
+
+function getLegacyDevCardStage(card: DevCard): StageId {
+  if (card.status === 'done' || card.column === 'Live') {
+    return 'Live'
+  }
+  if (card.column === 'QA/Testing') {
+    return 'Ready'
+  }
+  if (card.column === 'For Review') {
+    return 'Review'
+  }
+  if (card.status === 'in-progress') {
+    return 'In Production'
+  }
+  if (card.column === 'Up Next') {
+    return 'Briefed'
+  }
+  return 'Backlog'
+}
+
+function getForwardStage(currentStage: StageId, candidateStage: StageId) {
+  const currentIndex = STAGES.indexOf(currentStage)
+  const candidateIndex = STAGES.indexOf(candidateStage)
+  return candidateIndex > currentIndex ? candidateStage : currentStage
+}
+
+function getTeamMemberNameByIdAcrossPortfolios(portfolios: Portfolio[], memberId: string | null) {
+  if (!memberId) {
+    return null
+  }
+
+  for (const portfolio of portfolios) {
+    const member = getTeamMemberById(portfolio, memberId)
+    if (member) {
+      return member.name
+    }
+  }
+  return null
+}
+
+function getLegacyDevCardLinks(card: DevCard): CardLink[] {
+  const newUrls = coerceStringArrayField(card.newUrlToUse)
+  const loomUrls = coerceStringArrayField(card.loomVideoUrl)
+
+  return [
+    ...newUrls.map((url, index) => ({
+      url,
+      label: newUrls.length > 1 ? `URL to use ${index + 1}` : 'URL to use',
+    })),
+    ...loomUrls.map((url, index) => ({
+      url,
+      label: loomUrls.length > 1 ? `Loom video ${index + 1}` : 'Loom video',
+    })),
+  ]
+}
+
+function getFirstUrlMatching(urls: string[], pattern: RegExp) {
+  return urls.find((url) => pattern.test(url)) ?? ''
+}
+
+function getLegacyDevMigrationMarker(cardId: string) {
+  return `Migrated from Dev board card: ${cardId}`
+}
+
+function hasLegacyDevMigrationMarker(card: Card, devCardId: string) {
+  const marker = getLegacyDevMigrationMarker(devCardId)
+  return (
+    normalizeTextBlock(card.notes).includes(marker) ||
+    card.activityLog.some((entry) => entry.message.includes(`Dev board card ${devCardId}`))
+  )
+}
+
+function buildLegacyDevCardDetailsBlock(card: DevCard, assigneeName: string | null, originalBrand: string | null) {
+  const blocker = getDevCardBlockerReason(card)
+  const rows = [
+    ['Migrated from Dev board card', card.id],
+    ['Original Dev board column', card.column],
+    ['Original Dev status', card.status ?? 'not-started'],
+    ['Change/request type', card.changeRequestType],
+    ['Dev assignee', assigneeName],
+    ['Due date', card.dueDate],
+    ['Original brand', originalBrand],
+    ['Source backlog card', card.sourceBacklogCardId],
+    ['Source production card', card.sourceProductionCardId],
+    ['Blocker', blocker],
+  ]
+    .map(([label, value]) => [label, value?.trim() ?? ''] as const)
+    .filter(([, value]) => value.length > 0)
+    .map(([label, value]) => `${label}: ${value}`)
+
+  return rows.length > 0 ? `Legacy Dev board details:\n${rows.join('\n')}` : ''
+}
+
+function moveCardForwardForLegacyDevMigration(card: Card, destinationStage: StageId, timestamp: string) {
+  if (card.stage === destinationStage) {
+    return card
+  }
+
+  return {
+    ...card,
+    stage: destinationStage,
+    stageEnteredAt: timestamp,
+    stageHistory: [
+      ...closeCurrentStageEntry(card.stageHistory, timestamp),
+      {
+        stage: destinationStage,
+        enteredAt: timestamp,
+        exitedAt: null,
+        durationDays: null,
+      },
+    ],
+    columnMovementHistory: [
+      ...card.columnMovementHistory,
+      {
+        from: card.stage,
+        to: destinationStage,
+        timestamp,
+      },
+    ],
+    dateAssigned: card.stage === 'Backlog' && destinationStage !== 'Backlog' ? timestamp.slice(0, 10) : card.dateAssigned,
+  }
+}
+
+function applyLegacyDevCardDataToMainCard(
+  card: Card,
+  settings: GlobalSettings,
+  devCard: DevCard,
+  assigneeName: string | null,
+  originalBrand: string | null,
+) {
+  const timestamp = devCard.updatedAt || devCard.dateCreated || new Date().toISOString()
+  const devTaskDescription = normalizeTextBlock(devCard.taskDescription)
+  const devUrls = coerceStringArrayField(devCard.newUrlToUse)
+  const firstNonFigmaUrl = devUrls.find((url) => !/figma\.com/i.test(url)) ?? ''
+  const firstFigmaUrl = getFirstUrlMatching(devUrls, /figma\.com/i)
+  const blocker = getDevCardBlockerReason(devCard)
+  const detailsBlock = buildLegacyDevCardDetailsBlock(devCard, assigneeName, originalBrand)
+  const wasPreviouslyMigrated = hasLegacyDevMigrationMarker(card, devCard.id)
+  const shouldUseDevDescriptionAsBrief =
+    Boolean(devTaskDescription) &&
+    (!normalizeTextBlock(card.brief) ||
+      (wasPreviouslyMigrated &&
+        Date.parse(devCard.updatedAt) >= Date.parse(card.updatedAt)))
+  const descriptionBlock =
+    devTaskDescription &&
+    !shouldUseDevDescriptionAsBrief &&
+    normalizeTextBlock(card.brief) &&
+    normalizeTextBlock(card.brief) !== devTaskDescription
+      ? `Dev task description:\n${devTaskDescription}`
+      : ''
+  const targetStage = getForwardStage(card.stage, getLegacyDevCardStage(devCard))
+  let nextCard = card
+
+  if (targetStage !== card.stage) {
+    nextCard = moveCardForwardForLegacyDevMigration(nextCard, targetStage, timestamp)
+  }
+
+  nextCard = {
+    ...nextCard,
+    sourceBacklogCardId: nextCard.sourceBacklogCardId ?? devCard.sourceBacklogCardId,
+    taskTypeId: isProductionDevHandoffCard(settings, nextCard)
+      ? nextCard.taskTypeId
+      : getLegacyDevCardTaskTypeId(settings, devCard),
+    owner: assigneeName ?? nextCard.owner,
+    dueDate: devCard.dueDate ?? nextCard.dueDate,
+    brief: shouldUseDevDescriptionAsBrief ? devTaskDescription : normalizeTextBlock(nextCard.brief),
+    landingPage: nextCard.landingPage || firstNonFigmaUrl,
+    figmaUrl: nextCard.figmaUrl || firstFigmaUrl,
+    links: mergeCardLinks(nextCard.links, getLegacyDevCardLinks(devCard)),
+    frameioLink: mergeStringList(nextCard.frameioLink, coerceStringArrayField(devCard.loomVideoUrl)),
+    attachments: Array.from(new Set([...(nextCard.attachments ?? []), ...(devCard.attachments ?? [])])),
+    blocked: blocker ? { reason: blocker, at: timestamp } : nextCard.blocked,
+    notes: appendUniqueTextBlock(
+      appendUniqueTextBlock(nextCard.notes, detailsBlock),
+      descriptionBlock,
+    ),
+    updatedAt: getLatestTimestampString([nextCard.updatedAt, devCard.updatedAt], timestamp),
+    activityLog: wasPreviouslyMigrated
+      ? nextCard.activityLog
+      : [
+          createActivityEntry('System', `migrated Dev board card ${devCard.id} into the main board`, 'created', timestamp),
+          ...nextCard.activityLog,
+        ],
+  }
+
+  return syncGeneratedNames(nextCard, settings)
+}
+
+function findLinkedMainCardLocation(portfolios: Portfolio[], devCard: DevCard) {
+  if (devCard.sourceProductionCardId) {
+    for (const [portfolioIndex, portfolio] of portfolios.entries()) {
+      if (
+        devCard.sourceProductionPortfolioId &&
+        portfolio.id !== devCard.sourceProductionPortfolioId
+      ) {
+        continue
+      }
+      const cardIndex = portfolio.cards.findIndex((card) => card.id === devCard.sourceProductionCardId)
+      if (cardIndex >= 0) {
+        return { portfolioIndex, cardIndex }
+      }
+    }
+  }
+
+  if (devCard.sourceBacklogCardId) {
+    for (const [portfolioIndex, portfolio] of portfolios.entries()) {
+      const cardIndex = portfolio.cards.findIndex((card) => card.sourceBacklogCardId === devCard.sourceBacklogCardId)
+      if (cardIndex >= 0) {
+        return { portfolioIndex, cardIndex }
+      }
+    }
+  }
+
+  for (const [portfolioIndex, portfolio] of portfolios.entries()) {
+    const cardIndex = portfolio.cards.findIndex((card) => hasLegacyDevMigrationMarker(card, devCard.id))
+    if (cardIndex >= 0) {
+      return { portfolioIndex, cardIndex }
+    }
+  }
+
+  return null
+}
+
+function getLegacyDevTargetPortfolioIndex(state: AppState, devCard: DevCard) {
+  if (devCard.sourceProductionPortfolioId) {
+    const sourceIndex = state.portfolios.findIndex((portfolio) => portfolio.id === devCard.sourceProductionPortfolioId)
+    if (sourceIndex >= 0) {
+      return sourceIndex
+    }
+  }
+
+  const matchingBrandIndexes = state.portfolios
+    .map((portfolio, index) => ({ portfolio, index }))
+    .filter(({ portfolio }) => portfolio.brands.some((brand) => brand.name === devCard.brand))
+    .map(({ index }) => index)
+  if (matchingBrandIndexes.length === 1) {
+    return matchingBrandIndexes[0]
+  }
+
+  const defaultIndex = state.portfolios.findIndex((portfolio) => portfolio.id === state.settings.general.defaultPortfolioId)
+  return defaultIndex >= 0 ? defaultIndex : state.portfolios.length > 0 ? 0 : -1
+}
+
+function createMainCardFromLegacyDevCard(
+  state: AppState,
+  portfolio: Portfolio,
+  devCard: DevCard,
+  assigneeName: string | null,
+) {
+  const matchingBrand = getBrandByName(portfolio, devCard.brand) ?? portfolio.brands[0] ?? null
+  if (!matchingBrand) {
+    return null
+  }
+
+  const originalBrand = matchingBrand.name === devCard.brand ? null : devCard.brand
+  const createdAtMs = Date.parse(devCard.dateCreated)
+  const updatedAtMs = Date.parse(devCard.updatedAt)
+  const createdAt =
+    Number.isFinite(createdAtMs) &&
+    Number.isFinite(updatedAtMs) &&
+    createdAtMs <= updatedAtMs
+      ? devCard.dateCreated
+      : devCard.updatedAt || devCard.dateCreated || new Date().toISOString()
+  const card = createCardFromQuickInput(
+    portfolio,
+    state.settings,
+    {
+      title: devCard.title,
+      brand: matchingBrand.name,
+      product: matchingBrand.products[0] ?? '',
+      taskTypeId: getLegacyDevCardTaskTypeId(state.settings, devCard),
+      angle: '',
+      sourceCardId: null,
+    },
+    'System',
+    createdAt,
+  )
+
+  return applyLegacyDevCardDataToMainCard(card, state.settings, devCard, assigneeName, originalBrand)
+}
+
+export function migrateLegacyDevBoardIntoMainBoard(state: AppState): AppState {
+  if (state.devBoard.cards.length === 0) {
+    return state
+  }
+
+  let portfolios = state.portfolios
+  const unmigratedCards: DevCard[] = []
+
+  for (const devCard of state.devBoard.cards) {
+    const assigneeName = getTeamMemberNameByIdAcrossPortfolios(portfolios, devCard.assigneeId)
+    const linkedLocation = findLinkedMainCardLocation(portfolios, devCard)
+    if (linkedLocation) {
+      portfolios = portfolios.map((portfolio, portfolioIndex) => {
+        if (portfolioIndex !== linkedLocation.portfolioIndex) {
+          return portfolio
+        }
+        const nextCards = portfolio.cards.map((card, cardIndex) =>
+          cardIndex === linkedLocation.cardIndex
+            ? applyLegacyDevCardDataToMainCard(card, state.settings, devCard, assigneeName, null)
+            : card,
+        )
+        return {
+          ...portfolio,
+          cards: reindexCards(nextCards),
+          lastIdPerPrefix: getLastIdPerPrefix(portfolio.brands, nextCards),
+        }
+      })
+      continue
+    }
+
+    const portfolioIndex = getLegacyDevTargetPortfolioIndex({ ...state, portfolios }, devCard)
+    const targetPortfolio = portfolios[portfolioIndex]
+    if (portfolioIndex < 0 || !targetPortfolio) {
+      unmigratedCards.push(devCard)
+      continue
+    }
+
+    const migratedCard = createMainCardFromLegacyDevCard(
+      { ...state, portfolios },
+      targetPortfolio,
+      devCard,
+      assigneeName,
+    )
+    if (!migratedCard) {
+      unmigratedCards.push(devCard)
+      continue
+    }
+
+    portfolios = portfolios.map((portfolio, index) =>
+      index === portfolioIndex
+        ? addCardToPortfolio(portfolio, migratedCard, LEGACY_DEV_MIGRATION_VIEWER)
+        : portfolio,
+    )
+  }
+
+  return {
+    ...state,
+    portfolios,
+    devBoard: {
+      cards: unmigratedCards,
+      lastCardNumber: state.devBoard.lastCardNumber,
+    },
   }
 }
 

@@ -1,6 +1,7 @@
 import {
   applyPendingAppStatePatch,
   coerceAppState,
+  migrateLegacyDevBoardIntoMainBoard,
   type AppState,
   type Card,
   type DevCard,
@@ -37,9 +38,11 @@ function getRemoteDefaultPortfolioId(state: AppState) {
 }
 
 function createRemoteStateSnapshot(state: AppState): AppState {
+  const migratedState = migrateLegacyDevBoardIntoMainBoard(state)
+
   return {
-    ...state,
-    activePortfolioId: getRemoteDefaultPortfolioId(state),
+    ...migratedState,
+    activePortfolioId: getRemoteDefaultPortfolioId(migratedState),
     activeRole: {
       mode: 'owner',
       editorId: null,
@@ -250,7 +253,10 @@ export function mergeRemoteAppStateCardLevel(remoteState: AppState, localState: 
     } as DevBoardState,
   }
 
-  return mergeRemoteAppStateWithLocalState(mergedSharedState, localState)
+  return mergeRemoteAppStateWithLocalState(
+    migrateLegacyDevBoardIntoMainBoard(mergedSharedState),
+    localState,
+  )
 }
 
 export interface SaveRemoteAppStateWithMergeResult {

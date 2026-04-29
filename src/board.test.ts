@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   addCardToPortfolio,
+  addDevCard,
   applyPendingAppStatePatch,
   applyCardUpdates,
   archiveEligibleCards,
-  buildDevCardInputFromProductionCard,
   buildDashboardData,
   buildEditorPerformanceData,
   coerceAppState,
@@ -23,6 +23,7 @@ import {
   getVisibleCards,
   getRevisionCount,
   markPortfolioMetadataUpdated,
+  migrateLegacyDevBoardIntoMainBoard,
   moveCardInPortfolio,
   removeBrandFromPortfolio,
   removeCardFromPortfolio,
@@ -31,7 +32,6 @@ import {
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
   startEditorTimerForCard,
-  upsertDevCardFromProductionCard,
   type ViewerContext,
 } from './board'
 import { getVisiblePortfolioIds } from './accessHelpers'
@@ -1309,8 +1309,8 @@ describe('backlog to production helpers', () => {
   })
 })
 
-describe('production to dev handoff helpers', () => {
-  function createProductionDevCard() {
+describe('legacy dev board migration', () => {
+  function createStateWithProductionDevCard() {
     const state = createSeedState()
     const portfolio = state.portfolios[0]!
     const brand = portfolio.brands[0]!
@@ -1341,100 +1341,114 @@ describe('production to dev handoff helpers', () => {
       notes: 'QA on mobile before launch.',
       frameioLink: ['https://frame.io/review-link'],
     }
+    const nextPortfolio = addCardToPortfolio(portfolio, card, MANAGER_VIEWER)
 
-    return { state, portfolio, card }
+    return {
+      state: {
+        ...state,
+        portfolios: state.portfolios.map((candidate) =>
+          candidate.id === portfolio.id ? nextPortfolio : candidate,
+        ),
+      },
+      portfolio: nextPortfolio,
+      card,
+    }
   }
 
-  it('builds a rich dev card input from a production Dev task', () => {
-    const { state, portfolio, card } = createProductionDevCard()
-    const input = buildDevCardInputFromProductionCard(portfolio, state.settings, card)
-
-    expect(input).toMatchObject({
-      title: 'LP implementation from creative review',
-      brand: 'Pluxy',
-      sourceBacklogCardId: 'BL0042',
+  it('moves linked Dev board data into the existing main-board Dev card', () => {
+    const { state, portfolio, card } = createStateWithProductionDevCard()
+    const devBoard = addDevCard(state.devBoard, {
+      title: card.title,
+      brand: card.brand,
+      sourceBacklogCardId: card.sourceBacklogCardId,
       sourceProductionCardId: card.id,
       sourceProductionPortfolioId: portfolio.id,
-      assigneeId: 'daniel-t',
-      dueDate: '2026-05-04',
-      changeRequestType: 'Landing Page Update',
+      taskDescription: 'Manual implementation notes from Daniel.',
       newUrlToUse: ['https://example.com/current-lp', 'https://figma.com/file/lp-design'],
-    })
-    expect(input?.taskDescription).toContain(`Source production card: ${card.id}`)
-    expect(input?.taskDescription).toContain('Brief:\nBuild the approved LP design')
-    expect(input?.taskDescription).toContain('Frame.io links:\nhttps://frame.io/review-link')
-  })
-
-  it('creates one linked dev card and reuses it on retry', () => {
-    const { state, portfolio, card } = createProductionDevCard()
-    const first = upsertDevCardFromProductionCard(state.devBoard, portfolio, state.settings, card)
-    const second = upsertDevCardFromProductionCard(first.devBoard, portfolio, state.settings, card, card)
-
-    expect(first.created).toBe(true)
-    expect(first.devBoard.cards).toHaveLength(1)
-    expect(second.created).toBe(false)
-    expect(second.updated).toBe(false)
-    expect(second.devBoard.cards).toHaveLength(1)
-    expect(second.devBoard.lastCardNumber).toBe(1)
-    expect(second.devBoard.cards[0]).toMatchObject({
-      id: 'DV0001',
-      sourceProductionCardId: card.id,
-      sourceProductionPortfolioId: portfolio.id,
-    })
-  })
-
-  it('refreshes generated dev context when the production brief changes', () => {
-    const { state, portfolio, card } = createProductionDevCard()
-    const first = upsertDevCardFromProductionCard(state.devBoard, portfolio, state.settings, card)
-    const nextCard = {
-      ...card,
-      brief: 'Updated production brief for the developer.',
-      dueDate: '2026-05-06',
-    }
-    const refreshed = upsertDevCardFromProductionCard(
-      first.devBoard,
-      portfolio,
-      state.settings,
-      nextCard,
-      card,
-    )
-    const linkedCard = refreshed.devBoard.cards[0]!
-
-    expect(refreshed.updated).toBe(true)
-    expect(linkedCard.taskDescription).toContain('Brief:\nUpdated production brief for the developer.')
-    expect(linkedCard.dueDate).toBe('2026-05-06')
-  })
-
-  it('keeps manual dev context while syncing assignment fields', () => {
-    const { state, portfolio, card } = createProductionDevCard()
-    const first = upsertDevCardFromProductionCard(state.devBoard, portfolio, state.settings, card)
-    const manualDevBoard = {
-      ...first.devBoard,
-      cards: first.devBoard.cards.map((devCard) => ({
-        ...devCard,
-        taskDescription: 'Manual implementation notes from Daniel.',
-        updatedAt: '2026-04-29T10:00:00.000Z',
-      })),
-    }
-    const nextCard = {
-      ...card,
-      brief: 'Updated production brief that should not wipe manual dev notes.',
-      owner: 'Naomi',
+      loomVideoUrl: 'https://loom.com/share/dev-context',
+      assigneeId: 'daniel-t',
       dueDate: '2026-05-07',
-    }
-    const synced = upsertDevCardFromProductionCard(
-      manualDevBoard,
-      portfolio,
-      state.settings,
-      nextCard,
-      card,
-    )
-    const linkedCard = synced.devBoard.cards[0]!
+      changeRequestType: 'Landing Page Update',
+    })
 
-    expect(synced.updated).toBe(true)
-    expect(synced.assigneeChanged).toBe(true)
-    expect(linkedCard.taskDescription).toBe('Manual implementation notes from Daniel.')
-    expect(linkedCard.assigneeId).toBe('naomi')
-    expect(linkedCard.dueDate).toBe('2026-05-07')
+    const migrated = migrateLegacyDevBoardIntoMainBoard({
+      ...state,
+      devBoard,
+    })
+    const migratedCard = migrated.portfolios[0]?.cards.find((candidate) => candidate.id === card.id)
+
+    expect(migrated.devBoard.cards).toHaveLength(0)
+    expect(migratedCard).toMatchObject({
+      taskTypeId: 'lp-dev',
+      owner: 'Daniel T',
+      dueDate: '2026-05-07',
+      landingPage: 'https://example.com/current-lp',
+      figmaUrl: 'https://figma.com/file/lp-design',
+    })
+    expect(migratedCard?.brief).toBe('Build the approved LP design and keep the headline hierarchy.')
+    expect(migratedCard?.notes).toContain('Migrated from Dev board card: DV0001')
+    expect(migratedCard?.notes).toContain('Dev task description:\nManual implementation notes from Daniel.')
+    expect(migratedCard?.links).toEqual(
+      expect.arrayContaining([
+        { url: 'https://example.com/current-lp', label: 'URL to use 1' },
+        { url: 'https://figma.com/file/lp-design', label: 'URL to use 2' },
+        { url: 'https://loom.com/share/dev-context', label: 'Loom video' },
+      ]),
+    )
+    expect(migratedCard?.frameioLink).toEqual(['https://frame.io/review-link', 'https://loom.com/share/dev-context'])
+  })
+
+  it('creates a main-board Dev card for standalone legacy Dev board cards', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const devBoard = addDevCard(state.devBoard, {
+      title: 'Fix PDP sticky CTA',
+      brand: portfolio.brands[0]!.name,
+      taskDescription: 'Sticky CTA disappears below the comparison module.',
+      newUrlToUse: 'https://example.com/pdp',
+      assigneeId: 'daniel-t',
+      dueDate: '2026-05-08',
+      changeRequestType: 'Bug Fix',
+    })
+
+    const migrated = migrateLegacyDevBoardIntoMainBoard({
+      ...state,
+      devBoard,
+    })
+    const migratedCard = migrated.portfolios[0]?.cards.find((card) => card.sourceBacklogCardId === 'DV0001') ??
+      migrated.portfolios[0]?.cards.find((card) => card.notes.includes('Migrated from Dev board card: DV0001'))
+
+    expect(migrated.devBoard.cards).toHaveLength(0)
+    expect(migratedCard).toMatchObject({
+      title: 'Fix PDP sticky CTA',
+      taskTypeId: 'bug-fix',
+      owner: 'Daniel T',
+      brief: 'Sticky CTA disappears below the comparison module.',
+      landingPage: 'https://example.com/pdp',
+      dueDate: '2026-05-08',
+    })
+    expect(migratedCard?.notes).toContain('Original Dev board column: To Brief')
+  })
+
+  it('runs legacy Dev board migration during state normalization', () => {
+    const state = createSeedState()
+    const devBoard = addDevCard(state.devBoard, {
+      title: 'Normalized legacy Dev task',
+      brand: state.portfolios[0]!.brands[0]!.name,
+      taskDescription: 'Normalize this into the main board.',
+      changeRequestType: 'New Feature',
+    })
+
+    const normalized = coerceAppState({
+      ...state,
+      devBoard,
+    })
+
+    expect(normalized.devBoard.cards).toHaveLength(0)
+    expect(
+      normalized.portfolios[0]?.cards.some((card) =>
+        card.notes.includes('Migrated from Dev board card: DV0001'),
+      ),
+    ).toBe(true)
   })
 })

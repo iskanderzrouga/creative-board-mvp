@@ -1,5 +1,4 @@
 const BOARD_LINK = '<https://creative-board-lake.vercel.app/board|View on board>'
-const DEV_BOARD_LINK = '<https://creative-board-lake.vercel.app/dev|View on Dev board>'
 const SCRIPTS_PAGE_URL = 'https://creative-board-lake.vercel.app/scripts'
 
 const VIDEO_WEBHOOK_URL = import.meta.env.VITE_SLACK_WEBHOOK_VIDEO
@@ -110,7 +109,7 @@ export function notifyDevTaskAssigned(input: {
 }) {
   postChannelNotification({
     webhookUrl: DEV_WEBHOOK_URL,
-    text: `📋 New dev task assigned: ${input.cardTitle} → ${input.assigneeName}. ${DEV_BOARD_LINK}`,
+    text: `📋 New dev task assigned: ${input.cardTitle} → ${input.assigneeName}. ${BOARD_LINK}`,
   })
 }
 
@@ -121,7 +120,7 @@ export function notifyDevBlockerAdded(input: {
 }) {
   postChannelNotification({
     webhookUrl: DEV_WEBHOOK_URL,
-    text: `🚫 Blocker on ${input.cardTitle}: ${input.blockerText}. Assigned to ${input.assigneeName}. ${DEV_BOARD_LINK}`,
+    text: `🚫 Blocker on ${input.cardTitle}: ${input.blockerText}. Assigned to ${input.assigneeName}. ${BOARD_LINK}`,
   })
 }
 
@@ -131,7 +130,7 @@ export function notifyDevBlockerRemoved(input: {
 }) {
   postChannelNotification({
     webhookUrl: DEV_WEBHOOK_URL,
-    text: `✅ Blocker cleared on ${input.cardTitle}. ${input.assigneeName} can proceed. ${DEV_BOARD_LINK}`,
+    text: `✅ Blocker cleared on ${input.cardTitle}. ${input.assigneeName} can proceed. ${BOARD_LINK}`,
   })
 }
 
@@ -141,7 +140,7 @@ export function notifyDevReadyForReview(input: {
 }) {
   postChannelNotification({
     webhookUrl: DEV_WEBHOOK_URL,
-    text: `👀 Ready for review: ${input.cardTitle} by ${input.assigneeName}. ${DEV_BOARD_LINK}`,
+    text: `👀 Ready for review: ${input.cardTitle} by ${input.assigneeName}. ${BOARD_LINK}`,
   })
 }
 

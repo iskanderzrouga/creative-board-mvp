@@ -56,8 +56,6 @@ import { ScriptWorkshopPage } from './components/ScriptWorkshopPage'
 import { StrategyCyclesPage } from './components/StrategyCyclesPage'
 import { SyncStatusPill } from './components/SyncStatusPill'
 import { ToastStack } from './components/ToastStack'
-import { DevBoardPage } from './components/DevBoardPage'
-import { DevCardDetailPanel } from './components/DevCardDetailPanel'
 import { FinancePage } from './components/FinancePage'
 import { useAppEffects } from './hooks/useAppEffects'
 import { WorkloadPage } from './components/WorkloadPage'
@@ -88,7 +86,6 @@ import {
 import {
   GROUPED_STAGES,
   STAGES,
-  addDevCard,
   addCardToPortfolio,
   applyCardUpdates,
   createCardFromQuickInput,
@@ -111,23 +108,17 @@ import {
   isLaunchOpsRole,
   SCRIPT_REVIEWERS,
   createNotification,
-  getDevCardBlockerReason,
   type ScriptConfidenceLevel,
   type ScriptReviewerId,
   markNotificationRead,
   markAllNotificationsRead,
   dismissNotification,
-  deleteDevCard,
-  getDevCardMoveValidationMessage,
-  moveDevCard,
   loadAppState,
   loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
   startEditorTimerForCard,
   setInProductionCardPriority,
-  updateDevCard,
-  upsertDevCardFromProductionCard,
   type ActiveRole,
   type AppNotification,
   type AppPage,
@@ -136,8 +127,6 @@ import {
   type Card,
   type DailyCheckinFormValues,
   type DailyPulseFeedItem,
-  type DevBoardColumnId,
-  type DevCard,
   type LaneModel,
   type Portfolio,
   type QuickCreateInput,
@@ -176,10 +165,6 @@ interface CopyState {
 
 interface SelectedCardState {
   portfolioId: string
-  cardId: string
-}
-
-interface SelectedDevCardState {
   cardId: string
 }
 
@@ -245,8 +230,6 @@ function getPathForPage(page: ExtendedPage) {
   switch (page) {
     case 'backlog':
       return '/backlog'
-    case 'dev':
-      return '/dev'
     case 'analytics':
       return '/analytics'
     case 'workload':
@@ -272,7 +255,7 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
     case '/backlog':
       return 'backlog'
     case '/dev':
-      return 'dev'
+      return 'board'
     case '/analytics':
       return 'analytics'
     case '/workload':
@@ -321,7 +304,6 @@ function App() {
     getDefaultBoardFilters(getActivePortfolio(loadAppState())),
   )
   const [selectedCard, setSelectedCard] = useState<SelectedCardState | null>(null)
-  const [selectedDevCard, setSelectedDevCard] = useState<SelectedDevCardState | null>(null)
   const [toasts, setToasts] = useState<ToastState[]>([])
   const [copyState, setCopyState] = useState<CopyState | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -489,18 +471,12 @@ function App() {
     }) ?? null
   const isDeveloperUser =
     hasDeveloperBoardRole(currentEditor?.role ?? null) || hasDeveloperBoardRole(accessMatchedMember?.role ?? null)
-  const devAssignableTeamMembers = allTeamMembers
-  const devBoardCanEdit =
-    state.activeRole.mode === 'owner' ||
-    state.activeRole.mode === 'manager' ||
-    (state.activeRole.mode === 'contributor' && isDeveloperUser)
   const productionPage: AppPage = isDeveloperUser
     ? (routePage === 'settings' ? 'settings' : routePage === 'pulse' ? 'pulse' : 'board')
     : getCurrentPage(state)
   const currentPage: ExtendedPage = isDeveloperUser
     ? getAllowedPageForDeveloper(routePage === 'finance' ? 'board' : routePage)
     : routePage === 'backlog' ||
-        routePage === 'dev' ||
         routePage === 'scripts' ||
         routePage === 'strategy' ||
         routePage === 'finance' ||
@@ -603,9 +579,6 @@ function App() {
   const selectedCardData = selectedCard
     ? activeSelectedPortfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
     : null
-  const selectedDevCardData = selectedDevCard
-    ? state.devBoard.cards.find((card) => card.id === selectedDevCard.cardId) ?? null
-    : null
   const pendingBackwardCard = pendingBackwardMove
     ? state.portfolios
         .find((portfolio) => portfolio.id === pendingBackwardMove.portfolioId)
@@ -686,23 +659,6 @@ function App() {
         stage: card.stage,
       }))
   }, [checkinIdentityKeys, state.portfolios])
-  const checkinDevBoardTasks = useMemo<CheckinTaskSummaryItem[]>(() => {
-    if (checkinIdentityKeys.size === 0) {
-      return []
-    }
-
-    return state.devBoard.cards
-      .filter((card) => {
-        const assigneeName =
-          allTeamMembers.find((member) => member.id === card.assigneeId)?.name?.trim().toLowerCase() ?? null
-        return Boolean(assigneeName && checkinIdentityKeys.has(assigneeName))
-      })
-      .map((card) => ({
-        id: card.id,
-        title: card.title,
-        stage: card.column,
-      }))
-  }, [allTeamMembers, checkinIdentityKeys, state.devBoard.cards])
   const pulsePeopleOptions = useMemo(
     () => getTeamMembersForPulse(allTeamMembers).map((member) => member.name),
     [allTeamMembers],
@@ -1071,20 +1027,6 @@ function App() {
         return
       }
 
-      if (nextPage === 'dev') {
-        if (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager') {
-          setRoutePage('dev')
-        } else {
-          const fallbackPage = getAllowedPageForRole(state.activePage, state.activeRole.mode)
-          setRoutePage(fallbackPage)
-          setState((current) => ({
-            ...current,
-            activePage: fallbackPage,
-          }))
-        }
-        return
-      }
-
       if (nextPage === 'scripts') {
         if (state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager') {
           setRoutePage('scripts')
@@ -1157,15 +1099,9 @@ function App() {
   }, [canAccessBacklog, productionPage, routePage])
 
   useEffect(() => {
-    if (!isDeveloperUser && routePage === 'dev' && state.activeRole.mode !== 'owner' && state.activeRole.mode !== 'manager') {
-      setRoutePage(productionPage)
-    }
-  }, [isDeveloperUser, productionPage, routePage, state.activeRole.mode])
-
-  useEffect(() => {
     if (isDeveloperUser) {
-      if (routePage !== 'dev' && routePage !== 'settings' && routePage !== 'pulse') {
-        setRoutePage('dev')
+      if (routePage !== 'board' && routePage !== 'settings' && routePage !== 'pulse') {
+        setRoutePage('board')
       }
       return
     }
@@ -1556,7 +1492,6 @@ function App() {
         activePage: allowedPage === 'settings' ? 'settings' : allowedPage === 'pulse' ? 'pulse' : 'board',
       }))
       setSelectedCard(null)
-      setSelectedDevCard(null)
       return
     }
 
@@ -1568,16 +1503,6 @@ function App() {
 
       setRoutePage('backlog')
       setSelectedCard(null)
-      setSelectedDevCard(null)
-      return
-    }
-
-    if (page === 'dev') {
-      if (!(state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager')) {
-        return
-      }
-      setRoutePage('dev')
-      setSelectedCard(null)
       return
     }
 
@@ -1587,7 +1512,6 @@ function App() {
       }
       setRoutePage('scripts')
       setSelectedCard(null)
-      setSelectedDevCard(null)
       return
     }
 
@@ -1597,7 +1521,6 @@ function App() {
       }
       setRoutePage('strategy')
       setSelectedCard(null)
-      setSelectedDevCard(null)
       return
     }
 
@@ -1607,7 +1530,6 @@ function App() {
       }
       setRoutePage('finance')
       setSelectedCard(null)
-      setSelectedDevCard(null)
       return
     }
 
@@ -1621,7 +1543,6 @@ function App() {
       activePage: page,
     }))
     setSelectedCard(null)
-    setSelectedDevCard(null)
   }
 
   function handleSidebarPageChange(page: ExtendedPage) {
@@ -1660,7 +1581,7 @@ function App() {
     setDailyCheckinGateStatus('ready')
     setDailyCheckinSubmitting(false)
     if (isDeveloperUser) {
-      setPage('dev')
+      setPage('board')
     }
   }
 
@@ -1950,202 +1871,9 @@ function App() {
     })
   }
 
-  function handleAddDevCard() {
-    if (!activePortfolioView) {
-      return
-    }
-
-    let nextCardId: string | null = null
-    updateState((current) => {
-      const nextDevBoard = addDevCard(current.devBoard, {
-        title: 'New development task',
-        brand: activePortfolioView.brands[0]?.name ?? 'Unknown',
-      })
-      nextCardId = nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null
-      return {
-        ...current,
-        devBoard: nextDevBoard,
-      }
-    })
-
-    if (nextCardId) {
-      setSelectedDevCard({ cardId: nextCardId })
-      showToast(`${nextCardId} created`, 'green')
-    }
-  }
-
-  function handleSaveDevCard(cardId: string, updates: Partial<DevCard>) {
-    const previousCard = state.devBoard.cards.find((card) => card.id === cardId) ?? null
-    const nextCard = previousCard ? { ...previousCard, ...updates } : null
-
-    updateState((current) => ({
-      ...current,
-      devBoard: updateDevCard(current.devBoard, cardId, updates),
-    }))
-
-    if (!previousCard || !nextCard || !activePortfolioView) {
-      return
-    }
-
-    const resolveTeamMemberName = (memberId: string | null | undefined) => {
-      if (!memberId) {
-        return 'Unassigned'
-      }
-      return getTeamMemberById(activePortfolioView, memberId)?.name ?? 'Unassigned'
-    }
-
-    const previousAssigneeName = resolveTeamMemberName(previousCard.assigneeId)
-    const nextAssigneeName = resolveTeamMemberName(nextCard.assigneeId)
-
-    if (
-      Object.prototype.hasOwnProperty.call(updates, 'assigneeId') &&
-      previousCard.assigneeId !== nextCard.assigneeId &&
-      nextCard.assigneeId
-    ) {
-      try {
-        notifyDevTaskAssigned({
-          cardTitle: nextCard.title,
-          assigneeName: nextAssigneeName,
-        })
-      } catch (error) {
-        console.error('Dev task assignment notification trigger failed.', error)
-      }
-    }
-
-    const previousBlockerText = getDevCardBlockerReason(previousCard)
-    const nextBlockerText = getDevCardBlockerReason(nextCard)
-
-    if (!previousBlockerText && nextBlockerText) {
-      try {
-        notifyDevBlockerAdded({
-          cardTitle: nextCard.title,
-          blockerText: nextBlockerText,
-          assigneeName: nextAssigneeName,
-        })
-      } catch (error) {
-        console.error('Dev blocker-added notification trigger failed.', error)
-      }
-    }
-
-    if (previousBlockerText && !nextBlockerText) {
-      try {
-        notifyDevBlockerRemoved({
-          cardTitle: nextCard.title,
-          assigneeName: previousAssigneeName,
-        })
-      } catch (error) {
-        console.error('Dev blocker-removed notification trigger failed.', error)
-      }
-    }
-  }
-
-  function handleDeleteDevCard(cardId: string) {
-    updateState((current) => ({
-      ...current,
-      devBoard: deleteDevCard(current.devBoard, cardId),
-    }))
-    if (selectedDevCard?.cardId === cardId) {
-      setSelectedDevCard(null)
-    }
-    showToast('Dev card deleted.', 'blue')
-  }
-
-  function handleMoveDevCard(cardId: string, destinationColumn: DevBoardColumnId): { ok: boolean; message?: string } {
-    const card = state.devBoard.cards.find((item) => item.id === cardId)
-    if (!card) {
-      return { ok: false, message: 'Card could not be found.' }
-    }
-    const validationMessage = getDevCardMoveValidationMessage(card, destinationColumn)
-    if (validationMessage) {
-      return { ok: false, message: validationMessage }
-    }
-    try {
-      updateState((current) => ({
-        ...current,
-        devBoard: moveDevCard(current.devBoard, cardId, destinationColumn),
-      }))
-
-      if (card.column !== 'For Review' && destinationColumn === 'For Review') {
-        const assigneeName =
-          (activePortfolioView ? getTeamMemberById(activePortfolioView, card.assigneeId)?.name : null) ??
-          'Unassigned'
-        try {
-          notifyDevReadyForReview({
-            cardTitle: card.title,
-            assigneeName,
-          })
-        } catch (error) {
-          console.error('Dev ready-for-review notification trigger failed.', error)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to move Dev board card.', error)
-      return { ok: false, message: 'Card move could not be saved. Please try again.' }
-    }
-
-    return { ok: true }
-  }
-
-  function handleBacklogToDev(
-    card: BacklogCard,
-  ): { ok: true; cardId: string } | { ok: false; message: string } {
-    beginTransferWindow('backlog->dev')
-    const existingDevCard = state.devBoard.cards.find((item) => item.sourceBacklogCardId === card.id)
-    if (existingDevCard) {
-      return { ok: true, cardId: existingDevCard.id }
-    }
-
-    let createdCardId: string | null = null
-    try {
-      updateState((current) => {
-        const existingCard = current.devBoard.cards.find((item) => item.sourceBacklogCardId === card.id)
-        if (existingCard) {
-          createdCardId = existingCard.id
-          return current
-        }
-
-        const nextDevBoard = addDevCard(current.devBoard, {
-          title: card.name,
-          brand: card.brand,
-          sourceBacklogCardId: card.id,
-          taskDescription: card.taskDescription ?? '',
-          newUrlToUse: card.linkForChanges ?? '',
-          loomVideoUrl: card.linkForTest ?? '',
-        })
-        createdCardId = nextDevBoard.cards[nextDevBoard.cards.length - 1]?.id ?? null
-        return {
-          ...current,
-          devBoard: nextDevBoard,
-        }
-      })
-    } catch (error) {
-      console.error('Failed to move backlog card to Dev board.', {
-        backlogCardId: card.id,
-        error,
-      })
-      return { ok: false, message: 'Could not create the Development card. Please try again.' }
-    }
-
-    return createdCardId
-      ? { ok: true, cardId: createdCardId }
-      : { ok: false, message: 'Could not create the Development card because no new card ID was generated.' }
-  }
-
   function handleBacklogToProduction(
     card: BacklogCard,
   ): { ok: true; cardId: string; portfolioId: string } | { ok: false; message: string } {
-    if (card.taskType === 'dev-cro') {
-      const devResult = handleBacklogToDev(card)
-      if (!devResult.ok) {
-        return { ok: false, message: devResult.message }
-      }
-      return {
-        ok: true,
-        cardId: devResult.cardId,
-        portfolioId: state.activePortfolioId,
-      }
-    }
-
     beginTransferWindow('backlog->production')
     console.log('[Backlog→Production] handleBacklogToProduction called', {
       backlogCardId: card.id,
@@ -2202,8 +1930,16 @@ function App() {
     const quickCreateDefaults = getQuickCreateDefaults(portfolioSource, state.settings)
     const brand = portfolioSource.brands.find((item) => item.name === card.brand)
     const product = brand?.products[0] || quickCreateDefaults.product || ''
+    const defaultDevTaskTypeId =
+      state.settings.taskLibrary.find((taskType) => taskType.category === 'Dev')?.id ??
+      quickCreateDefaults.taskTypeId ??
+      state.settings.taskLibrary[0]?.id ??
+      'custom'
     const taskTypeId =
-      card.productionTaskType?.trim() || quickCreateDefaults.taskTypeId || state.settings.taskLibrary[0]?.id || 'custom'
+      card.productionTaskType?.trim() ||
+      (card.taskType === 'dev-cro' ? defaultDevTaskTypeId : quickCreateDefaults.taskTypeId) ||
+      state.settings.taskLibrary[0]?.id ||
+      'custom'
     const actor = getActorName(portfolioSource)
 
     console.log('[Backlog→Production] resolved target portfolio', {
@@ -2249,6 +1985,12 @@ function App() {
     }
 
     const referenceLinks = card.referenceLinks ?? ''
+    const devChangeUrl = card.taskType === 'dev-cro' ? card.linkForChanges?.trim() ?? '' : ''
+    const devTestUrl = card.taskType === 'dev-cro' ? card.linkForTest?.trim() ?? '' : ''
+    const devLinks = [
+      devChangeUrl ? { url: devChangeUrl, label: 'Link for changes' } : null,
+      devTestUrl ? { url: devTestUrl, label: 'Link for test' } : null,
+    ].filter((link): link is { url: string; label: string } => link !== null)
 
     productionCard = {
       ...productionCard,
@@ -2258,12 +2000,16 @@ function App() {
       platform: (card.platform as Card['platform'] | undefined) ?? productionCard.platform,
       funnelStage: (card.funnelStage as Card['funnelStage'] | undefined) ?? productionCard.funnelStage,
       angle: card.angleTheme ?? '',
+      landingPage: devChangeUrl && !/figma\.com/i.test(devChangeUrl) ? devChangeUrl : productionCard.landingPage,
+      figmaUrl: devChangeUrl && /figma\.com/i.test(devChangeUrl) ? devChangeUrl : productionCard.figmaUrl,
       keyMessage: card.keyMessage ?? '',
       visualDirection: card.visualDirection ?? '',
       cta: card.cta ?? '',
       referenceLinks,
       adCopy: card.adCopy ?? '',
       notes: card.notes ?? '',
+      links: devLinks.length > 0 ? devLinks : productionCard.links,
+      frameioLink: devTestUrl ? [devTestUrl] : productionCard.frameioLink,
     }
 
     let createdCardId: string | null = null
@@ -2495,87 +2241,14 @@ function App() {
       return
     }
 
-    const devHandoffResultRef: {
-      current: {
-        cardId: string
-        cardTitle: string
-        assigneeName: string
-        created: boolean
-        assigneeChanged: boolean
-      } | null
-    } = { current: null }
-    if (isProductionDevHandoffCard(state.settings, nextCard)) {
-      updateState((current) => {
-        const sourcePortfolio =
-          current.portfolios.find((portfolio) => portfolio.id === activeSelectedPortfolio.id) ?? null
-        const sourceCard =
-          sourcePortfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
-        if (!sourcePortfolio || !sourceCard) {
-          return current
-        }
-
-        const result = upsertDevCardFromProductionCard(
-          current.devBoard,
-          sourcePortfolio,
-          current.settings,
-          sourceCard,
-          previousCard,
-        )
-        if (result.devBoard === current.devBoard || !result.devCardId) {
-          return current
-        }
-
-        const linkedDevCard =
-          result.devBoard.cards.find((card) => card.id === result.devCardId) ?? null
-        const assigneeName =
-          linkedDevCard?.assigneeId
-            ? allTeamMembers.find((member) => member.id === linkedDevCard.assigneeId)?.name ??
-              getTeamMemberById(sourcePortfolio, linkedDevCard.assigneeId)?.name ??
-              'Unassigned'
-            : 'Unassigned'
-        devHandoffResultRef.current = linkedDevCard
-          ? {
-              cardId: linkedDevCard.id,
-              cardTitle: linkedDevCard.title,
-              assigneeName,
-              created: result.created,
-              assigneeChanged: result.assigneeChanged,
-            }
-          : null
-
-        return {
-          ...current,
-          devBoard: result.devBoard,
-        }
-      })
-    }
-
-    const devHandoffResult = devHandoffResultRef.current
-    if (devHandoffResult?.created) {
-      showToast(`${devHandoffResult.cardId} sent to Dev board`, 'green')
-    }
-
-    if (
-      devHandoffResult &&
-      devHandoffResult.assigneeName !== 'Unassigned' &&
-      (devHandoffResult.created || devHandoffResult.assigneeChanged)
-    ) {
-      try {
-        notifyDevTaskAssigned({
-          cardTitle: devHandoffResult.cardTitle,
-          assigneeName: devHandoffResult.assigneeName,
-        })
-      } catch (error) {
-        console.error('Dev task assignment notification trigger failed.', error)
-      }
-    }
-
     const resolveCreativeMemberName = (memberId: string | null | undefined) => {
       if (!memberId) {
         return 'Unassigned'
       }
       return getTeamMemberById(activeSelectedPortfolio, memberId)?.name ?? 'Unassigned'
     }
+    const isDevCard = isProductionDevHandoffCard(state.settings, nextCard)
+    const assigneeName = resolveCreativeMemberName(nextCard.owner ?? previousCard.owner)
 
     if (
       Object.prototype.hasOwnProperty.call(updates, 'owner') &&
@@ -2583,54 +2256,82 @@ function App() {
       nextCard.owner
     ) {
       try {
-        notifyCreativeTaskAssigned({
-          cardTitle: nextCard.title,
-          brand: nextCard.brand,
-          editorName: resolveCreativeMemberName(nextCard.owner),
-        })
+        if (isDevCard) {
+          notifyDevTaskAssigned({
+            cardTitle: nextCard.title,
+            assigneeName: resolveCreativeMemberName(nextCard.owner),
+          })
+        } else {
+          notifyCreativeTaskAssigned({
+            cardTitle: nextCard.title,
+            brand: nextCard.brand,
+            editorName: resolveCreativeMemberName(nextCard.owner),
+          })
+        }
       } catch (error) {
-        console.error('Creative assignment notification trigger failed.', error)
+        console.error('Task assignment notification trigger failed.', error)
       }
     }
 
     const previousBlockerText = previousCard.blocked?.reason?.trim() ?? ''
     const nextBlockerText = nextCard.blocked?.reason?.trim() ?? ''
-    const assigneeName = resolveCreativeMemberName(nextCard.owner ?? previousCard.owner)
 
     if (!previousBlockerText && nextBlockerText) {
       try {
-        notifyCreativeBlockerAdded({
-          cardTitle: nextCard.title,
-          brand: nextCard.brand,
-          blockerText: nextBlockerText,
-          editorName: assigneeName,
-        })
+        if (isDevCard) {
+          notifyDevBlockerAdded({
+            cardTitle: nextCard.title,
+            blockerText: nextBlockerText,
+            assigneeName,
+          })
+        } else {
+          notifyCreativeBlockerAdded({
+            cardTitle: nextCard.title,
+            brand: nextCard.brand,
+            blockerText: nextBlockerText,
+            editorName: assigneeName,
+          })
+        }
       } catch (error) {
-        console.error('Creative blocker-added notification trigger failed.', error)
+        console.error('Blocker-added notification trigger failed.', error)
       }
     }
 
     if (previousBlockerText && !nextBlockerText) {
       try {
-        notifyCreativeBlockerRemoved({
-          cardTitle: nextCard.title,
-          brand: nextCard.brand,
-          editorName: assigneeName,
-        })
+        if (isDevCard) {
+          notifyDevBlockerRemoved({
+            cardTitle: nextCard.title,
+            assigneeName,
+          })
+        } else {
+          notifyCreativeBlockerRemoved({
+            cardTitle: nextCard.title,
+            brand: nextCard.brand,
+            editorName: assigneeName,
+          })
+        }
       } catch (error) {
-        console.error('Creative blocker-removed notification trigger failed.', error)
+        console.error('Blocker-removed notification trigger failed.', error)
       }
     }
 
     if (previousCard.stage !== 'Review' && nextCard.stage === 'Review') {
       try {
-        notifyCreativeReadyForReview({
-          cardTitle: nextCard.title,
-          brand: nextCard.brand,
-          editorName: resolveCreativeMemberName(nextCard.owner),
-        })
+        if (isDevCard) {
+          notifyDevReadyForReview({
+            cardTitle: nextCard.title,
+            assigneeName: resolveCreativeMemberName(nextCard.owner),
+          })
+        } else {
+          notifyCreativeReadyForReview({
+            cardTitle: nextCard.title,
+            brand: nextCard.brand,
+            editorName: resolveCreativeMemberName(nextCard.owner),
+          })
+        }
       } catch (error) {
-        console.error('Creative ready-for-review notification trigger failed.', error)
+        console.error('Ready-for-review notification trigger failed.', error)
       }
     }
   }
@@ -2949,13 +2650,20 @@ function App() {
     if (destinationOwner && card.owner !== destinationOwner) {
       const destinationOwnerName = getTeamMemberById(portfolio, destinationOwner)?.name ?? 'Unassigned'
       try {
-        notifyCreativeTaskAssigned({
-          cardTitle: card.title,
-          brand: card.brand,
-          editorName: destinationOwnerName,
-        })
+        if (isProductionDevHandoffCard(state.settings, card)) {
+          notifyDevTaskAssigned({
+            cardTitle: card.title,
+            assigneeName: destinationOwnerName,
+          })
+        } else {
+          notifyCreativeTaskAssigned({
+            cardTitle: card.title,
+            brand: card.brand,
+            editorName: destinationOwnerName,
+          })
+        }
       } catch (error) {
-        console.error('Creative assignment notification trigger failed.', error)
+        console.error('Task assignment notification trigger failed.', error)
       }
     }
 
@@ -2963,13 +2671,20 @@ function App() {
       const reviewOwnerName =
         getTeamMemberById(portfolio, destinationOwner ?? card.owner)?.name ?? 'Unassigned'
       try {
-        notifyCreativeReadyForReview({
-          cardTitle: card.title,
-          brand: card.brand,
-          editorName: reviewOwnerName,
-        })
+        if (isProductionDevHandoffCard(state.settings, card)) {
+          notifyDevReadyForReview({
+            cardTitle: card.title,
+            assigneeName: reviewOwnerName,
+          })
+        } else {
+          notifyCreativeReadyForReview({
+            cardTitle: card.title,
+            brand: card.brand,
+            editorName: reviewOwnerName,
+          })
+        }
       } catch (error) {
-        console.error('Creative ready-for-review notification trigger failed.', error)
+        console.error('Ready-for-review notification trigger failed.', error)
       }
     }
 
@@ -3526,20 +3241,6 @@ function App() {
           />
         ) : null}
 
-        {currentPage === 'dev' ? (
-          <DevBoardPage
-            devBoard={state.devBoard}
-            teamMembers={devAssignableTeamMembers}
-            canEdit={devBoardCanEdit}
-            showToast={showToast}
-            headerUtilityContent={headerUtilityContent}
-            onAddCard={handleAddDevCard}
-            onMoveCard={handleMoveDevCard}
-            onOpenCard={(cardId) => setSelectedDevCard({ cardId })}
-            onSaveCardTitle={(cardId, title) => handleSaveDevCard(cardId, { title })}
-          />
-        ) : null}
-
         {currentPage === 'scripts' && activePortfolioView ? (
           <ScriptWorkshopPage
             scripts={state.scriptWorkshop.scripts}
@@ -3750,20 +3451,6 @@ function App() {
         />
       ) : null}
 
-      {selectedDevCardData ? (
-        <DevCardDetailPanel
-          key={selectedDevCardData.id}
-          card={selectedDevCardData}
-          teamMembers={devAssignableTeamMembers}
-          activeRoleMode={state.activeRole.mode}
-          activeContributorId={state.activeRole.editorId}
-          isOpen={!isClosingCardPanel}
-          onClose={() => setSelectedDevCard(null)}
-          onSave={handleSaveDevCard}
-          onDelete={handleDeleteDevCard}
-        />
-      ) : null}
-
       {pendingAppConfirm ? (
         <ConfirmDialog
           title={pendingAppConfirm === 'reset-seed' ? 'Reset to defaults?' : 'Start fresh?'}
@@ -3796,7 +3483,6 @@ function App() {
           dateLabel={dailyCheckinDateLabel}
           yesterdayPlan={dailyCheckinYesterdayPlan}
           creativeBoardTasks={checkinCreativeBoardTasks}
-          devBoardTasks={checkinDevBoardTasks}
           submitting={dailyCheckinSubmitting}
           errorMessage={dailyCheckinError}
           onSubmit={handleDailyCheckinSubmit}

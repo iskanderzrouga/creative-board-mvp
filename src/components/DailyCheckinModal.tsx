@@ -11,7 +11,6 @@ interface DailyCheckinModalProps {
   dateLabel: string
   yesterdayPlan: string | null
   creativeBoardTasks: CheckinTaskSummaryItem[]
-  devBoardTasks: CheckinTaskSummaryItem[]
   submitting: boolean
   errorMessage: string | null
   onSubmit: (values: DailyCheckinFormValues) => Promise<void>
@@ -21,7 +20,6 @@ export function DailyCheckinModal({
   dateLabel,
   yesterdayPlan,
   creativeBoardTasks,
-  devBoardTasks,
   submitting,
   errorMessage,
   onSubmit,
@@ -54,7 +52,7 @@ export function DailyCheckinModal({
       values.todayPlan.trim().length === 0,
     [submitting, values.todayPlan, values.yesterdayWork],
   )
-  const hasAssignedTasks = creativeBoardTasks.length > 0 || devBoardTasks.length > 0
+  const hasAssignedTasks = creativeBoardTasks.length > 0
 
   return (
     <div
@@ -113,63 +111,18 @@ export function DailyCheckinModal({
           >
             <h2 style={{ color: '#1a1a1a', fontSize: '16px', margin: '0 0 8px 0' }}>Your current tasks:</h2>
             {hasAssignedTasks ? (
-              <>
-                {creativeBoardTasks.length > 0 ? (
-                  <div style={{ marginBottom: devBoardTasks.length > 0 ? '10px' : 0 }}>
-                    <h3 style={{ color: '#1a1a1a', fontSize: '14px', margin: '0 0 6px 0' }}>Creative Board</h3>
-                    <ul style={{ margin: 0, paddingLeft: '18px' }}>
-                      {creativeBoardTasks.map((task) => (
-                        <li key={`creative-${task.id}`} style={{ color: '#1a1a1a', marginBottom: '6px' }}>
-                          <div style={{ color: '#1a1a1a', fontSize: '13px', lineHeight: 1.35 }}>
-                            <strong style={{ color: '#1a1a1a' }}>{task.id}</strong> — {task.title} · {task.stage}
-                            <span
-                              style={{
-                                color: '#1a1a1a',
-                                fontSize: '11px',
-                                border: '1px solid #9ca3af',
-                                borderRadius: '999px',
-                                padding: '1px 6px',
-                                marginLeft: '8px',
-                                background: '#ffffff',
-                              }}
-                            >
-                              Creative
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-
-                {devBoardTasks.length > 0 ? (
-                  <div>
-                    <h3 style={{ color: '#1a1a1a', fontSize: '14px', margin: '0 0 6px 0' }}>Dev Board</h3>
-                    <ul style={{ margin: 0, paddingLeft: '18px' }}>
-                      {devBoardTasks.map((task) => (
-                        <li key={`dev-${task.id}`} style={{ color: '#1a1a1a', marginBottom: '6px' }}>
-                          <div style={{ color: '#1a1a1a', fontSize: '13px', lineHeight: 1.35 }}>
-                            <strong style={{ color: '#1a1a1a' }}>{task.id}</strong> — {task.title} · {task.stage}
-                            <span
-                              style={{
-                                color: '#1a1a1a',
-                                fontSize: '11px',
-                                border: '1px solid #9ca3af',
-                                borderRadius: '999px',
-                                padding: '1px 6px',
-                                marginLeft: '8px',
-                                background: '#ffffff',
-                              }}
-                            >
-                              Dev
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </>
+              <div>
+                <h3 style={{ color: '#1a1a1a', fontSize: '14px', margin: '0 0 6px 0' }}>Main Board</h3>
+                <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                  {creativeBoardTasks.map((task) => (
+                    <li key={`board-${task.id}`} style={{ color: '#1a1a1a', marginBottom: '6px' }}>
+                      <div style={{ color: '#1a1a1a', fontSize: '13px', lineHeight: 1.35 }}>
+                        <strong style={{ color: '#1a1a1a' }}>{task.id}</strong> - {task.title} · {task.stage}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
               <p style={{ color: '#1a1a1a', margin: 0 }}>No cards currently assigned to you.</p>
             )}

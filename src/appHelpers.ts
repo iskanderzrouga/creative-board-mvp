@@ -145,10 +145,10 @@ export function isDeveloperRole(role: string | null | undefined) {
   return role?.trim().toLowerCase() === 'developer'
 }
 
-export type ExtendedAppPage = AppPage | 'backlog' | 'dev' | 'strategy'
+export type ExtendedAppPage = AppPage | 'backlog' | 'strategy'
 
 export function getAllowedPageForDeveloper(page: ExtendedAppPage): ExtendedAppPage {
-  return page === 'dev' || page === 'pulse' || page === 'settings' ? page : 'dev'
+  return page === 'board' || page === 'pulse' || page === 'settings' ? page : 'board'
 }
 
 export function getAllowedPageForRole(page: AppPage, roleMode: RoleMode | 'editor'): AppPage

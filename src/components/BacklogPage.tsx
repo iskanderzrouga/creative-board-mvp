@@ -46,8 +46,8 @@ interface BacklogPageProps {
   onMoveToProduction: (card: BacklogCard) =>
     | { ok: true; cardId: string; portfolioId: string }
     | { ok: false; message: string }
-  onTransferSourceDeleteConfirmed?: (payload: { path: 'backlog->production' | 'backlog->dev' }) => void
-  onTransferAborted?: (payload: { path: 'backlog->production' | 'backlog->dev' }) => void
+  onTransferSourceDeleteConfirmed?: (payload: { path: 'backlog->production' }) => void
+  onTransferAborted?: (payload: { path: 'backlog->production' }) => void
 }
 
 interface BacklogQuickCreateForm {
@@ -500,11 +500,11 @@ export function BacklogPage({
       })
       if (!productionResult.ok) {
         console.warn('[transfer] aborted — destination not confirmed, source preserved', {
-          path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+          path: 'backlog->production',
           backlogCardId: currentCard.id,
         })
         onTransferAborted?.({
-          path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+          path: 'backlog->production',
         })
         onChange((current) => moveBacklogCard(current, cardId, 'prioritized'))
         showToast(
@@ -520,24 +520,19 @@ export function BacklogPage({
         portfolioId: productionResult.portfolioId,
       })
       console.log('[transfer] destination confirmed in state', {
-        path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+        path: 'backlog->production',
         destinationCardId: productionResult.cardId,
       })
       console.log('[transfer] deleting source card', {
-        path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+        path: 'backlog->production',
         sourceCardId: currentCard.id,
       })
       onChange((current) => deleteBacklogCard(current, cardId))
       onTransferSourceDeleteConfirmed?.({
-        path: currentCard.taskType === 'dev-cro' ? 'backlog->dev' : 'backlog->production',
+        path: 'backlog->production',
       })
       setSelectedCardId(null)
-      showToast(
-        currentCard.taskType === 'dev-cro'
-          ? `Moved to Development Board as ${productionResult.cardId}.`
-          : `Moved to Production as ${productionResult.cardId}.`,
-        'green',
-      )
+      showToast(`Moved to Production as ${productionResult.cardId}.`, 'green')
       return
     }
 

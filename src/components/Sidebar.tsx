@@ -7,7 +7,7 @@ import {
   WorkloadIcon,
 } from './icons/AppIcons'
 
-type ExtendedPage = AppPage | 'backlog' | 'dev' | 'strategy' | 'finance'
+type ExtendedPage = AppPage | 'backlog' | 'strategy' | 'finance'
 
 interface SidebarProps {
   expanded: boolean
@@ -50,26 +50,6 @@ function BacklogIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M15.5 4.5V8H19" />
       <path d="M8.5 11h7" />
       <path d="M8.5 14.5h7" />
-    </svg>
-  )
-}
-
-function DevIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1em"
-      height="1em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7L12 2.5Z" />
-      <path d="M8.5 10.5 11 13l4.5-4.5" />
     </svg>
   )
 }
@@ -163,9 +143,6 @@ function getPageLabel(page: ExtendedPage) {
   if (page === 'backlog') {
     return 'Backlog'
   }
-  if (page === 'dev') {
-    return 'Dev Board'
-  }
   if (page === 'strategy') {
     return 'Strategy'
   }
@@ -192,9 +169,6 @@ function getPageLabel(page: ExtendedPage) {
 function getPageIcon(page: ExtendedPage): PageIcon {
   if (page === 'backlog') {
     return BacklogIcon
-  }
-  if (page === 'dev') {
-    return DevIcon
   }
   if (page === 'strategy') {
     return StrategyIcon
@@ -258,13 +232,12 @@ function SidebarComponent({
     tooltip?: string
   }> = isDeveloperUser
     ? [
-        { page: 'dev', disabled: false },
+        { page: 'board', disabled: false },
         { page: 'pulse', disabled: false },
         { page: 'settings', disabled: false },
       ]
     : [
         ...(canAccessBacklog && canAccessAllPages ? [{ page: 'backlog' as const, disabled: false }] : []),
-        ...(canAccessAllPages ? [{ page: 'dev' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'strategy' as const, disabled: false }] : []),
         ...(canAccessPerformance ? [{ page: 'finance' as const, disabled: false }] : []),
         { page: 'board', disabled: false },

@@ -436,7 +436,7 @@ describe('remote app state sync', () => {
     expect(syncedCard?.updatedAt).toBe('2026-04-29T00:00:02.000Z')
   })
 
-  it('keeps newer dev card field edits when a stale save conflicts with remote state', async () => {
+  it('keeps newer legacy Dev board field edits by migrating them into main-board cards during conflicts', async () => {
     const seed = createSeedState()
     const brand = seed.portfolios[0]!.brands[0]!.name
     const devBoard = addDevCard(seed.devBoard, {
@@ -485,11 +485,14 @@ describe('remote app state sync', () => {
     bumpStoredRemoteUpdatedAt()
     const result = await saveRemoteAppStateWithRetryMerge(localEditedState, firstLoad.lastSyncedAt)
     const synced = await loadOrCreateRemoteAppState(seed)
-    const syncedCard = synced.state.devBoard.cards.find((candidate) => candidate.id === card.id)
+    const syncedCard = synced.state.portfolios[0]?.cards.find((candidate) =>
+      candidate.notes.includes(`Migrated from Dev board card: ${card.id}`),
+    )
 
     expect(result.merged).toBe(true)
+    expect(synced.state.devBoard.cards).toHaveLength(0)
     expect(syncedCard?.sourceBacklogCardId).toBe('BL0099')
-    expect(syncedCard?.taskDescription).toBe('Local newer dev context')
+    expect(syncedCard?.brief).toBe('Local newer dev context')
   })
 
   it.each([
