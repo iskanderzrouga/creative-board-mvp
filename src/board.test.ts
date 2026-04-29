@@ -34,7 +34,7 @@ import {
   startEditorTimerForCard,
   type ViewerContext,
 } from './board'
-import { getVisiblePortfolioIds } from './accessHelpers'
+import { getScopedPortfolios, getVisiblePortfolioIds } from './accessHelpers'
 
 const MANAGER_VIEWER: ViewerContext = {
   mode: 'manager',
@@ -123,6 +123,62 @@ describe('board integrity helpers', () => {
         scopeAssignments: [{ portfolioId: state.portfolios[0]!.id, brandNames: [] }],
       }),
     ).toEqual([state.portfolios[0]!.id])
+  })
+
+  it('shows contributor cards when the access email is linked to the owning team member', () => {
+    const state = createSeedState()
+    const sourcePortfolio = state.portfolios[0]!
+    const sourceCard = sourcePortfolio.cards.find((card) => card.owner)
+    const sourceBrand = sourcePortfolio.brands[0]!
+    const sourceMember = sourcePortfolio.team.find((member) => member.role === 'Editor')!
+    const thaiPortfolio = {
+      ...createEmptyPortfolio('BrandLab Thai', state.portfolios.length),
+      id: 'portfolio-brandlab-thai',
+      brands: [
+        {
+          ...sourceBrand,
+          name: 'Nutrio',
+          prefix: 'AA',
+        },
+      ],
+      team: [
+        {
+          ...sourceMember,
+          id: 'team-aim-tanakorn',
+          name: 'Aim Tanakorn',
+          accessEmail: 'tanakorn.panyadee2@gmail.com',
+        },
+      ],
+      cards: [
+        {
+          ...sourceCard!,
+          id: 'AA0001',
+          title: 'Aim assigned card',
+          brand: 'Nutrio',
+          owner: 'Aim Tanakorn',
+          stage: 'In Production' as const,
+          archivedAt: null,
+        },
+      ],
+      lastIdPerPrefix: {
+        AA: 1,
+      },
+    }
+
+    expect(sourceCard).toBeTruthy()
+
+    const access = {
+      email: 'tanakorn.panyadee2@gmail.com',
+      roleMode: 'contributor' as const,
+      editorName: 'Aim',
+    }
+    const scoped = getScopedPortfolios([sourcePortfolio, thaiPortfolio], access)
+
+    expect(getVisiblePortfolioIds([sourcePortfolio, thaiPortfolio], access)).toEqual([thaiPortfolio.id])
+    expect(scoped).toHaveLength(1)
+    expect(scoped[0]?.id).toBe(thaiPortfolio.id)
+    expect(scoped[0]?.brands.map((brand) => brand.name)).toEqual(['Nutrio'])
+    expect(scoped[0]?.cards.map((card) => card.id)).toEqual(['AA0001'])
   })
 
   it('pins legacy workshop scripts and strategy cycles to the default portfolio', () => {

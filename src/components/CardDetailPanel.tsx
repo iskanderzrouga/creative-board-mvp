@@ -157,6 +157,8 @@ export function CardDetailPanel({
   const [linksDraft, setLinksDraft] = useState<Array<{ url: string; label: string }>>(
     cardLinks.length > 0 ? cardLinks.map((link) => ({ url: link.url, label: link.label ?? '' })) : [{ url: '', label: '' }],
   )
+  const [estimatedHoursDraft, setEstimatedHoursDraft] = useState(String(card.estimatedHours))
+  const [actualHoursDraft, setActualHoursDraft] = useState(String(card.actualHoursLogged))
   const [commentDraft, setCommentDraft] = useState('')
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [commentImageDataUrl, setCommentImageDataUrl] = useState<string | null>(null)
@@ -347,6 +349,22 @@ export function CardDetailPanel({
     )
   }
 
+  function commitEstimatedHoursDraft() {
+    const nextValue = Math.max(1, Number(estimatedHoursDraft) || 1)
+    setEstimatedHoursDraft(String(nextValue))
+    if (nextValue !== card.estimatedHours) {
+      onSave({ estimatedHours: nextValue })
+    }
+  }
+
+  function commitActualHoursDraft() {
+    const nextValue = Math.max(0, Number(actualHoursDraft) || 0)
+    setActualHoursDraft(String(nextValue))
+    if (nextValue !== card.actualHoursLogged) {
+      onSave({ actualHoursLogged: nextValue })
+    }
+  }
+
   function addLinkDraftRow() {
     setLinksDraft((previous) => [...previous, { url: '', label: '' }])
   }
@@ -366,7 +384,7 @@ export function CardDetailPanel({
     multiline = false,
     rows = 4,
     placeholder,
-    className,
+    className = multiline ? 'panel-textarea' : 'panel-input',
   }: {
     fieldKey: string
     value: string
@@ -692,8 +710,15 @@ export function CardDetailPanel({
                       type="number"
                       min={1}
                       step={0.5}
-                      value={card.estimatedHours}
-                      onChange={(event) => onSave({ estimatedHours: Math.max(1, Number(event.target.value) || 1) })}
+                      value={estimatedHoursDraft}
+                      onChange={(event) => setEstimatedHoursDraft(event.target.value)}
+                      onBlur={commitEstimatedHoursDraft}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          commitEstimatedHoursDraft()
+                        }
+                      }}
                     />
                   ) : (
                     <strong>{formatHours(card.estimatedHours)}</strong>
@@ -1561,12 +1586,15 @@ export function CardDetailPanel({
                         type="number"
                         min={0}
                         step={0.5}
-                        value={card.actualHoursLogged}
-                        onChange={(event) =>
-                          onSave({
-                            actualHoursLogged: Math.max(0, Number(event.target.value) || 0),
-                          })
-                        }
+                        value={actualHoursDraft}
+                        onChange={(event) => setActualHoursDraft(event.target.value)}
+                        onBlur={commitActualHoursDraft}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            commitActualHoursDraft()
+                          }
+                        }}
                       />
                     ) : (
                       <strong>{card.actualHoursLogged > 0 ? formatHours(card.actualHoursLogged) : '—'}</strong>

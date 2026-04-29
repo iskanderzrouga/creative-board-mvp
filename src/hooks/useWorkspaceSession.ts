@@ -71,6 +71,10 @@ function clearCachedAccess() {
   }
 }
 
+function normalizeIdentity(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? ''
+}
+
 interface UseWorkspaceSessionOptions {
   authEnabled: boolean
   state: AppState
@@ -147,6 +151,7 @@ export function useWorkspaceSession({
 
   const resetRemoteSessionRef = useRef(resetRemoteSession)
   const closeEditorMenuRef = useRef(closeEditorMenu)
+  const hasWorkspaceAccess = workspaceAccess !== null
 
   useEffect(() => {
     resetRemoteSessionRef.current = resetRemoteSession
@@ -361,10 +366,29 @@ export function useWorkspaceSession({
     setState((current) => {
       const nextRoleBase = getRoleFromWorkspaceAccess(workspaceAccess, current.activeRole)
       const currentPortfolio = getActivePortfolio(current)
+      const contributorMember =
+        workspaceAccess.roleMode === 'contributor'
+          ? currentPortfolio?.team.find((member) => {
+              const memberEmail = normalizeIdentity(member.accessEmail)
+              return (
+                member.name === workspaceAccess.editorName ||
+                (memberEmail && memberEmail === normalizeIdentity(workspaceAccess.email))
+              )
+            }) ??
+            current.portfolios
+              .flatMap((portfolio) => portfolio.team)
+              .find((member) => {
+                const memberEmail = normalizeIdentity(member.accessEmail)
+                return (
+                  member.name === workspaceAccess.editorName ||
+                  (memberEmail && memberEmail === normalizeIdentity(workspaceAccess.email))
+                )
+              }) ??
+            null
+          : null
       const resolvedEditorId =
         workspaceAccess.roleMode === 'contributor'
-          ? currentPortfolio?.team.find((member) => member.name === workspaceAccess.editorName)?.id ??
-            null
+          ? contributorMember?.id ?? null
           : nextRoleBase.editorId
       const nextRole: ActiveRole = {
         mode: nextRoleBase.mode,
@@ -391,7 +415,7 @@ export function useWorkspaceSession({
 
   // Re-fetch workspace access when the window regains focus (e.g. after admin edits scope)
   useEffect(() => {
-    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !workspaceAccess) {
+    if (!authEnabled || authStatus !== 'signed-in' || accessStatus !== 'granted' || !hasWorkspaceAccess) {
       return
     }
 
@@ -415,7 +439,7 @@ export function useWorkspaceSession({
 
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [authEnabled, authStatus, accessStatus, workspaceAccess !== null])
+  }, [authEnabled, authStatus, accessStatus, hasWorkspaceAccess])
 
   useEffect(() => {
     if (

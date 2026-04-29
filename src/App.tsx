@@ -438,10 +438,13 @@ function App() {
     () => (authEnabled ? getScopedPortfolios(state.portfolios, workspaceAccess) : state.portfolios),
     [authEnabled, state.portfolios, workspaceAccess],
   )
+  const activePortfolioIdIsVisible = scopedPortfolios.some(
+    (portfolio) => portfolio.id === state.activePortfolioId,
+  )
   const activePortfolioView =
-    scopedPortfolios.find((portfolio) => portfolio.id === state.activePortfolioId) ??
-    scopedPortfolios[0] ??
-    null
+    (activePortfolioIdIsVisible
+      ? scopedPortfolios.find((portfolio) => portfolio.id === state.activePortfolioId) ?? null
+      : scopedPortfolios[0] ?? null)
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
   const allTeamMembers = useMemo(
@@ -498,15 +501,19 @@ function App() {
       ? routePage
       : productionPage
   const isLaunchOpsActive =
-    state.activeRole.mode === 'contributor' && isLaunchOpsRole(currentEditor?.role ?? null)
+    state.activeRole.mode === 'contributor' &&
+    isLaunchOpsRole(currentEditor?.role ?? accessMatchedMember?.role ?? null)
+  const contributorViewerName =
+    currentEditor?.name ?? accessMatchedMember?.name ?? workspaceAccess?.editorName ?? null
+  const contributorViewerRole = currentEditor?.role ?? accessMatchedMember?.role ?? null
   const viewerContext = useMemo<ViewerContext>(
     () => ({
       mode: state.activeRole.mode,
-      editorName: state.activeRole.mode === 'contributor' ? currentEditor?.name ?? null : null,
-      memberRole: state.activeRole.mode === 'contributor' ? currentEditor?.role ?? null : null,
+      editorName: state.activeRole.mode === 'contributor' ? contributorViewerName : null,
+      memberRole: state.activeRole.mode === 'contributor' ? contributorViewerRole : null,
       visibleBrandNames: activePortfolioView?.brands.map((brand) => brand.name) ?? [],
     }),
-    [activePortfolioView?.brands, currentEditor?.name, currentEditor?.role, state.activeRole.mode],
+    [activePortfolioView?.brands, contributorViewerName, contributorViewerRole, state.activeRole.mode],
   )
   const attention = getAttentionSummary(activePortfolioView, state.settings, nowMs)
   const searchBaseCards =
@@ -611,7 +618,13 @@ function App() {
       ? {
           mode: 'contributor' as const,
           editorId:
-            activePortfolioSource?.team.find((member) => member.name === workspaceAccess.editorName)?.id ??
+            activePortfolioSource?.team.find((member) => {
+              const memberEmail = member.accessEmail?.trim().toLowerCase() ?? ''
+              return (
+                member.name === workspaceAccess.editorName ||
+                (workspaceAccessEmail !== null && memberEmail === workspaceAccessEmail)
+              )
+            })?.id ??
             null,
         }
       : workspaceAccess
@@ -1005,7 +1018,7 @@ function App() {
   })
 
   useEffect(() => {
-    if (activePortfolioView || scopedPortfolios.length === 0) {
+    if (activePortfolioIdIsVisible || scopedPortfolios.length === 0) {
       return
     }
 
@@ -1022,7 +1035,7 @@ function App() {
             activePortfolioId: nextPortfolioId,
           },
     )
-  }, [activePortfolioView, scopedPortfolios])
+  }, [activePortfolioIdIsVisible, scopedPortfolios])
 
   useEffect(() => {
     const availableBrandNames = activePortfolioView?.brands.map((brand) => brand.name) ?? []

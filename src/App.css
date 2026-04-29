@@ -6693,7 +6693,7 @@ button {
 .production-detail-panel .blocked-controls input,
 .production-detail-panel .frameio-row input {
   min-height: 32px;
-  border-color: var(--line-input);
+  border: 1px solid var(--line-input);
   border-radius: 4px;
   background: var(--surface);
   font-size: 13px;
@@ -6729,7 +6729,7 @@ button {
 .production-detail-panel .panel-textarea,
 .production-detail-panel .rich-text-surface,
 .production-detail-panel .comment-composer textarea {
-  border-color: var(--line-input);
+  border: 1px solid var(--line-input);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text-strong);

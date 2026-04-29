@@ -6,10 +6,15 @@ import type {
 } from './board'
 
 interface AccessRecordLike {
+  email?: string | null
   roleMode: RoleMode
   editorName: string | null
   scopeMode?: AccessScopeMode | null
   scopeAssignments?: PortfolioAccessScope[] | null
+}
+
+function normalizeIdentity(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? ''
 }
 
 function normalizeBrandNames(brandNames: string[]) {
@@ -58,12 +63,42 @@ function getEffectiveScopeAssignments(access: AccessRecordLike | null) {
   return normalizeScopeAssignments(access?.scopeAssignments)
 }
 
-function getContributorIdentity(access: AccessRecordLike | null) {
-  const identity = access?.editorName?.trim() || null
-  if (access?.roleMode === 'contributor' && identity === null) {
-    console.warn('[contributor-filter] editorName is null for contributor — cards will not be visible')
+function getContributorIdentityNames(
+  portfolio: Portfolio,
+  access: AccessRecordLike | null,
+) {
+  if (access?.roleMode !== 'contributor') {
+    return new Set<string>()
   }
-  return identity
+
+  const names = new Set<string>()
+  const editorName = access.editorName?.trim()
+  if (editorName) {
+    names.add(editorName)
+  }
+
+  const accessEmail = normalizeIdentity(access.email)
+  if (accessEmail) {
+    portfolio.team.forEach((member) => {
+      if (normalizeIdentity(member.accessEmail) === accessEmail) {
+        names.add(member.name)
+      }
+    })
+  }
+
+  return names
+}
+
+function contributorCanSeeCard(
+  portfolio: Portfolio,
+  access: AccessRecordLike | null,
+  owner: string | null,
+) {
+  if (!owner) {
+    return false
+  }
+
+  return getContributorIdentityNames(portfolio, access).has(owner)
 }
 
 export function getAccessLevelLabel(roleMode: RoleMode) {
@@ -88,13 +123,8 @@ export function getVisiblePortfolioIds(
   }
 
   if (access.roleMode === 'contributor') {
-    const identity = getContributorIdentity(access)
-    if (!identity) {
-      return []
-    }
-
     return portfolios
-      .filter((portfolio) => portfolio.cards.some((card) => card.owner === identity))
+      .filter((portfolio) => portfolio.cards.some((card) => contributorCanSeeCard(portfolio, access, card.owner)))
       .map((portfolio) => portfolio.id)
   }
 
@@ -120,15 +150,10 @@ export function getVisibleBrandNamesForPortfolio(
   }
 
   if (access.roleMode === 'contributor') {
-    const identity = getContributorIdentity(access)
-    if (!identity) {
-      return []
-    }
-
     return Array.from(
       new Set(
         portfolio.cards
-          .filter((card) => card.owner === identity)
+          .filter((card) => contributorCanSeeCard(portfolio, access, card.owner))
           .map((card) => card.brand),
       ),
     ).sort((left, right) => left.localeCompare(right))
@@ -165,7 +190,6 @@ export function getScopedPortfolio(
   access: AccessRecordLike | null,
 ) {
   const visibleBrandNames = new Set(getVisibleBrandNamesForPortfolio(portfolio, access))
-  const contributorIdentity = access?.roleMode === 'contributor' ? getContributorIdentity(access) : null
 
   return {
     ...portfolio,
@@ -176,7 +200,7 @@ export function getScopedPortfolio(
       }
 
       if (access?.roleMode === 'contributor') {
-        return contributorIdentity !== null && card.owner === contributorIdentity
+        return contributorCanSeeCard(portfolio, access, card.owner)
       }
 
       return true
@@ -190,7 +214,7 @@ export function getScopedPortfolios(
 ) {
   const visiblePortfolioIds = new Set(getVisiblePortfolioIds(portfolios, access))
   if (access?.roleMode === 'contributor') {
-    const identity = getContributorIdentity(access)
+    const identity = access.editorName?.trim() || normalizeIdentity(access.email) || 'null'
     console.log(
       `[contributor-filter] identity=${identity ?? 'null'} checked=${portfolios.length} matched=${visiblePortfolioIds.size}`,
     )
