@@ -189,13 +189,19 @@ function getDevCardUpdatedAt(card: DevCard) {
   return explicitUpdatedAt > 0 ? explicitUpdatedAt : parseTimestamp(card.dateCreated)
 }
 
-function mergeCreativeCards(remoteCards: Card[], localCards: Card[]) {
+function mergeCreativeCards(remoteCards: Card[], localCards: Card[], deletedCardIds: Set<string>) {
   const merged = new Map<string, Card>()
   for (const card of remoteCards) {
+    if (deletedCardIds.has(card.id)) {
+      continue
+    }
     merged.set(card.id, card)
   }
 
   for (const localCard of localCards) {
+    if (deletedCardIds.has(localCard.id)) {
+      continue
+    }
     const remoteCard = merged.get(localCard.id)
     if (!remoteCard) {
       merged.set(localCard.id, localCard)
@@ -235,7 +241,7 @@ function mergeDevCards(remoteCards: DevCard[], localCards: DevCard[]) {
   return Array.from(merged.values())
 }
 
-function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfolio[]) {
+function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfolio[], deletedCardIds: Set<string>) {
   const localById = new Map(localPortfolios.map((portfolio) => [portfolio.id, portfolio]))
   const merged: Portfolio[] = remotePortfolios.map((remotePortfolio) => {
     const localPortfolio = localById.get(remotePortfolio.id)
@@ -257,7 +263,7 @@ function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfol
 
     return {
       ...metadataPortfolio,
-      cards: mergeCreativeCards(remotePortfolio.cards, localPortfolio.cards),
+      cards: mergeCreativeCards(remotePortfolio.cards, localPortfolio.cards, deletedCardIds),
       lastIdPerPrefix: Object.fromEntries(lastIdPerPrefix),
     }
   })
@@ -272,13 +278,18 @@ function mergePortfolios(remotePortfolios: Portfolio[], localPortfolios: Portfol
 }
 
 export function mergeRemoteAppStateCardLevel(remoteState: AppState, localState: AppState): AppState {
+  const deletedCardIds = new Set([
+    ...(remoteState.deletedCardIds ?? []),
+    ...(localState.deletedCardIds ?? []),
+  ])
   const mergedSharedState: AppState = {
     ...remoteState,
-    portfolios: mergePortfolios(remoteState.portfolios, localState.portfolios),
+    portfolios: mergePortfolios(remoteState.portfolios, localState.portfolios, deletedCardIds),
     devBoard: {
       cards: mergeDevCards(remoteState.devBoard.cards, localState.devBoard.cards),
       lastCardNumber: Math.max(remoteState.devBoard.lastCardNumber, localState.devBoard.lastCardNumber),
     } as DevBoardState,
+    deletedCardIds: Array.from(deletedCardIds),
   }
 
   return mergeRemoteAppStateWithLocalState(

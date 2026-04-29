@@ -352,6 +352,7 @@ describe('board integrity helpers', () => {
       },
       {
         portfolios: [stalePendingPortfolio],
+        deletedCardIds: [],
         settings: state.settings,
         activePortfolioId: portfolio.id,
         version: state.version,

@@ -511,6 +511,7 @@ export interface AppState {
   portfolios: Portfolio[]
   devBoard: DevBoardState
   scriptWorkshop: ScriptWorkshopState
+  deletedCardIds: string[]
   settings: GlobalSettings
   activePortfolioId: string
   activeRole: ActiveRole
@@ -524,6 +525,7 @@ export type PendingPortfolioPatch = Omit<Portfolio, 'cards'>
 
 export interface PendingAppStatePatch {
   portfolios: PendingPortfolioPatch[]
+  deletedCardIds: string[]
   settings: GlobalSettings
   activePortfolioId: string
   version: number
@@ -2244,6 +2246,7 @@ export function createSeedState(): AppState {
     portfolios,
     devBoard: createSeedDevBoardState(),
     scriptWorkshop: createSeedScriptWorkshopState(),
+    deletedCardIds: [],
     settings: {
       general: {
         appName: 'Creative Board',
@@ -3012,6 +3015,18 @@ export function coerceAppState(raw: unknown): AppState {
   const scriptWorkshop: ScriptWorkshopState = {
     scripts: scriptWorkshopScripts,
   }
+  const deletedCardIds = Array.from(
+    new Set(
+      Array.isArray(candidate.deletedCardIds)
+        ? candidate.deletedCardIds.filter((cardId): cardId is string => typeof cardId === 'string' && cardId.trim() !== '')
+        : [],
+    ),
+  )
+  const deletedCardIdSet = new Set(deletedCardIds)
+  const visiblePortfolios = portfolios.map((portfolio) => ({
+    ...portfolio,
+    cards: portfolio.cards.filter((card) => !deletedCardIdSet.has(card.id)),
+  }))
   const strategyCycles = Array.isArray(candidate.strategyCycles)
     ? candidate.strategyCycles
         .filter((cycle): cycle is StrategyCycle =>
@@ -3020,7 +3035,7 @@ export function coerceAppState(raw: unknown): AppState {
         .map((cycle) => {
           const cyclePortfolioId =
             typeof cycle.portfolioId === 'string' &&
-            portfolios.some((portfolio) => portfolio.id === cycle.portfolioId)
+            visiblePortfolios.some((portfolio) => portfolio.id === cycle.portfolioId)
               ? cycle.portfolioId
               : fallbackPortfolioId
 
@@ -3032,9 +3047,10 @@ export function coerceAppState(raw: unknown): AppState {
     : []
 
   return migrateLegacyDevBoardIntoMainBoard({
-    portfolios,
+    portfolios: visiblePortfolios,
     devBoard,
     scriptWorkshop,
+    deletedCardIds,
     settings,
     activePortfolioId:
       typeof candidate.activePortfolioId === 'string'
@@ -3112,6 +3128,7 @@ function createPendingAppStatePatch(state: AppState): PendingAppStatePatch {
       lastIdPerPrefix: portfolio.lastIdPerPrefix,
       metadataUpdatedAt: portfolio.metadataUpdatedAt ?? null,
     })),
+    deletedCardIds: state.deletedCardIds,
     settings: state.settings,
     activePortfolioId: state.activePortfolioId,
     version: STATE_VERSION,
@@ -3139,6 +3156,9 @@ export function loadPendingAppStatePatch(): PendingAppStatePatch | null {
         (portfolio): portfolio is PendingPortfolioPatch =>
           Boolean(portfolio) && typeof portfolio.id === 'string',
       ),
+      deletedCardIds: Array.isArray(parsed.deletedCardIds)
+        ? parsed.deletedCardIds.filter((cardId): cardId is string => typeof cardId === 'string')
+        : [],
       settings: parsed.settings as GlobalSettings,
       activePortfolioId: typeof parsed.activePortfolioId === 'string' ? parsed.activePortfolioId : '',
       version: STATE_VERSION,
@@ -3157,11 +3177,15 @@ export function applyPendingAppStatePatch(
   }
 
   const patchById = new Map(patch.portfolios.map((portfolio) => [portfolio.id, portfolio]))
+  const deletedCardIds = new Set(patch.deletedCardIds ?? [])
   const existingPortfolioIds = new Set(baseState.portfolios.map((portfolio) => portfolio.id))
   const portfolios = baseState.portfolios.map((portfolio) => {
     const pendingPortfolio = patchById.get(portfolio.id)
     if (!pendingPortfolio) {
-      return portfolio
+      return {
+        ...portfolio,
+        cards: portfolio.cards.filter((card) => !deletedCardIds.has(card.id)),
+      }
     }
 
     const pendingUpdatedAt = Date.parse(pendingPortfolio.metadataUpdatedAt ?? '')
@@ -3170,12 +3194,15 @@ export function applyPendingAppStatePatch(
       Number.isFinite(currentUpdatedAt) &&
       (!Number.isFinite(pendingUpdatedAt) || pendingUpdatedAt <= currentUpdatedAt)
     ) {
-      return portfolio
+      return {
+        ...portfolio,
+        cards: portfolio.cards.filter((card) => !deletedCardIds.has(card.id)),
+      }
     }
 
     return {
       ...pendingPortfolio,
-      cards: portfolio.cards,
+      cards: portfolio.cards.filter((card) => !deletedCardIds.has(card.id)),
       lastIdPerPrefix: {
         ...portfolio.lastIdPerPrefix,
         ...pendingPortfolio.lastIdPerPrefix,
@@ -3199,6 +3226,7 @@ export function applyPendingAppStatePatch(
   return coerceAppState({
     ...baseState,
     portfolios,
+    deletedCardIds: Array.from(new Set([...(baseState.deletedCardIds ?? []), ...deletedCardIds])),
     activePortfolioId,
   })
 }

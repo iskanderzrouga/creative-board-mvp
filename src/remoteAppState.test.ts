@@ -333,6 +333,45 @@ describe('remote app state sync', () => {
     ).toBe(true)
   })
 
+  it('keeps a pending local card deletion on refresh when only the small pending patch is available', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const basePortfolio = seed.portfolios[0]!
+    const deletedCard = basePortfolio.cards[0]!
+    const pendingState = {
+      ...seed,
+      deletedCardIds: [deletedCard.id],
+      portfolios: seed.portfolios.map((portfolio) =>
+        portfolio.id === basePortfolio.id
+          ? {
+              ...portfolio,
+              cards: portfolio.cards.filter((card) => card.id !== deletedCard.id),
+            }
+          : portfolio,
+      ),
+    }
+
+    persistAppState(pendingState)
+    window.localStorage.removeItem(PENDING_STATE_KEY)
+    persistSyncMetadata({
+      lastSyncedAt: firstLoad.lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: firstLoad.lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(pendingState),
+    })
+
+    const rehydrated = await loadOrCreateRemoteAppState(loadAppState(), {
+      ...loadSyncMetadata(),
+      pendingStatePatch: loadPendingAppStatePatch(),
+    })
+
+    expect(rehydrated.keptLocalChanges).toBe(true)
+    expect(
+      rehydrated.state.portfolios
+        .find((portfolio) => portfolio.id === basePortfolio.id)
+        ?.cards.some((card) => card.id === deletedCard.id),
+    ).toBe(false)
+  })
+
   it('saves through a merge when the client has no remote base timestamp yet', async () => {
     const seed = createSeedState()
     await loadOrCreateRemoteAppState(seed)
@@ -553,6 +592,57 @@ describe('remote app state sync', () => {
       'Local comment should survive refresh',
       'Remote comment should stay',
     ])
+  })
+
+  it('does not resurrect locally deleted cards during stale save conflict merges', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const portfolio = seed.portfolios[0]!
+    const deletedCard = portfolio.cards[0]!
+    const remoteNewCard = {
+      ...deletedCard,
+      id: 'PX9001',
+      title: 'Remote card created after local base',
+      comments: [],
+      dateCreated: '2026-04-29',
+      dateAssigned: '2026-04-29',
+      stageEnteredAt: '2026-04-29T00:00:03.000Z',
+      updatedAt: '2026-04-29T00:00:03.000Z',
+    }
+    const remoteEditedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: [...item.cards, remoteNewCard],
+            }
+          : item,
+      ),
+    }
+    const localDeletedState = {
+      ...seed,
+      deletedCardIds: [deletedCard.id],
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.filter((candidate) => candidate.id !== deletedCard.id),
+            }
+          : item,
+      ),
+    }
+
+    await saveRemoteAppState(remoteEditedState, firstLoad.lastSyncedAt)
+    bumpStoredRemoteUpdatedAt()
+    const result = await saveRemoteAppStateWithRetryMerge(localDeletedState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCards = synced.state.portfolios[0]?.cards ?? []
+
+    expect(result.merged).toBe(true)
+    expect(syncedCards.some((card) => card.id === deletedCard.id)).toBe(false)
+    expect(syncedCards.some((card) => card.id === remoteNewCard.id)).toBe(true)
+    expect(synced.state.deletedCardIds).toContain(deletedCard.id)
   })
 
   it('keeps newer legacy Dev board field edits by migrating them into main-board cards during conflicts', async () => {

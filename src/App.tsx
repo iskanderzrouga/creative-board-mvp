@@ -2606,21 +2606,23 @@ function App() {
     const targetCard =
       portfolio.cards.find((card) => card.id === pendingDeleteCard.cardId) ?? null
 
-    let deleted = false
-    updatePortfolio(portfolio.id, (currentPortfolio) => {
-      const nextPortfolio = removeCardFromPortfolio(
-        currentPortfolio,
-        pendingDeleteCard.cardId,
-        viewerContext,
-      )
-      deleted = nextPortfolio !== currentPortfolio
-      return nextPortfolio
-    })
+    const deletedCardId = pendingDeleteCard.cardId
+    const previewPortfolio = removeCardFromPortfolio(portfolio, deletedCardId, viewerContext)
 
-    if (!deleted) {
+    if (previewPortfolio === portfolio) {
       showToast('That card could not be deleted.', 'red')
       return
     }
+
+    updateState((current) => ({
+      ...current,
+      deletedCardIds: Array.from(new Set([...(current.deletedCardIds ?? []), deletedCardId])),
+      portfolios: current.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolio.id
+          ? removeCardFromPortfolio(currentPortfolio, deletedCardId, viewerContext)
+          : currentPortfolio,
+      ),
+    }))
 
     setPendingDeleteCard(null)
     setSelectedCard(null)
