@@ -452,14 +452,27 @@ function App() {
       }),
     [state.portfolios],
   )
+  const scopedTeamMembers = useMemo(
+    () =>
+      scopedPortfolios.flatMap((portfolio) => portfolio.team).filter((member, index, list) => {
+        const memberKey = member.accessEmail?.trim().toLowerCase() || member.name.trim().toLowerCase()
+        const duplicateIndex = list.findIndex((current) => {
+          const currentKey = current.accessEmail?.trim().toLowerCase() || current.name.trim().toLowerCase()
+          return currentKey === memberKey
+        })
+        return duplicateIndex === index
+      }),
+    [scopedPortfolios],
+  )
   const editorOptions = activePortfolioSource ? getEditorOptions(activePortfolioSource) : []
   const currentEditor = activePortfolioSource
     ? getTeamMemberById(activePortfolioSource, state.activeRole.editorId)
     : null
   const workspaceAccessEmail = workspaceAccess?.email?.trim().toLowerCase() ?? null
   const workspaceAccessEditorName = workspaceAccess?.editorName?.trim().toLowerCase() ?? null
+  const accessMatchTeamMembers = scopedTeamMembers.length > 0 ? scopedTeamMembers : allTeamMembers
   const accessMatchedMember =
-    allTeamMembers.find((member) => {
+    accessMatchTeamMembers.find((member) => {
       const memberEmail = member.accessEmail?.trim().toLowerCase() ?? null
       if (workspaceAccessEmail && memberEmail && workspaceAccessEmail === memberEmail) {
         return true
@@ -644,7 +657,7 @@ function App() {
       return []
     }
 
-    return state.portfolios
+    return scopedPortfolios
       .flatMap((portfolio) => portfolio.cards)
       .filter((card) => {
         if (card.archivedAt) {
@@ -658,10 +671,54 @@ function App() {
         title: card.title,
         stage: card.stage,
       }))
-  }, [checkinIdentityKeys, state.portfolios])
+  }, [checkinIdentityKeys, scopedPortfolios])
+  const pulseTeamMembers = useMemo(() => {
+    if (state.activeRole.mode !== 'contributor') {
+      return getTeamMembersForPulse(scopedTeamMembers)
+    }
+
+    const identityKeys = new Set(
+      [
+        dailyCheckinEmail,
+        workspaceAccess?.email,
+        workspaceAccess?.editorName,
+        currentEditor?.name,
+        accessMatchedMember?.name,
+      ]
+        .map((value) => value?.trim().toLowerCase() ?? '')
+        .filter(Boolean),
+    )
+    const contributorMembers = scopedTeamMembers.filter((member) => {
+      const memberEmail = member.accessEmail?.trim().toLowerCase() ?? ''
+      const memberName = member.name.trim().toLowerCase()
+      return identityKeys.has(memberEmail) || identityKeys.has(memberName)
+    })
+    const pulseMembers = getTeamMembersForPulse(contributorMembers)
+    if (pulseMembers.length > 0) {
+      return pulseMembers
+    }
+
+    const fallbackName =
+      workspaceAccess?.editorName?.trim() ||
+      currentEditor?.name?.trim() ||
+      accessMatchedMember?.name?.trim() ||
+      authSession?.email?.trim() ||
+      'You'
+    const fallbackEmail = dailyCheckinEmail ?? workspaceAccess?.email ?? authSession?.email ?? null
+    return [{ name: fallbackName, email: fallbackEmail }]
+  }, [
+    accessMatchedMember?.name,
+    authSession?.email,
+    currentEditor?.name,
+    dailyCheckinEmail,
+    scopedTeamMembers,
+    state.activeRole.mode,
+    workspaceAccess?.editorName,
+    workspaceAccess?.email,
+  ])
   const pulsePeopleOptions = useMemo(
-    () => getTeamMembersForPulse(allTeamMembers).map((member) => member.name),
-    [allTeamMembers],
+    () => pulseTeamMembers.map((member) => member.name),
+    [pulseTeamMembers],
   )
   const canAccessBacklog = !authEnabled || canAccessBacklogByEmail(backlogAccessEmail)
 
@@ -710,7 +767,23 @@ function App() {
     return styles
   }, [activePortfolioView?.brands])
   const canManageScripts = state.activeRole.mode === 'owner' || state.activeRole.mode === 'manager'
-  const strategyCycles = state.strategyCycles ?? []
+  const visibleScriptWorkshopScripts = useMemo(() => {
+    if (!activePortfolioView) {
+      return []
+    }
+
+    const visibleBrandNames = new Set(activePortfolioView.brands.map((brand) => brand.name))
+    return state.scriptWorkshop.scripts.filter(
+      (script) => script.portfolioId === activePortfolioView.id && visibleBrandNames.has(script.brand),
+    )
+  }, [activePortfolioView, state.scriptWorkshop.scripts])
+  const visibleStrategyCycles = useMemo(
+    () =>
+      activePortfolioView
+        ? (state.strategyCycles ?? []).filter((cycle) => cycle.portfolioId === activePortfolioView.id)
+        : [],
+    [activePortfolioView, state.strategyCycles],
+  )
   const currentReviewerId = useMemo<ScriptReviewerId | null>(() => {
     const sessionEmail =
       authSession?.email?.trim().toLowerCase() ??
@@ -1131,7 +1204,7 @@ function App() {
       return
     }
 
-    const timezone = resolveViewerTimezone(allTeamMembers, dailyCheckinEmail, workspaceAccess?.editorName ?? null)
+    const timezone = resolveViewerTimezone(scopedTeamMembers, dailyCheckinEmail, workspaceAccess?.editorName ?? null)
     const { today, yesterday } = getCheckinDates(timezone)
     setDailyCheckinTimezone(timezone)
     setDailyCheckinToday(today)
@@ -1175,10 +1248,10 @@ function App() {
     }
   }, [
     accessStatus,
-    allTeamMembers,
     authEnabled,
     authStatus,
     dailyCheckinEmail,
+    scopedTeamMembers,
     workspaceAccess?.editorName,
   ])
 
@@ -1189,7 +1262,13 @@ function App() {
 
     const normalizedRange = normalizeDailyPulseRange(pulseDateRange)
     const rangeDays = getDailyPulseRangeDays(normalizedRange)
-    const members = getTeamMembersForPulse(allTeamMembers)
+    const members = pulseTeamMembers
+    const visibleIdentityKeys = new Set(
+      members.flatMap((member) => [
+        member.name.trim().toLowerCase(),
+        member.email?.trim().toLowerCase() ?? '',
+      ]).filter(Boolean),
+    )
     const checkinsByDateAndIdentity = new Map<string, DailyPulseFeedItem['checkin']>()
     let cancelled = false
 
@@ -1210,7 +1289,15 @@ function App() {
       }
 
       const visibleCheckins = data.filter(
-        (checkin) => !isDailyPulseExcludedPerson({ email: checkin.user_email, name: checkin.user_name }),
+        (checkin) => {
+          if (isDailyPulseExcludedPerson({ email: checkin.user_email, name: checkin.user_name })) {
+            return false
+          }
+
+          const emailKey = checkin.user_email.trim().toLowerCase()
+          const nameKey = checkin.user_name.trim().toLowerCase()
+          return visibleIdentityKeys.has(emailKey) || visibleIdentityKeys.has(nameKey)
+        },
       )
 
       visibleCheckins.forEach((checkin) => {
@@ -1277,7 +1364,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [allTeamMembers, pulseDateRange])
+  }, [pulseDateRange, pulseTeamMembers])
 
   // Backlog localStorage persist + remote sync is now handled inside useAppEffects
 
@@ -1586,7 +1673,7 @@ function App() {
   }
 
   function handleAddScript(input: { title: string; brand: string; googleDocUrl: string }) {
-    if (!canManageScripts) {
+    if (!canManageScripts || !activePortfolioView) {
       return
     }
 
@@ -1600,6 +1687,7 @@ function App() {
           ...current.scriptWorkshop.scripts,
           {
             id: scriptId,
+            portfolioId: activePortfolioView.id,
             title: input.title,
             brand: input.brand,
             googleDocUrl: input.googleDocUrl,
@@ -1629,6 +1717,9 @@ function App() {
 
   function handleUpdateScript(scriptId: string, updates: { title?: string; brand?: string; googleDocUrl?: string }) {
     if (!canManageScripts) {
+      return
+    }
+    if (updates.brand && !scriptWorkshopBrandOptions.includes(updates.brand)) {
       return
     }
 
@@ -1755,13 +1846,14 @@ function App() {
   }
 
   function handleCreateStrategyCycle(input: { name: string; startDate: string; endDate: string }) {
-    if (!input.name.trim() || !input.startDate || !input.endDate) {
+    if (!activePortfolioView || !input.name.trim() || !input.startDate || !input.endDate) {
       return
     }
 
     const createdAt = new Date().toISOString()
     const newCycle: StrategyCycle = {
       id: `strategy-cycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      portfolioId: activePortfolioView.id,
       name: input.name.trim(),
       startDate: input.startDate,
       endDate: input.endDate,
@@ -1779,7 +1871,12 @@ function App() {
 
     updateState((current) => ({
       ...current,
-      strategyCycles: [newCycle, ...(current.strategyCycles ?? []).map((cycle) => ({ ...cycle, isActive: false }))],
+      strategyCycles: [
+        newCycle,
+        ...(current.strategyCycles ?? []).map((cycle) =>
+          cycle.portfolioId === activePortfolioView.id ? { ...cycle, isActive: false } : cycle,
+        ),
+      ],
     }))
   }
 
@@ -3243,7 +3340,7 @@ function App() {
 
         {currentPage === 'scripts' && activePortfolioView ? (
           <ScriptWorkshopPage
-            scripts={state.scriptWorkshop.scripts}
+            scripts={visibleScriptWorkshopScripts}
             brandOptions={scriptWorkshopBrandOptions}
             brandStyles={scriptWorkshopBrandStyles}
             canManageScripts={canManageScripts}
@@ -3257,9 +3354,9 @@ function App() {
           />
         ) : null}
 
-        {currentPage === 'strategy' ? (
+        {currentPage === 'strategy' && activePortfolioView ? (
           <StrategyCyclesPage
-            cycles={strategyCycles}
+            cycles={visibleStrategyCycles}
             roleMode={state.activeRole.mode}
             currentUserEmail={authSession?.email ?? workspaceAccess?.email ?? null}
             currentUserName={workspaceAccess?.editorName ?? currentEditor?.name ?? null}

@@ -449,7 +449,6 @@ export function CardDetailPanel({
         onClick={onClose}
       />
       <aside
-        key={`${card.id}-${isOpen ? 'open' : 'closed'}`}
         ref={panelRef}
         className={`slide-panel production-detail-panel ${isOpen ? 'is-open' : ''}`}
         role="dialog"

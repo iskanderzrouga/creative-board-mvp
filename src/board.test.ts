@@ -125,6 +125,68 @@ describe('board integrity helpers', () => {
     ).toEqual([state.portfolios[0]!.id])
   })
 
+  it('pins legacy workshop scripts and strategy cycles to the default portfolio', () => {
+    const state = createSeedState()
+    const secondPortfolio = createEmptyPortfolio('BrandLab Thai', state.portfolios.length)
+    const defaultPortfolioId = state.portfolios[0]!.id
+
+    const coerced = coerceAppState({
+      ...state,
+      portfolios: [...state.portfolios, secondPortfolio],
+      scriptWorkshop: {
+        scripts: [
+          {
+            id: 'script-legacy',
+            title: 'Legacy script',
+            brand: state.portfolios[0]!.brands[0]!.name,
+            googleDocUrl: 'https://docs.google.com/document/d/legacy',
+            reviews: {},
+            comments: [],
+          },
+          {
+            id: 'script-thai',
+            portfolioId: secondPortfolio.id,
+            title: 'Thai script',
+            brand: secondPortfolio.brands[0]?.name ?? 'Thai Brand',
+            googleDocUrl: 'https://docs.google.com/document/d/thai',
+            reviews: {},
+            comments: [],
+          },
+        ],
+      },
+      strategyCycles: [
+        {
+          id: 'strategy-legacy',
+          name: 'Legacy cycle',
+          startDate: '2026-04-01',
+          endDate: '2026-04-30',
+          objective: '',
+          levers: [],
+          conclusions: [],
+          isActive: true,
+          createdAt: '2026-04-01T00:00:00.000Z',
+        },
+        {
+          id: 'strategy-thai',
+          portfolioId: secondPortfolio.id,
+          name: 'Thai cycle',
+          startDate: '2026-04-01',
+          endDate: '2026-04-30',
+          objective: '',
+          levers: [],
+          conclusions: [],
+          isActive: true,
+          createdAt: '2026-04-01T00:00:00.000Z',
+        },
+      ],
+    })
+
+    expect(coerced.scriptWorkshop.scripts.find((script) => script.id === 'script-legacy')?.portfolioId).toBe(defaultPortfolioId)
+    expect(coerced.scriptWorkshop.scripts.find((script) => script.id === 'script-thai')?.portfolioId).toBe(secondPortfolio.id)
+    expect(coerced.strategyCycles?.find((cycle) => cycle.id === 'strategy-legacy')?.portfolioId).toBe(defaultPortfolioId)
+    expect(coerced.strategyCycles?.find((cycle) => cycle.id === 'strategy-thai')?.portfolioId).toBe(secondPortfolio.id)
+  })
+
   it('does not append a stale pending portfolio patch when the portfolio already exists', () => {
     const state = createSeedState()
     const portfolio = markPortfolioMetadataUpdated(

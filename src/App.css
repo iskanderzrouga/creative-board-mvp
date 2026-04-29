@@ -6693,9 +6693,9 @@ button {
 .production-detail-panel .blocked-controls input,
 .production-detail-panel .frameio-row input {
   min-height: 32px;
-  border-color: transparent;
+  border-color: var(--line-input);
   border-radius: 4px;
-  background: var(--surface-muted);
+  background: var(--surface);
   font-size: 13px;
 }
 
@@ -6704,8 +6704,17 @@ button {
 .production-detail-panel .panel-input:hover,
 .production-detail-panel .blocked-controls input:hover,
 .production-detail-panel .frameio-row input:hover {
-  border-color: var(--line-control);
+  border-color: var(--line-strong);
   background: var(--surface);
+}
+
+.production-detail-panel .metadata-grid input:focus,
+.production-detail-panel .metadata-grid select:focus,
+.production-detail-panel .panel-input:focus,
+.production-detail-panel .blocked-controls input:focus,
+.production-detail-panel .frameio-row input:focus {
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
 .production-detail-panel .metadata-grid label.full-width {
@@ -6720,12 +6729,20 @@ button {
 .production-detail-panel .panel-textarea,
 .production-detail-panel .rich-text-surface,
 .production-detail-panel .comment-composer textarea {
-  border-color: var(--line-shell-soft);
+  border-color: var(--line-input);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text-strong);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.production-detail-panel .creative-direction-grid textarea:focus,
+.production-detail-panel .panel-textarea:focus,
+.production-detail-panel .rich-text-surface:focus,
+.production-detail-panel .comment-composer textarea:focus {
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
 .production-detail-panel .rich-text-editor {

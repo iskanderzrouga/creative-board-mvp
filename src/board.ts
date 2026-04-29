@@ -454,6 +454,7 @@ export interface ScriptThreadComment {
 
 export interface ScriptWorkshopItem {
   id: string
+  portfolioId: string
   title: string
   brand: string
   googleDocUrl: string
@@ -490,6 +491,7 @@ export interface StrategyCycleConclusion {
 
 export interface StrategyCycle {
   id: string
+  portfolioId: string
   name: string
   startDate: string
   endDate: string
@@ -2885,6 +2887,11 @@ export function coerceAppState(raw: unknown): AppState {
           }
 
           const script = item as Partial<ScriptWorkshopItem>
+          const scriptPortfolioId =
+            typeof script.portfolioId === 'string' &&
+            portfolios.some((portfolio) => portfolio.id === script.portfolioId)
+              ? script.portfolioId
+              : fallbackPortfolioId
           if (
             typeof script.id !== 'string' ||
             typeof script.title !== 'string' ||
@@ -2961,6 +2968,7 @@ export function coerceAppState(raw: unknown): AppState {
 
           return {
             id: script.id,
+            portfolioId: scriptPortfolioId,
             title: script.title,
             brand: script.brand,
             googleDocUrl: script.googleDocUrl,
@@ -2975,6 +2983,24 @@ export function coerceAppState(raw: unknown): AppState {
   const scriptWorkshop: ScriptWorkshopState = {
     scripts: scriptWorkshopScripts,
   }
+  const strategyCycles = Array.isArray(candidate.strategyCycles)
+    ? candidate.strategyCycles
+        .filter((cycle): cycle is StrategyCycle =>
+          Boolean(cycle) && typeof (cycle as Partial<StrategyCycle>).id === 'string',
+        )
+        .map((cycle) => {
+          const cyclePortfolioId =
+            typeof cycle.portfolioId === 'string' &&
+            portfolios.some((portfolio) => portfolio.id === cycle.portfolioId)
+              ? cycle.portfolioId
+              : fallbackPortfolioId
+
+          return {
+            ...cycle,
+            portfolioId: cyclePortfolioId,
+          }
+        })
+    : []
 
   return migrateLegacyDevBoardIntoMainBoard({
     portfolios,
@@ -2999,7 +3025,7 @@ export function coerceAppState(raw: unknown): AppState {
       typeof candidate.activePage === 'string' && APP_PAGES.includes(candidate.activePage as AppPage)
         ? (candidate.activePage as AppPage)
         : seed.activePage,
-    strategyCycles: Array.isArray(candidate.strategyCycles) ? (candidate.strategyCycles as StrategyCycle[]) : [],
+    strategyCycles,
     notifications: Array.isArray((candidate as Record<string, unknown>).notifications)
       ? ((candidate as Record<string, unknown>).notifications as AppNotification[])
       : [],

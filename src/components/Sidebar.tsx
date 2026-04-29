@@ -293,20 +293,22 @@ function SidebarComponent({
         })}
       </nav>
 
-      <div className="sidebar-section">
-        <label className="sidebar-label">Portfolio</label>
-        <select
-          className="sidebar-select"
-          value={portfolio?.id ?? portfolios[0]?.id ?? ''}
-          onChange={(event) => onPortfolioChange(event.target.value)}
-        >
-          {portfolios.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {portfolios.length > 1 ? (
+        <div className="sidebar-section">
+          <label className="sidebar-label">Portfolio</label>
+          <select
+            className="sidebar-select"
+            value={portfolio?.id ?? portfolios[0]?.id ?? ''}
+            onChange={(event) => onPortfolioChange(event.target.value)}
+          >
+            {portfolios.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div className="sidebar-user-shell">
         <div className="sidebar-user-info" title={userSecondaryLabel ?? userName}>

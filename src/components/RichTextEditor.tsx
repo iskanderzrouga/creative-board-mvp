@@ -24,14 +24,20 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const isFocusedRef = useRef(false)
 
   useEffect(() => {
     if (!editorRef.current) {
       return
     }
 
-    if (editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = DOMPurify.sanitize(value)
+    if (isFocusedRef.current) {
+      return
+    }
+
+    const sanitizedValue = DOMPurify.sanitize(value)
+    if (editorRef.current.innerHTML !== sanitizedValue) {
+      editorRef.current.innerHTML = sanitizedValue
     }
   }, [value])
 
@@ -177,8 +183,14 @@ export function RichTextEditor({
         data-placeholder="Write brief here…"
         contentEditable={!readOnly}
         suppressContentEditableWarning
+        onFocus={() => {
+          isFocusedRef.current = true
+        }}
         onInput={handleInput}
-        onBlur={onBlur}
+        onBlur={() => {
+          isFocusedRef.current = false
+          onBlur?.()
+        }}
         onPaste={handlePaste}
       />
     </div>
