@@ -851,6 +851,19 @@ function sanitizeSegment(value: string) {
   return value.replace(/\s+/g, '').trim()
 }
 
+function normalizeDriveFolderSegment(value: string | null | undefined) {
+  return (value ?? '').replace(/\s+/g, ' ').trim()
+}
+
+export function getCreativeDriveFolderName(
+  card: Pick<Card, 'id' | 'title' | 'angle'>,
+) {
+  return [card.id, card.title, card.angle]
+    .map(normalizeDriveFolderSegment)
+    .filter(Boolean)
+    .join(' - ')
+}
+
 function getReferenceNowMs() {
   return new Date(REFERENCE_NOW_ISO).getTime()
 }
@@ -1405,6 +1418,14 @@ export function isIterationTaskTypeId(taskTypeId: string) {
   return taskTypeId === 'iteration'
 }
 
+export function shouldAutoCreateCreativeDriveFolder(taskTypeId: string) {
+  return (
+    taskTypeId === 'video-ugc-short' ||
+    taskTypeId === 'video-ugc-medium' ||
+    taskTypeId === 'static-single'
+  )
+}
+
 export function isPackagingBrandingTaskTypeId(taskTypeId: string) {
   return taskTypeId === 'packaging-branding'
 }
@@ -1480,6 +1501,10 @@ export function getEditorOptions(portfolio: Portfolio) {
 }
 
 export function getCardFolderName(card: Card) {
+  if (shouldAutoCreateCreativeDriveFolder(card.taskTypeId)) {
+    return getCreativeDriveFolderName(card)
+  }
+
   return `${card.id}_${sanitizeSegment(card.product)}`
 }
 

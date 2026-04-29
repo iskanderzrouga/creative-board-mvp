@@ -18,6 +18,7 @@ import {
   getBoardStats,
   getCardScheduledHours,
   getCardMoveValidationMessage,
+  getCreativeDriveFolderName,
   getDefaultBoardFilters,
   getDueStatus,
   getTeamMemberRemovalBlocker,
@@ -34,6 +35,7 @@ import {
   removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
+  shouldAutoCreateCreativeDriveFolder,
   startEditorTimerForCard,
   type ViewerContext,
 } from './board'
@@ -974,6 +976,34 @@ describe('board integrity helpers', () => {
     expect(createdCard.generatedSheetName).toContain(createdCard.id)
     expect(createdCard.generatedAdName).toContain(createdCard.id)
     expect(createdCard.activityLog[0]?.type).toBe('created')
+  })
+
+  it('only auto-creates Drive folders for new creative asset task types', () => {
+    expect(shouldAutoCreateCreativeDriveFolder('video-ugc-short')).toBe(true)
+    expect(shouldAutoCreateCreativeDriveFolder('video-ugc-medium')).toBe(true)
+    expect(shouldAutoCreateCreativeDriveFolder('static-single')).toBe(true)
+    expect(shouldAutoCreateCreativeDriveFolder('iteration')).toBe(false)
+    expect(shouldAutoCreateCreativeDriveFolder('lp-design')).toBe(false)
+    expect(shouldAutoCreateCreativeDriveFolder('lp-dev')).toBe(false)
+    expect(shouldAutoCreateCreativeDriveFolder('bug-fix')).toBe(false)
+  })
+
+  it('builds the simple creative Drive folder name from id, concept, and angle', () => {
+    expect(
+      getCreativeDriveFolderName({
+        id: 'N001',
+        title: '  Big bathroom reveal  ',
+        angle: '  Before   After  ',
+      }),
+    ).toBe('N001 - Big bathroom reveal - Before After')
+
+    expect(
+      getCreativeDriveFolderName({
+        id: 'N002',
+        title: 'Static hook',
+        angle: '',
+      }),
+    ).toBe('N002 - Static hook')
   })
 
   it('adds backlog cards at the end of the lane and updates prefix counters', () => {

@@ -96,10 +96,12 @@ import {
   getBoardStats,
   getCardMoveValidationMessage,
   getDefaultBoardFilters,
+  getCreativeDriveFolderName,
   getEditorOptions,
   getEditorSummary,
   getNextProductionCardPriority,
   getQuickCreateDefaults,
+  getTaskTypeById,
   getTeamMemberById,
   getVisibleCards,
   getVisibleColumns,
@@ -118,6 +120,7 @@ import {
   loadSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
+  shouldAutoCreateCreativeDriveFolder,
   startEditorTimerForCard,
   setInProductionCardPriority,
   type ActiveRole,
@@ -128,6 +131,7 @@ import {
   type Card,
   type DailyCheckinFormValues,
   type DailyPulseFeedItem,
+  type GlobalSettings,
   type LaneModel,
   type Portfolio,
   type QuickCreateInput,
@@ -295,6 +299,74 @@ function canAccessPerformanceByEmail(email: string | null) {
 
   const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
   return PERFORMANCE_ALLOWED_EMAIL_KEYS.has(localPart)
+}
+
+const DEFAULT_DRIVE_WEBHOOK_URL =
+  'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
+
+interface DriveWebhookResult {
+  success?: boolean
+  folderUrl?: string
+  subfolderUrl?: string
+  briefDocUrl?: string
+  message?: string
+}
+
+function getDriveWebhookUrl(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  options: { includeDefault?: boolean } = {},
+) {
+  const configuredWebhookUrl =
+    portfolio.webhookUrl.trim() || settings.integrations.globalDriveWebhookUrl.trim()
+
+  return (
+    configuredWebhookUrl ||
+    (options.includeDefault === false ? '' : DEFAULT_DRIVE_WEBHOOK_URL)
+  )
+}
+
+function buildDriveWebhookPayload(
+  portfolio: Portfolio,
+  settings: GlobalSettings,
+  card: Card,
+  trigger: 'auto' | 'manual',
+) {
+  const brand = portfolio.brands.find((item) => item.name === card.brand)
+  const taskType = getTaskTypeById(settings, card.taskTypeId)
+  const creativeFolder = shouldAutoCreateCreativeDriveFolder(taskType.id)
+
+  return {
+    cardId: card.id,
+    cardTitle: card.title,
+    concept: card.title,
+    portfolioName: portfolio.name,
+    brand: card.brand,
+    product: card.product,
+    parentFolderId: brand?.driveParentFolderId ?? '',
+    taskTypeId: taskType.id,
+    taskTypeName: taskType.name,
+    taskCategory: taskType.category,
+    folderKind: creativeFolder ? 'creative' : 'manual',
+    rootFolderName: creativeFolder ? 'Creatives' : '',
+    folderName: creativeFolder ? getCreativeDriveFolderName(card) : '',
+    trigger,
+    brief: card.brief,
+    targetAudience: card.audience,
+    keyMessage: card.keyMessage,
+    visualDirection: card.visualDirection,
+    platform: card.platform,
+    funnelStage: card.funnelStage,
+    angleTheme: card.angle,
+    angle: card.angle,
+    cta: card.cta,
+    referenceLinks: card.referenceLinks,
+    adCopy: card.adCopy,
+    notes: card.notes,
+    sourceCardId: card.sourceCardId ?? '',
+    relatedLpDesignCardId: card.relatedLpDesignCardId ?? '',
+    dateCreated: card.dateCreated,
+  }
 }
 
 function App() {
@@ -1557,6 +1629,84 @@ function App() {
     }))
   }
 
+  async function createDriveFolderForCard(
+    portfolio: Portfolio,
+    card: Card,
+    trigger: 'auto' | 'manual',
+  ) {
+    const webhookUrl = getDriveWebhookUrl(portfolio, state.settings, {
+      includeDefault: trigger === 'manual',
+    })
+    if (!webhookUrl) {
+      if (trigger === 'manual') {
+        showToast('No Drive webhook configured — add one in Settings → General or the portfolio.', 'red')
+      }
+      return false
+    }
+
+    const payload = buildDriveWebhookPayload(portfolio, state.settings, card, trigger)
+    if (!payload.parentFolderId.trim()) {
+      showToast(`No Drive parent folder configured for ${card.brand}.`, trigger === 'auto' ? 'amber' : 'red')
+      return false
+    }
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      body: JSON.stringify(payload),
+    })
+
+    let result: DriveWebhookResult | null = null
+    try {
+      result = await response.json()
+    } catch {
+      throw new Error('Drive webhook returned an invalid JSON response.')
+    }
+
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.message || `Drive webhook failed with status ${response.status}.`)
+    }
+
+    updatePortfolio(portfolio.id, (currentPortfolio) => ({
+      ...currentPortfolio,
+      cards: currentPortfolio.cards.map((existingCard) =>
+        existingCard.id === card.id
+          ? {
+              ...existingCard,
+              driveFolderUrl: result?.folderUrl ?? existingCard.driveFolderUrl,
+              driveFolderCreated: true,
+            }
+          : existingCard,
+      ),
+    }))
+
+    return true
+  }
+
+  function autoCreateDriveFolderForNewCreativeCard(portfolio: Portfolio, card: Card) {
+    if (!shouldAutoCreateCreativeDriveFolder(card.taskTypeId) || card.driveFolderCreated) {
+      return
+    }
+
+    void (async () => {
+      try {
+        const created = await createDriveFolderForCard(portfolio, card, 'auto')
+        if (created) {
+          showToast('Creative Drive folder created.', 'green')
+        }
+      } catch (error) {
+        console.error('Creative Drive folder auto-creation failed.', {
+          cardId: card.id,
+          error,
+        })
+        showToast(
+          'Card created but Drive folder creation failed. Use the manual Create Drive Folder button.',
+          'amber',
+        )
+      }
+    })()
+  }
+
   function switchToPortfolio(portfolioId: string) {
     const portfolioView =
       scopedPortfolios.find((item) => item.id === portfolioId) ?? scopedPortfolios[0] ?? null
@@ -1985,6 +2135,7 @@ function App() {
       portfolioId: activePortfolioView.id,
       cardId: card.id,
     })
+    autoCreateDriveFolderForNewCreativeCard(activePortfolioSource ?? activePortfolioView, card)
   }
 
   function handleBacklogToProduction(
@@ -2209,72 +2360,16 @@ function App() {
       return nextFilters
     })
 
-    const resolvedWebhookUrl =
-      portfolioSource.webhookUrl.trim() || state.settings.integrations.globalDriveWebhookUrl.trim() || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
-
-    if (card.taskType === 'creative' && resolvedWebhookUrl) {
-      const nextProductionCardId = createdCardId
-      const webhookPayload = {
-        cardId: nextProductionCardId,
-        cardTitle: card.name,
-        portfolioName: portfolioSource.name,
-        brand: card.brand,
-        parentFolderId: brand?.driveParentFolderId ?? '',
-        brief: card.brief ?? '',
-        targetAudience: card.targetAudience ?? '',
-        keyMessage: card.keyMessage ?? '',
-        visualDirection: card.visualDirection ?? '',
-        platform: card.platform ?? '',
-        funnelStage: card.funnelStage ?? '',
-        angleTheme: card.angleTheme ?? '',
-        cta: card.cta ?? '',
-        referenceLinks: card.referenceLinks ?? '',
-        adCopy: card.adCopy ?? '',
-        notes: card.notes ?? '',
-      }
-
+    if (shouldAutoCreateCreativeDriveFolder(productionCard.taskTypeId)) {
       void (async () => {
         try {
-          const response = await fetch(resolvedWebhookUrl, {
-            method: 'POST',
-            redirect: 'follow',
-            body: JSON.stringify(webhookPayload),
-          })
-
-          let result: {
-            success?: boolean
-            folderUrl?: string
-            subfolderUrl?: string
-            briefDocUrl?: string
-            message?: string
-          } | null = null
-
-          try {
-            result = await response.json()
-          } catch {
-            throw new Error('Drive webhook returned an invalid JSON response.')
+          const created = await createDriveFolderForCard(portfolioSource, productionCard, 'auto')
+          if (created) {
+            showToast('Card moved to Production board. Drive folder created.', 'green')
           }
-
-          if (!response.ok || !result?.success) {
-            throw new Error(result?.message || `Drive webhook failed with status ${response.status}.`)
-          }
-
-          updatePortfolio(portfolioSource.id, (portfolio) => ({
-            ...portfolio,
-            cards: portfolio.cards.map((existingCard) =>
-              existingCard.id === nextProductionCardId
-                ? {
-                    ...existingCard,
-                    driveFolderUrl: result?.folderUrl ?? existingCard.driveFolderUrl,
-                    driveFolderCreated: true,
-                  }
-                : existingCard,
-            ),
-          }))
-          showToast('Card moved to Production board. Drive folder created.', 'green')
         } catch (error) {
           console.error('Backlog to Production Drive folder creation failed.', {
-            cardId: nextProductionCardId,
+            cardId: createdCardId,
             error,
           })
           showToast(
@@ -2543,31 +2638,23 @@ function App() {
       return
     }
 
-    const webhookUrl =
-      activeSelectedPortfolio.webhookUrl || state.settings.integrations.globalDriveWebhookUrl || 'https://script.google.com/macros/s/AKfycbwGLeDoc3VSY8rM65iI6LCD14JsUHxgyxF-25yggFhZKv2p3s2y-tRvv1qvHJeHfykpng/exec'
+    const webhookUrl = getDriveWebhookUrl(activeSelectedPortfolio, state.settings, {
+      includeDefault: true,
+    })
     if (!webhookUrl) {
       showToast('No Drive webhook configured — add one in Settings → General or the portfolio.', 'red')
       return
     }
 
-    const brand = activeSelectedPortfolio.brands.find((item) => item.name === selectedCardData.brand)
-    const payload = {
-      cardId: selectedCardData.id,
-      cardTitle: selectedCardData.title,
-      portfolioName: activeSelectedPortfolio.name,
-      brand: selectedCardData.brand,
-      parentFolderId: brand?.driveParentFolderId ?? '',
-      brief: selectedCardData.brief,
-      targetAudience: selectedCardData.audience,
-      keyMessage: selectedCardData.keyMessage,
-      visualDirection: selectedCardData.visualDirection,
-      platform: selectedCardData.platform,
-      funnelStage: selectedCardData.funnelStage,
-      angleTheme: selectedCardData.angle,
-      cta: selectedCardData.cta,
-      referenceLinks: selectedCardData.referenceLinks,
-      adCopy: selectedCardData.adCopy,
-      notes: selectedCardData.notes,
+    const payload = buildDriveWebhookPayload(
+      activeSelectedPortfolio,
+      state.settings,
+      selectedCardData,
+      'manual',
+    )
+    if (!payload.parentFolderId.trim()) {
+      showToast(`No Drive parent folder configured for ${selectedCardData.brand}.`, 'red')
+      return
     }
 
     setCreatingDriveCardId(selectedCardData.id)
@@ -2581,7 +2668,7 @@ function App() {
 
       saveOpenCard({
         driveFolderCreated: true,
-        driveFolderUrl: `https://drive.google.com/drive/search?q=${encodeURIComponent(selectedCardData.title)}`,
+        driveFolderUrl: `https://drive.google.com/drive/search?q=${encodeURIComponent(payload.folderName || selectedCardData.title)}`,
       })
       showToast('Drive folder creation triggered. Check your Drive in a few seconds.', 'green')
     } catch {
