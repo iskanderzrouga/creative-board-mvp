@@ -56,6 +56,7 @@ interface BoardPageProps {
   headerUtilityContent?: ReactNode
   activeRoleMode: 'owner' | 'manager' | 'contributor' | 'viewer'
   activeViewerName: string | null
+  hideEditorStartButton: boolean
   dragCardId: string | null
   dragOverLaneId: string | null
   blockedLaneId: string | null
@@ -99,6 +100,7 @@ export function BoardPage({
   headerUtilityContent,
   activeRoleMode,
   activeViewerName,
+  hideEditorStartButton,
   dragCardId,
   dragOverLaneId,
   blockedLaneId,
@@ -465,9 +467,14 @@ export function BoardPage({
                                   activeViewerName !== null &&
                                   activeViewerName === card.owner
                                 const canStartEditorTimer =
-                                  card.stage === 'In Production' && isAssignedEditor && card.editorTimer === null
+                                  !hideEditorStartButton &&
+                                  card.stage === 'In Production' &&
+                                  isAssignedEditor &&
+                                  card.editorTimer === null
                                 const showEditorStartButton =
-                                  card.stage === 'In Production' && card.editorTimer === null
+                                  !hideEditorStartButton &&
+                                  card.stage === 'In Production' &&
+                                  card.editorTimer === null
                                 const isEditorTimerInProgress =
                                   card.stage === 'In Production' &&
                                   Boolean(card.editorTimer?.startedAt) &&

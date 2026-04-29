@@ -918,6 +918,10 @@ function isActiveWorkStage(stage: StageId) {
   return stage === 'Briefed' || stage === 'In Production' || stage === 'Review'
 }
 
+export function isThaiEditingPortfolio(portfolio: Portfolio | null | undefined) {
+  return Boolean(portfolio?.name && /\bthai(?:land)?\b/i.test(portfolio.name))
+}
+
 function getLaneOwner(stage: BoardColumnId, owner: string | null) {
   if (stage === 'Archived') {
     return null
@@ -4835,6 +4839,41 @@ export function getVisibleColumns(
             grouped: false,
             cards,
             allCardIds: getOrderedLaneCards(portfolio.cards, stage, null).map((card) => card.id),
+            activeCount: cards.length,
+            queuedHours: roundToTenths(
+              cards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),
+            ),
+            totalWorkDays: null,
+            showTotalWorkload: false,
+            utilizationPct: 0,
+            utilizationTone: 'green',
+            capacityUsed: 0,
+            capacityTotal: 0,
+            wipCount: null,
+            wipCap: null,
+          },
+        ],
+        hiddenEditorCount: 0,
+      } satisfies ColumnModel
+    }
+
+    if (viewer.mode === 'contributor' && !isLaunchOpsViewer && stage === 'Review') {
+      const owner = activeOwner
+      const cards = owner ? getOrderedLaneCards(visibleCards, stage, owner) : []
+      return {
+        id: stage,
+        label: getStageLabel(stage),
+        grouped: false,
+        count: cards.length,
+        lanes: [
+          {
+            id: getLaneId(stage, null),
+            stage,
+            owner: null,
+            label: getStageLabel(stage),
+            grouped: false,
+            cards,
+            allCardIds: owner ? getOrderedLaneCards(portfolio.cards, stage, owner).map((card) => card.id) : [],
             activeCount: cards.length,
             queuedHours: roundToTenths(
               cards.reduce((sum, card) => sum + getCardScheduledHours(card), 0),

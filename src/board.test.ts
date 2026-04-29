@@ -17,11 +17,14 @@ import {
   getBrandRemovalBlocker,
   getBoardStats,
   getCardScheduledHours,
+  getCardMoveValidationMessage,
   getDefaultBoardFilters,
   getDueStatus,
   getTeamMemberRemovalBlocker,
   getVisibleCards,
+  getVisibleColumns,
   getRevisionCount,
+  isThaiEditingPortfolio,
   markPortfolioMetadataUpdated,
   migrateLegacyDevBoardIntoMainBoard,
   moveCardInPortfolio,
@@ -179,6 +182,84 @@ describe('board integrity helpers', () => {
     expect(scoped[0]?.id).toBe(thaiPortfolio.id)
     expect(scoped[0]?.brands.map((brand) => brand.name)).toEqual(['Nutrio'])
     expect(scoped[0]?.cards.map((card) => card.id)).toEqual(['AA0001'])
+  })
+
+  it('uses a flat Review lane for contributors while managers keep editor review lanes', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const [firstEditor, secondEditor] = portfolio.team.filter((member) => member.role === 'Editor')
+    const sourceCard = portfolio.cards.find((card) => card.owner)
+
+    expect(firstEditor).toBeTruthy()
+    expect(secondEditor).toBeTruthy()
+    expect(sourceCard).toBeTruthy()
+
+    const tunedPortfolio = {
+      ...portfolio,
+      cards: [
+        {
+          ...sourceCard!,
+          id: 'OWNPROD',
+          owner: firstEditor!.name,
+          stage: 'In Production' as const,
+          archivedAt: null,
+          positionInSection: 0,
+        },
+        {
+          ...sourceCard!,
+          id: 'OWNREV',
+          owner: firstEditor!.name,
+          stage: 'Review' as const,
+          archivedAt: null,
+          positionInSection: 0,
+        },
+        {
+          ...sourceCard!,
+          id: 'OTHERREV',
+          owner: secondEditor!.name,
+          stage: 'Review' as const,
+          archivedAt: null,
+          positionInSection: 0,
+        },
+      ],
+    }
+    const contributorViewer: ViewerContext = {
+      mode: 'contributor',
+      editorName: firstEditor!.name,
+      memberRole: firstEditor!.role,
+      visibleBrandNames: null,
+    }
+
+    const contributorReviewColumn = getVisibleColumns(
+      tunedPortfolio,
+      contributorViewer,
+      getDefaultBoardFilters(tunedPortfolio),
+      state.settings,
+    ).find((column) => column.id === 'Review')
+    const managerReviewColumn = getVisibleColumns(
+      tunedPortfolio,
+      MANAGER_VIEWER,
+      getDefaultBoardFilters(tunedPortfolio),
+      state.settings,
+    ).find((column) => column.id === 'Review')
+
+    expect(contributorReviewColumn?.grouped).toBe(false)
+    expect(contributorReviewColumn?.lanes).toHaveLength(1)
+    expect(contributorReviewColumn?.lanes[0]?.owner).toBeNull()
+    expect(contributorReviewColumn?.lanes[0]?.cards.map((card) => card.id)).toEqual(['OWNREV'])
+    expect(
+      getCardMoveValidationMessage(tunedPortfolio, contributorViewer, 'OWNPROD', 'Review', null),
+    ).toBeNull()
+    expect(managerReviewColumn?.grouped).toBe(true)
+    expect(managerReviewColumn?.lanes.map((lane) => lane.owner)).toEqual(
+      expect.arrayContaining([firstEditor!.name, secondEditor!.name]),
+    )
+  })
+
+  it('detects Thai editing portfolios by name', () => {
+    expect(isThaiEditingPortfolio({ ...createEmptyPortfolio('Brandlab Thai', 0), name: 'Brandlab Thai' })).toBe(true)
+    expect(isThaiEditingPortfolio({ ...createEmptyPortfolio('BrandLab Thailand', 0), name: 'BrandLab Thailand' })).toBe(true)
+    expect(isThaiEditingPortfolio(createEmptyPortfolio('BrandLab', 0))).toBe(false)
   })
 
   it('pins legacy workshop scripts and strategy cycles to the default portfolio', () => {

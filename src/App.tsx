@@ -104,6 +104,7 @@ import {
   getVisibleCards,
   getVisibleColumns,
   isProductionDevHandoffCard,
+  isThaiEditingPortfolio,
   getLatestScriptReview,
   isLaunchOpsRole,
   SCRIPT_REVIEWERS,
@@ -447,6 +448,7 @@ function App() {
       : scopedPortfolios[0] ?? null)
   const activePortfolioSource =
     state.portfolios.find((portfolio) => portfolio.id === activePortfolioView?.id) ?? null
+  const hideEditorStartButtonForActivePortfolio = isThaiEditingPortfolio(activePortfolioView)
   const allTeamMembers = useMemo(
     () =>
       state.portfolios.flatMap((portfolio) => portfolio.team).filter((member, index, list) => {
@@ -2857,6 +2859,7 @@ function App() {
     if (
       !portfolio ||
       !card ||
+      isThaiEditingPortfolio(portfolio) ||
       card.stage !== 'In Production' ||
       card.owner !== viewerContext.editorName ||
       card.editorTimer !== null
@@ -2909,7 +2912,10 @@ function App() {
       return
     }
 
-    const sourceLaneId = card.archivedAt ? `Archived::flat` : `${card.stage}::${(GROUPED_STAGES as readonly StageId[]).includes(card.stage) ? card.owner ?? 'flat' : 'flat'}`
+    const fallbackSourceLaneId = card.archivedAt
+      ? `Archived::flat`
+      : `${card.stage}::${(GROUPED_STAGES as readonly StageId[]).includes(card.stage) ? card.owner ?? 'flat' : 'flat'}`
+    const sourceLaneId = itemToLaneMap[card.id] ?? fallbackSourceLaneId
     const sourceLane = laneMap[sourceLaneId]
     const sourceIndex = sourceLane?.allCardIds.indexOf(card.id) ?? -1
     let destinationIndex = target.destinationIndex
@@ -3294,6 +3300,7 @@ function App() {
             headerUtilityContent={headerUtilityContent}
             activeRoleMode={state.activeRole.mode}
             activeViewerName={viewerContext.editorName}
+            hideEditorStartButton={hideEditorStartButtonForActivePortfolio}
             dragCardId={dragCardId}
             dragOverLaneId={dragOverLaneId}
             blockedLaneId={blockedLaneId}
@@ -3542,10 +3549,12 @@ function App() {
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}
           showEditorStartButton={
+            !isThaiEditingPortfolio(activeSelectedPortfolioView) &&
             selectedCardData.stage === 'In Production' &&
             selectedCardData.editorTimer === null
           }
           canStartEditorTimer={
+            !isThaiEditingPortfolio(activeSelectedPortfolioView) &&
             state.activeRole.mode === 'contributor' &&
             viewerContext.editorName === selectedCardData.owner &&
             selectedCardData.stage === 'In Production' &&
