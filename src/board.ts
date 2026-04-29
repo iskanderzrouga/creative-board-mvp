@@ -856,9 +856,9 @@ function normalizeDriveFolderSegment(value: string | null | undefined) {
 }
 
 export function getCreativeDriveFolderName(
-  card: Pick<Card, 'id' | 'title' | 'angle'>,
+  card: Pick<Card, 'id' | 'product' | 'title' | 'angle'>,
 ) {
-  return [card.id, card.title, card.angle]
+  return [card.id, card.product, card.title, card.angle]
     .map(normalizeDriveFolderSegment)
     .filter(Boolean)
     .join(' - ')

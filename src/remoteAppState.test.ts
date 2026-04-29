@@ -281,6 +281,58 @@ describe('remote app state sync', () => {
     expect(syncedPortfolio?.webhookUrl).toBe('https://example.com/brandlab-thai')
   })
 
+  it('keeps pending local cards on refresh when the full pending state is available', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const basePortfolio = seed.portfolios[0]!
+    const sourceCard = basePortfolio.cards[0]!
+    const pendingCard = {
+      ...sourceCard,
+      id: 'PX9999',
+      title: 'Pending creative should survive refresh',
+      dateCreated: '2026-04-29',
+      dateAssigned: '2026-04-29',
+      stageEnteredAt: '2026-04-29T10:00:00.000Z',
+      updatedAt: '2026-04-29T10:00:00.000Z',
+      driveFolderCreated: true,
+      driveFolderUrl: 'https://drive.google.com/drive/folders/pending-card',
+    }
+    const pendingState = {
+      ...seed,
+      portfolios: seed.portfolios.map((portfolio) =>
+        portfolio.id === basePortfolio.id
+          ? {
+              ...portfolio,
+              cards: [...portfolio.cards, pendingCard],
+              lastIdPerPrefix: {
+                ...portfolio.lastIdPerPrefix,
+                PX: Math.max(portfolio.lastIdPerPrefix.PX ?? 0, 9999),
+              },
+            }
+          : portfolio,
+      ),
+    }
+
+    persistAppState(pendingState)
+    persistSyncMetadata({
+      lastSyncedAt: firstLoad.lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: firstLoad.lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(pendingState),
+    })
+
+    const rehydrated = await loadOrCreateRemoteAppState(loadAppState(), {
+      ...loadSyncMetadata(),
+      pendingStatePatch: loadPendingAppStatePatch(),
+    })
+
+    expect(rehydrated.keptLocalChanges).toBe(true)
+    expect(
+      rehydrated.state.portfolios
+        .find((portfolio) => portfolio.id === basePortfolio.id)
+        ?.cards.some((card) => card.id === pendingCard.id),
+    ).toBe(true)
+  })
+
   it('saves through a merge when the client has no remote base timestamp yet', async () => {
     const seed = createSeedState()
     await loadOrCreateRemoteAppState(seed)

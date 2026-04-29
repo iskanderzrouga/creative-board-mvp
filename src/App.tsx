@@ -369,6 +369,10 @@ function buildDriveWebhookPayload(
   }
 }
 
+function getDriveFolderSearchUrl(folderName: string, fallbackTitle: string) {
+  return `https://drive.google.com/drive/search?q=${encodeURIComponent(folderName || fallbackTitle)}`
+}
+
 function App() {
   const authEnabled = isSupabaseConfigured()
   const [state, setState] = useState<AppState>(() => loadAppState())
@@ -1650,10 +1654,15 @@ function App() {
       return false
     }
 
-    const response = await fetch(webhookUrl, {
+    const response = await fetch('/api/drive/create-folder', {
       method: 'POST',
-      redirect: 'follow',
-      body: JSON.stringify(payload),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        webhookUrl,
+        payload,
+      }),
     })
 
     let result: DriveWebhookResult | null = null
@@ -1673,7 +1682,9 @@ function App() {
         existingCard.id === card.id
           ? {
               ...existingCard,
-              driveFolderUrl: result?.folderUrl ?? existingCard.driveFolderUrl,
+              driveFolderUrl:
+                result?.folderUrl ??
+                (existingCard.driveFolderUrl || getDriveFolderSearchUrl(payload.folderName, card.title)),
               driveFolderCreated: true,
             }
           : existingCard,
@@ -2659,18 +2670,10 @@ function App() {
 
     setCreatingDriveCardId(selectedCardData.id)
     try {
-      await fetch(webhookUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        redirect: 'follow',
-        body: JSON.stringify(payload),
-      })
-
-      saveOpenCard({
-        driveFolderCreated: true,
-        driveFolderUrl: `https://drive.google.com/drive/search?q=${encodeURIComponent(payload.folderName || selectedCardData.title)}`,
-      })
-      showToast('Drive folder creation triggered. Check your Drive in a few seconds.', 'green')
+      const created = await createDriveFolderForCard(activeSelectedPortfolio, selectedCardData, 'manual')
+      if (created) {
+        showToast('Drive folder created.', 'green')
+      }
     } catch {
       showToast('Drive folder creation failed. Check your network connection.', 'red')
     } finally {

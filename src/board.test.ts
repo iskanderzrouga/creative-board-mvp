@@ -992,18 +992,20 @@ describe('board integrity helpers', () => {
     expect(
       getCreativeDriveFolderName({
         id: 'N001',
+        product: 'Harmonate',
         title: '  Big bathroom reveal  ',
         angle: '  Before   After  ',
       }),
-    ).toBe('N001 - Big bathroom reveal - Before After')
+    ).toBe('N001 - Harmonate - Big bathroom reveal - Before After')
 
     expect(
       getCreativeDriveFolderName({
         id: 'N002',
+        product: 'AniqaPlus',
         title: 'Static hook',
         angle: '',
       }),
-    ).toBe('N002 - Static hook')
+    ).toBe('N002 - AniqaPlus - Static hook')
   })
 
   it('adds backlog cards at the end of the lane and updates prefix counters', () => {

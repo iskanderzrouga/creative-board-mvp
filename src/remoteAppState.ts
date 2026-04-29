@@ -359,10 +359,13 @@ export async function loadOrCreateRemoteAppState(
     const stored = getStoredE2ERemoteState()
     if (stored) {
       const remoteSignature = getRemoteStateSignature(stored.state)
-      const patchedRemoteState = options.pendingRemoteSignature && options.pendingStatePatch
+      const shouldUsePendingPatch =
+        Boolean(options.pendingRemoteSignature && options.pendingStatePatch) &&
+        options.pendingRemoteSignature !== fallbackSignature
+      const patchedRemoteState = shouldUsePendingPatch
         ? applyPendingAppStatePatch(stored.state, options.pendingStatePatch)
         : null
-      const hasPendingPatch = Boolean(options.pendingRemoteSignature && options.pendingStatePatch)
+      const hasPendingPatch = shouldUsePendingPatch
       const hasPendingLocalChanges = hasPendingPatch || options.pendingRemoteSignature === fallbackSignature
       const shouldKeepLocalChanges =
         !hasPendingPatch &&
@@ -410,10 +413,13 @@ export async function loadOrCreateRemoteAppState(
   if (data) {
     const remoteState = coerceAppState(data.state)
     const remoteSignature = getRemoteStateSignature(remoteState)
-    const patchedRemoteState = options.pendingRemoteSignature && options.pendingStatePatch
+    const shouldUsePendingPatch =
+      Boolean(options.pendingRemoteSignature && options.pendingStatePatch) &&
+      options.pendingRemoteSignature !== fallbackSignature
+    const patchedRemoteState = shouldUsePendingPatch
       ? applyPendingAppStatePatch(remoteState, options.pendingStatePatch)
       : null
-    const hasPendingPatch = Boolean(options.pendingRemoteSignature && options.pendingStatePatch)
+    const hasPendingPatch = shouldUsePendingPatch
     const hasPendingLocalChanges = hasPendingPatch || options.pendingRemoteSignature === fallbackSignature
     const shouldKeepLocalChanges =
       !hasPendingPatch &&
