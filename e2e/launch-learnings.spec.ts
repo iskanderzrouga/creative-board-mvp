@@ -43,18 +43,24 @@ async function createCard(page: Page, title: string) {
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
 }
 
-async function moveCardToLiveInLocalState(page: Page, title: string) {
+async function moveCardsToLiveInLocalState(
+  page: Page,
+  cards: Array<{ title: string; brand?: string }>,
+) {
   await expect
     .poll(() =>
       page.evaluate(
-        ({ storageKey, cardTitle }) => window.localStorage.getItem(storageKey)?.includes(cardTitle) ?? false,
-        { storageKey: PENDING_STATE_KEY, cardTitle: title },
+        ({ storageKey, cardTitles }) => {
+          const rawState = window.localStorage.getItem(storageKey)
+          return cardTitles.every((cardTitle) => rawState?.includes(cardTitle) ?? false)
+        },
+        { storageKey: PENDING_STATE_KEY, cardTitles: cards.map((card) => card.title) },
       ),
     )
     .toBe(true)
 
   const nextState = await page.evaluate(
-    ({ storageKey, cardTitle }) => {
+    ({ storageKey, cardsToMove }) => {
       const rawState = window.localStorage.getItem(storageKey)
       if (!rawState) {
         throw new Error('Missing local board state.')
@@ -62,41 +68,49 @@ async function moveCardToLiveInLocalState(page: Page, title: string) {
 
       const state = JSON.parse(rawState)
       const portfolio = state.portfolios?.[0]
-      const card = portfolio?.cards?.find((item: { title?: string }) => item.title === cardTitle)
-      if (!card) {
-        throw new Error('Missing created card.')
+      const movedAt = '2026-04-30T10:00:00.000Z'
+      const cardIds: Record<string, string> = {}
+
+      for (const cardToMove of cardsToMove) {
+        const card = portfolio?.cards?.find((item: { title?: string }) => item.title === cardToMove.title)
+        if (!card) {
+          throw new Error(`Missing created card: ${cardToMove.title}`)
+        }
+
+        card.stage = 'Live'
+        card.stageEnteredAt = movedAt
+        card.updatedAt = movedAt
+        if (cardToMove.brand) {
+          card.brand = cardToMove.brand
+        }
+        card.stageHistory = [
+          ...(Array.isArray(card.stageHistory) ? card.stageHistory : []).map(
+            (entry: { exitedAt?: string | null }) =>
+              entry.exitedAt === null ? { ...entry, exitedAt: movedAt, durationDays: 0 } : entry,
+          ),
+          {
+            stage: 'Live',
+            enteredAt: movedAt,
+            exitedAt: null,
+            durationDays: null,
+          },
+        ]
+        cardIds[cardToMove.title] = card.id as string
       }
 
-      const movedAt = '2026-04-30T10:00:00.000Z'
-      card.stage = 'Live'
-      card.stageEnteredAt = movedAt
-      card.updatedAt = movedAt
-      card.stageHistory = [
-        ...(Array.isArray(card.stageHistory) ? card.stageHistory : []).map(
-          (entry: { exitedAt?: string | null }) =>
-            entry.exitedAt === null ? { ...entry, exitedAt: movedAt, durationDays: 0 } : entry,
-        ),
-        {
-          stage: 'Live',
-          enteredAt: movedAt,
-          exitedAt: null,
-          durationDays: null,
-        },
-      ]
-
       return {
-        cardId: card.id as string,
+        cardIds,
         stateJson: JSON.stringify(state),
         metadataJson: JSON.stringify({
           lastSyncedAt: null,
           pendingRemoteBaseUpdatedAt: null,
-          pendingRemoteSignature: `test-${card.id}-${movedAt}`,
+          pendingRemoteSignature: `test-${Object.values(cardIds).join('-')}-${movedAt}`,
         }),
       }
     },
     {
       storageKey: PENDING_STATE_KEY,
-      cardTitle: title,
+      cardsToMove: cards,
     },
   )
 
@@ -114,7 +128,7 @@ async function moveCardToLiveInLocalState(page: Page, title: string) {
   )
 
   await page.addInitScript(
-    ({ storageKey, syncMetadataKey, stateJson, metadataJson, cardId }) => {
+    ({ storageKey, syncMetadataKey, stateJson, metadataJson, cardIds }) => {
       const existingState = window.localStorage.getItem(storageKey)
       let shouldSeedLiveCard = true
       if (existingState) {
@@ -122,10 +136,11 @@ async function moveCardToLiveInLocalState(page: Page, title: string) {
           const parsed = JSON.parse(existingState) as {
             portfolios?: Array<{ cards?: Array<{ id?: string; stage?: string }> }>
           }
-          const existingCard = parsed.portfolios
-            ?.flatMap((portfolio) => portfolio.cards ?? [])
-            .find((card) => card.id === cardId)
-          shouldSeedLiveCard = existingCard?.stage !== 'Live'
+          const existingCards = parsed.portfolios?.flatMap((portfolio) => portfolio.cards ?? []) ?? []
+          shouldSeedLiveCard = cardIds.some((cardId) => {
+            const existingCard = existingCards.find((card) => card.id === cardId)
+            return existingCard?.stage !== 'Live'
+          })
         } catch {
           shouldSeedLiveCard = true
         }
@@ -143,11 +158,16 @@ async function moveCardToLiveInLocalState(page: Page, title: string) {
       syncMetadataKey: SYNC_METADATA_KEY,
       stateJson: nextState.stateJson,
       metadataJson: nextState.metadataJson,
-      cardId: nextState.cardId,
+      cardIds: Object.values(nextState.cardIds),
     },
   )
 
-  return nextState.cardId
+  return nextState.cardIds
+}
+
+async function moveCardToLiveInLocalState(page: Page, title: string) {
+  const cardIds = await moveCardsToLiveInLocalState(page, [{ title }])
+  return cardIds[title]
 }
 
 test('owner can save launch learnings on a live card', async ({ page }) => {
@@ -167,4 +187,29 @@ test('owner can save launch learnings on a live card', async ({ page }) => {
   await expect(page.getByLabel(`Learnings for ${cardId}`)).toHaveValue(
     'Winning hook needs a sharper above-the-fold proof point.',
   )
+})
+
+test('owner can filter launch learnings by brand', async ({ page }) => {
+  await openFreshApp(page)
+
+  const pluxyTitle = 'Launch learning Pluxy card'
+  const viviTitle = 'Launch learning Vivi card'
+  await createCard(page, pluxyTitle)
+  await createCard(page, viviTitle)
+  await moveCardsToLiveInLocalState(page, [
+    { title: pluxyTitle, brand: 'Pluxy' },
+    { title: viviTitle, brand: 'Vivi' },
+  ])
+
+  await page.goto('/learnings')
+  await expect(page.getByRole('button', { name: pluxyTitle })).toBeVisible()
+  await expect(page.getByRole('button', { name: viviTitle })).toBeVisible()
+
+  await page.getByLabel('Brand filter').selectOption('Vivi')
+  await expect(page.getByRole('button', { name: viviTitle })).toBeVisible()
+  await expect(page.getByRole('button', { name: pluxyTitle })).toHaveCount(0)
+
+  await page.getByLabel('Brand filter').selectOption('Pluxy')
+  await expect(page.getByRole('button', { name: pluxyTitle })).toBeVisible()
+  await expect(page.getByRole('button', { name: viviTitle })).toHaveCount(0)
 })

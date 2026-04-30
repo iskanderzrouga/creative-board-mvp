@@ -206,11 +206,21 @@ export function LaunchLearningsPage({
 }: LaunchLearningsPageProps) {
   const [query, setQuery] = useState('')
   const [portfolioFilter, setPortfolioFilter] = useState('all')
+  const [brandFilter, setBrandFilter] = useState('all')
   const launchRows = useMemo(() => buildLaunchRows(portfolios, settings), [portfolios, settings])
   const portfolioOptions = useMemo(
     () => portfolios.map((portfolio) => ({ id: portfolio.id, name: portfolio.name })),
     [portfolios],
   )
+  const brandOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        launchRows
+          .map((row) => row.card.brand.trim())
+          .filter(Boolean),
+      ),
+    ).sort((left, right) => left.localeCompare(right))
+  }, [launchRows])
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
 
@@ -219,18 +229,23 @@ export function LaunchLearningsPage({
         return false
       }
 
+      if (brandFilter !== 'all' && row.card.brand.trim() !== brandFilter) {
+        return false
+      }
+
       return normalizedQuery ? getLaunchSearchText(row).includes(normalizedQuery) : true
     })
-  }, [launchRows, portfolioFilter, query])
+  }, [brandFilter, launchRows, portfolioFilter, query])
   const cardsWithLearning = launchRows.filter((row) => row.card.launchLearning.trim()).length
   const emptyCount = Math.max(0, launchRows.length - cardsWithLearning)
+  const hasActiveFilters = Boolean(query.trim()) || portfolioFilter !== 'all' || brandFilter !== 'all'
 
   return (
     <div className="page-shell launch-learnings-page">
       <PageHeader
         title="Launch Learnings"
         searchValue={query}
-        searchCountLabel={query ? `Showing ${filteredRows.length} of ${launchRows.length}` : undefined}
+        searchCountLabel={hasActiveFilters ? `Showing ${filteredRows.length} of ${launchRows.length}` : undefined}
         onSearchChange={setQuery}
         onSearchClear={() => setQuery('')}
         rightContent={headerUtilityContent}
@@ -259,6 +274,22 @@ export function LaunchLearningsPage({
             {portfolioOptions.map((portfolio) => (
               <option key={portfolio.id} value={portfolio.id}>
                 {portfolio.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="launch-learning-filter">
+          <span>Brand</span>
+          <select
+            value={brandFilter}
+            aria-label="Brand filter"
+            onChange={(event) => setBrandFilter(event.target.value)}
+          >
+            <option value="all">All brands</option>
+            {brandOptions.map((brand) => (
+              <option key={brand} value={brand}>
+                {brand}
               </option>
             ))}
           </select>
