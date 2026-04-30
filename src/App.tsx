@@ -46,6 +46,7 @@ import { DailyCheckinModal } from './components/DailyCheckinModal'
 import { DailyPulsePage } from './components/DailyPulsePage'
 import { NotificationBell } from './components/NotificationBell'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
+import { LaunchLearningsPage } from './components/LaunchLearningsPage'
 import { PageHeader } from './components/PageHeader'
 import { PasswordRecoveryGate } from './components/PasswordRecoveryGate'
 import { QuickCreateModal } from './components/QuickCreateModal'
@@ -248,6 +249,8 @@ function getPathForPage(page: ExtendedPage) {
       return '/pulse'
     case 'scripts':
       return '/scripts'
+    case 'learnings':
+      return '/learnings'
     case 'strategy':
       return '/strategy'
     case 'finance':
@@ -274,6 +277,8 @@ function getPageFromPathname(pathname: string, fallback: AppPage): ExtendedPage 
       return 'pulse'
     case '/scripts':
       return 'scripts'
+    case '/learnings':
+      return 'learnings'
     case '/strategy':
       return 'strategy'
     case '/finance':
@@ -597,6 +602,7 @@ function App() {
     ? getAllowedPageForDeveloper(routePage === 'finance' ? 'board' : routePage)
     : routePage === 'backlog' ||
         routePage === 'scripts' ||
+        routePage === 'learnings' ||
         routePage === 'strategy' ||
         routePage === 'finance' ||
         routePage === 'pulse' ||
@@ -1314,7 +1320,7 @@ function App() {
     }
 
     if (
-      (routePage === 'scripts' || routePage === 'strategy') &&
+      (routePage === 'scripts' || routePage === 'learnings' || routePage === 'strategy') &&
       state.activeRole.mode !== 'owner' &&
       state.activeRole.mode !== 'manager'
     ) {
@@ -2449,6 +2455,27 @@ function App() {
         state.settings,
         cardId,
         { title: nextTitle },
+        actor,
+        new Date().toISOString(),
+        viewerContext,
+      ),
+    )
+  }
+
+  function handleSaveLaunchLearning(portfolioId: string, cardId: string, learning: string) {
+    const portfolio = state.portfolios.find((item) => item.id === portfolioId) ?? null
+    const card = portfolio?.cards.find((item) => item.id === cardId) ?? null
+    if (!portfolio || !card || card.launchLearning === learning) {
+      return
+    }
+
+    const actor = getActorName(portfolio)
+    updatePortfolio(portfolioId, (currentPortfolio) =>
+      applyCardUpdates(
+        currentPortfolio,
+        state.settings,
+        cardId,
+        { launchLearning: learning },
         actor,
         new Date().toISOString(),
         viewerContext,
@@ -3681,6 +3708,16 @@ function App() {
             onUpdateScript={handleUpdateScript}
             onSubmitReview={handleSubmitScriptReview}
             onAddComment={handleAddScriptComment}
+          />
+        ) : null}
+
+        {currentPage === 'learnings' ? (
+          <LaunchLearningsPage
+            portfolios={scopedPortfolios}
+            settings={state.settings}
+            headerUtilityContent={headerUtilityContent}
+            onOpenCard={openCard}
+            onSaveLearning={handleSaveLaunchLearning}
           />
         ) : null}
 

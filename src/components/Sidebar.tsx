@@ -118,6 +118,28 @@ function StrategyIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function LearningsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M5.5 5.5h13v13h-13Z" />
+      <path d="M8.5 9h7" />
+      <path d="M8.5 12h4.5" />
+      <path d="M8.5 15h6" />
+    </svg>
+  )
+}
+
 
 function FinanceIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -149,6 +171,9 @@ function getPageLabel(page: ExtendedPage) {
   if (page === 'finance') {
     return 'Performance'
   }
+  if (page === 'learnings') {
+    return 'Learnings'
+  }
 
   switch (page) {
     case 'board':
@@ -175,6 +200,9 @@ function getPageIcon(page: ExtendedPage): PageIcon {
   }
   if (page === 'finance') {
     return FinanceIcon
+  }
+  if (page === 'learnings') {
+    return LearningsIcon
   }
 
   switch (page) {
@@ -241,6 +269,7 @@ function SidebarComponent({
         ...(canAccessAllPages ? [{ page: 'strategy' as const, disabled: false }] : []),
         ...(canAccessPerformance ? [{ page: 'finance' as const, disabled: false }] : []),
         { page: 'board', disabled: false },
+        ...(canAccessAllPages ? [{ page: 'learnings' as const, disabled: false }] : []),
         { page: 'pulse', disabled: false },
         ...(canAccessAllPages ? [{ page: 'scripts' as const, disabled: false }] : []),
         ...(canAccessAllPages ? [{ page: 'analytics' as const, disabled: false }] : []),

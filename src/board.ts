@@ -28,7 +28,15 @@ export const STAGES = [
 
 export const GROUPED_STAGES = ['Briefed', 'In Production', 'Review'] as const
 export const BOARD_COLUMN_IDS = [...STAGES, 'Archived'] as const
-export const APP_PAGES = ['board', 'analytics', 'workload', 'pulse', 'settings', 'scripts'] as const
+export const APP_PAGES = [
+  'board',
+  'analytics',
+  'workload',
+  'pulse',
+  'settings',
+  'scripts',
+  'learnings',
+] as const
 export const DEV_BOARD_COLUMNS = [
   'To Brief',
   'Up Next',
@@ -214,6 +222,7 @@ export interface Card {
   referenceLinks: string
   adCopy: string
   notes: string
+  launchLearning: string
   comments: CommentEntry[]
   attachments?: string[]
   links?: CardLink[]
@@ -1912,6 +1921,7 @@ function inflateSeedCard(
     referenceLinks?: string
     adCopy?: string
     notes?: string
+    launchLearning?: string
     comments?: CommentEntry[]
     attachments?: string[]
     frameioLink?: string | string[]
@@ -2000,6 +2010,7 @@ function inflateSeedCard(
     referenceLinks: seed.referenceLinks ?? '',
     adCopy: seed.adCopy ?? '',
     notes: seed.notes ?? '',
+    launchLearning: seed.launchLearning ?? '',
     comments: seed.comments ?? [],
     attachments: seed.attachments ?? [],
     links: [],
@@ -2609,6 +2620,7 @@ function normalizePortfolio(
           referenceLinks: typeof raw.referenceLinks === 'string' ? raw.referenceLinks : '',
           adCopy: typeof raw.adCopy === 'string' ? raw.adCopy : '',
           notes: typeof raw.notes === 'string' ? raw.notes : '',
+          launchLearning: typeof raw.launchLearning === 'string' ? raw.launchLearning : '',
           links: coerceCardLinksField(raw.links),
           blocked: rawCard.blocked ?? null,
           archivedAt: rawCard.archivedAt ?? null,
@@ -2725,6 +2737,7 @@ function normalizePortfolio(
           referenceLinks: typeof raw?.referenceLinks === 'string' ? raw.referenceLinks : '',
           adCopy: typeof raw?.adCopy === 'string' ? raw.adCopy : '',
           notes: typeof raw?.notes === 'string' ? raw.notes : '',
+          launchLearning: typeof raw?.launchLearning === 'string' ? raw.launchLearning : '',
           comments: Array.isArray(raw?.comments) ? raw.comments : [],
           attachments: Array.isArray(raw?.attachments) ? raw.attachments : [],
           links: coerceCardLinksField(raw?.links),
@@ -4363,6 +4376,7 @@ export function createCardFromQuickInput(
     referenceLinks: '',
     adCopy: '',
     notes: '',
+    launchLearning: '',
     comments: [],
     attachments: [],
     links: [],
@@ -4421,6 +4435,7 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('referenceLinks')
     allowedKeys.add('adCopy')
     allowedKeys.add('notes')
+    allowedKeys.add('launchLearning')
     allowedKeys.add('attachments')
     allowedKeys.add('links')
     allowedKeys.add('frameioLink')
