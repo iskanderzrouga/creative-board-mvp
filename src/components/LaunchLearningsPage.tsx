@@ -86,23 +86,29 @@ function buildLaunchRows(portfolios: Portfolio[], settings: GlobalSettings) {
 }
 
 function LaunchLearningRow({ row, onOpenCard, onSaveLearning }: LaunchLearningRowProps) {
-  const initialLearning = row.card.launchLearning.trim()
+  const initialLearning = row.card.launchLearning
   const [savedLearning, setSavedLearning] = useState(initialLearning)
   const [draft, setDraft] = useState(initialLearning)
 
-  const normalizedDraft = draft.trim()
-  const hasLearning = savedLearning.length > 0
-  const isDirty = normalizedDraft !== savedLearning
+  const hasLearning = savedLearning.trim().length > 0
+  const isDirty = draft !== savedLearning
 
-  function commitDraft() {
-    if (!isDirty) {
-      setDraft(savedLearning)
+  function saveLearning(nextLearning: string) {
+    if (nextLearning === savedLearning) {
       return
     }
 
-    setSavedLearning(normalizedDraft)
-    setDraft(normalizedDraft)
-    onSaveLearning(row.portfolioId, row.card.id, normalizedDraft)
+    setSavedLearning(nextLearning)
+    onSaveLearning(row.portfolioId, row.card.id, nextLearning)
+  }
+
+  function handleLearningChange(nextLearning: string) {
+    setDraft(nextLearning)
+    saveLearning(nextLearning)
+  }
+
+  function commitDraft() {
+    saveLearning(draft)
   }
 
   return (
@@ -165,7 +171,7 @@ function LaunchLearningRow({ row, onOpenCard, onSaveLearning }: LaunchLearningRo
           value={draft}
           aria-label={`Learnings for ${row.card.id}`}
           placeholder="What did this teach us about the creative, page, angle, audience, or CRO test?"
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => handleLearningChange(event.target.value)}
           onBlur={commitDraft}
         />
         <div className="launch-learning-actions">

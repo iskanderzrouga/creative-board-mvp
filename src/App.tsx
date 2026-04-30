@@ -2463,24 +2463,40 @@ function App() {
   }
 
   function handleSaveLaunchLearning(portfolioId: string, cardId: string, learning: string) {
-    const portfolio = state.portfolios.find((item) => item.id === portfolioId) ?? null
+    const currentState = localFallbackStateRef.current
+    const portfolio = currentState.portfolios.find((item) => item.id === portfolioId) ?? null
     const card = portfolio?.cards.find((item) => item.id === cardId) ?? null
     if (!portfolio || !card || card.launchLearning === learning) {
       return
     }
 
     const actor = getActorName(portfolio)
-    updatePortfolio(portfolioId, (currentPortfolio) =>
-      applyCardUpdates(
-        currentPortfolio,
-        state.settings,
-        cardId,
-        { launchLearning: learning },
-        actor,
-        new Date().toISOString(),
-        viewerContext,
+    const timestamp = new Date().toISOString()
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolioId
+          ? applyCardUpdates(
+              currentPortfolio,
+              currentState.settings,
+              cardId,
+              { launchLearning: learning },
+              actor,
+              timestamp,
+              viewerContext,
+            )
+          : currentPortfolio,
       ),
-    )
+    }
+
+    markMainDirty('update launch learning')
+    replaceState(nextState)
+    persistAppState(nextState)
+    persistSyncMetadata({
+      lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(nextState),
+    })
   }
 
   function requestCloseSelectedCard() {

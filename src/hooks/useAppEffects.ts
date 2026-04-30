@@ -223,6 +223,7 @@ export function useAppEffects({
         accessStatus === 'granted' &&
         remoteHydratedRef.current &&
         currentRemoteStateSignature !== lastRemoteStateSignatureRef.current
+      const shouldKeepPendingState = !authEnabled || hasPendingRemoteChanges
 
       if (localPersistTimerRef.current !== null) {
         window.clearTimeout(localPersistTimerRef.current)
@@ -233,7 +234,7 @@ export function useAppEffects({
       persistSyncMetadata({
         lastSyncedAt: lastSyncedAtRef.current,
         pendingRemoteBaseUpdatedAt: hasPendingRemoteChanges ? lastSyncedAtRef.current : null,
-        pendingRemoteSignature: hasPendingRemoteChanges ? currentRemoteStateSignature : null,
+        pendingRemoteSignature: shouldKeepPendingState ? currentRemoteStateSignature : null,
       })
 
       // Flush pending backlog state

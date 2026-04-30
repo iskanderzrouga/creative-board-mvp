@@ -6,16 +6,20 @@ const SYNC_METADATA_KEY = 'creative-board-sync-metadata'
 const TEST_AUTH_MODE_KEY = 'editors-board-e2e-auth-mode'
 const TEST_AUTH_EMAIL_KEY = 'editors-board-e2e-auth-email'
 const TEST_REMOTE_STATE_KEY = 'editors-board-e2e-remote-state'
+const TEST_RESET_KEY = 'editors-board-e2e-launch-learnings-reset'
 
 async function openFreshApp(page: Page) {
   await page.addInitScript(
-    ({ storageKey, pendingStateKey, syncMetadataKey, authModeKey, authEmailKey, remoteStateKey }) => {
-      window.localStorage.removeItem(storageKey)
-      window.localStorage.removeItem(pendingStateKey)
-      window.localStorage.removeItem(syncMetadataKey)
+    ({ storageKey, pendingStateKey, syncMetadataKey, authModeKey, authEmailKey, remoteStateKey, resetKey }) => {
+      if (!window.sessionStorage.getItem(resetKey)) {
+        window.localStorage.removeItem(storageKey)
+        window.localStorage.removeItem(pendingStateKey)
+        window.localStorage.removeItem(syncMetadataKey)
+        window.localStorage.removeItem(authEmailKey)
+        window.localStorage.removeItem(remoteStateKey)
+        window.sessionStorage.setItem(resetKey, '1')
+      }
       window.localStorage.setItem(authModeKey, 'disabled')
-      window.localStorage.removeItem(authEmailKey)
-      window.localStorage.removeItem(remoteStateKey)
     },
     {
       storageKey: STORAGE_KEY,
@@ -24,6 +28,7 @@ async function openFreshApp(page: Page) {
       authModeKey: TEST_AUTH_MODE_KEY,
       authEmailKey: TEST_AUTH_EMAIL_KEY,
       remoteStateKey: TEST_REMOTE_STATE_KEY,
+      resetKey: TEST_RESET_KEY,
     },
   )
   await page.goto('/')
@@ -95,7 +100,7 @@ async function moveCardToLiveInLocalState(page: Page, title: string) {
     },
   )
 
-  await page.addInitScript(
+  await page.evaluate(
     ({ storageKey, syncMetadataKey, stateJson, metadataJson }) => {
       window.localStorage.setItem(storageKey, stateJson)
       window.localStorage.setItem(syncMetadataKey, metadataJson)
@@ -105,6 +110,40 @@ async function moveCardToLiveInLocalState(page: Page, title: string) {
       syncMetadataKey: SYNC_METADATA_KEY,
       stateJson: nextState.stateJson,
       metadataJson: nextState.metadataJson,
+    },
+  )
+
+  await page.addInitScript(
+    ({ storageKey, syncMetadataKey, stateJson, metadataJson, cardId }) => {
+      const existingState = window.localStorage.getItem(storageKey)
+      let shouldSeedLiveCard = true
+      if (existingState) {
+        try {
+          const parsed = JSON.parse(existingState) as {
+            portfolios?: Array<{ cards?: Array<{ id?: string; stage?: string }> }>
+          }
+          const existingCard = parsed.portfolios
+            ?.flatMap((portfolio) => portfolio.cards ?? [])
+            .find((card) => card.id === cardId)
+          shouldSeedLiveCard = existingCard?.stage !== 'Live'
+        } catch {
+          shouldSeedLiveCard = true
+        }
+      }
+
+      if (shouldSeedLiveCard) {
+        window.localStorage.setItem(storageKey, stateJson)
+      }
+      if (!window.localStorage.getItem(syncMetadataKey)) {
+        window.localStorage.setItem(syncMetadataKey, metadataJson)
+      }
+    },
+    {
+      storageKey: PENDING_STATE_KEY,
+      syncMetadataKey: SYNC_METADATA_KEY,
+      stateJson: nextState.stateJson,
+      metadataJson: nextState.metadataJson,
+      cardId: nextState.cardId,
     },
   )
 
@@ -124,30 +163,8 @@ test('owner can save launch learnings on a live card', async ({ page }) => {
 
   const learningInput = page.getByLabel(`Learnings for ${cardId}`)
   await learningInput.fill('Winning hook needs a sharper above-the-fold proof point.')
-  await learningInput.blur()
-
-  await expect(learningInput).toHaveValue('Winning hook needs a sharper above-the-fold proof point.')
-  await expect
-    .poll(() =>
-      page.evaluate(
-        ({ storageKey, targetCardId }) => {
-          const rawState = window.localStorage.getItem(storageKey)
-          if (!rawState) {
-            return null
-          }
-
-          const state = JSON.parse(rawState)
-          const card = state.portfolios
-            ?.flatMap((portfolio: { cards?: Array<{ id?: string; launchLearning?: string }> }) => portfolio.cards ?? [])
-            .find((item: { id?: string }) => item.id === targetCardId)
-
-          return card?.launchLearning ?? null
-        },
-        {
-          storageKey: PENDING_STATE_KEY,
-          targetCardId: cardId,
-        },
-      ),
-    )
-    .toBe('Winning hook needs a sharper above-the-fold proof point.')
+  await page.reload()
+  await expect(page.getByLabel(`Learnings for ${cardId}`)).toHaveValue(
+    'Winning hook needs a sharper above-the-fold proof point.',
+  )
 })
