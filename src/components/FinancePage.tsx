@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   PERFORMANCE_BRANDS,
   loadBrandDailyPerformance,
@@ -35,6 +35,7 @@ interface DailyTrendRow {
   revenue: number
   totalAdSpend: number
   blendedRoas: number
+  contributionAfterAds: number
 }
 
 const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
@@ -55,33 +56,50 @@ const brandColor = new Map(PERFORMANCE_BRANDS.map((brand) => [brand.slug, brand.
 const brandTint = new Map(PERFORMANCE_BRANDS.map((brand) => [brand.slug, brand.tint]))
 const brandName = new Map(PERFORMANCE_BRANDS.map((brand) => [brand.slug, brand.name]))
 
-const pageShell = {
-  background: '#f7f8fb',
+const shopifyBlue = '#1f76f2'
+const shopifyGreen = '#10b981'
+const shopifyRed = '#dc2626'
+const ink = '#202223'
+const subdued = '#5f6f82'
+const hairline = '#dde3ea'
+
+const pageShell: CSSProperties = {
+  background: '#f5f6f7',
   minHeight: '100vh',
   margin: '-24px',
-  color: '#172033',
+  color: ink,
+  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
 }
 
-const pageInner = {
-  maxWidth: 1280,
+const pageInner: CSSProperties = {
+  maxWidth: 1040,
   margin: '0 auto',
-  padding: '28px 24px 40px',
+  padding: '30px 24px 56px',
 }
 
-const panelStyle = {
+const panelStyle: CSSProperties = {
   background: '#ffffff',
-  border: '1px solid #e4e8f0',
+  border: '1px solid #e7ebef',
   borderRadius: 8,
-  boxShadow: '0 18px 40px rgba(28, 38, 62, 0.06)',
+  boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 22px rgba(15, 23, 42, 0.04)',
 }
 
-const mutedText = {
-  color: '#697386',
-}
-
-const mono = {
-  fontFamily: "'JetBrains Mono', 'SFMono-Regular', Consolas, monospace",
+const numericStyle: CSSProperties = {
+  fontVariantNumeric: 'tabular-nums',
   letterSpacing: 0,
+}
+
+const controlButtonStyle: CSSProperties = {
+  border: '1px solid #cfd7e2',
+  background: '#ffffff',
+  color: '#344054',
+  borderRadius: 6,
+  minHeight: 30,
+  padding: '0 10px',
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: 'pointer',
+  boxShadow: '0 1px 1px rgba(15, 23, 42, 0.03)',
 }
 
 function formatMoney(value: number, maximumFractionDigits = 0) {
@@ -323,6 +341,7 @@ function buildDailyTrendRows(rows: BrandDailyPerformanceRow[]): DailyTrendRow[] 
         revenue: totals.revenue,
         totalAdSpend: totals.totalAdSpend,
         blendedRoas: totals.blendedRoas,
+        contributionAfterAds: totals.contributionAfterAds,
       }
     })
     .sort((left, right) => left.date.localeCompare(right.date))
@@ -332,22 +351,59 @@ function StatTile({
   label,
   value,
   helper,
-  accent = '#2563eb',
+  accent = shopifyBlue,
+  trend,
 }: {
   label: string
   value: string
   helper?: string
   accent?: string
+  trend?: number[]
 }) {
   return (
-    <div style={{ ...panelStyle, padding: 18, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: accent }} />
-        <span style={{ color: '#697386', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</span>
+    <div style={{ ...panelStyle, padding: 12, minWidth: 0, minHeight: 164, display: 'grid', alignContent: 'space-between' }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 22 }}>
+          <MetricMark color={accent} />
+          <span style={{ color: '#465a70', fontSize: 13, fontWeight: 500 }}>{label}</span>
+        </div>
+        <div style={{ ...numericStyle, color: ink, fontSize: 27, lineHeight: 1.15, fontWeight: 650, marginTop: 20 }}>{value}</div>
+        {helper ? <div style={{ color: subdued, fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>{helper}</div> : null}
       </div>
-      <div style={{ ...mono, color: '#111827', fontSize: 26, fontWeight: 800, letterSpacing: 0 }}>{value}</div>
-      {helper ? <div style={{ color: '#697386', fontSize: 12, marginTop: 5 }}>{helper}</div> : null}
+      {trend ? <MetricSparkline values={trend} color={accent} /> : null}
     </div>
+  )
+}
+
+function MetricMark({ color }: { color: string }) {
+  return (
+    <span aria-hidden="true" style={{ position: 'relative', width: 16, height: 16, display: 'inline-block', flex: '0 0 auto' }}>
+      <span style={{ position: 'absolute', left: 1, top: 2, width: 5, height: 5, borderRadius: 999, background: color }} />
+      <span style={{ position: 'absolute', right: 1, top: 2, width: 5, height: 5, borderRadius: 999, background: '#13c296' }} />
+      <span style={{ position: 'absolute', left: 1, bottom: 2, width: 5, height: 5, borderRadius: 999, background: '#1687f7' }} />
+      <span style={{ position: 'absolute', right: 1, bottom: 2, width: 5, height: 5, borderRadius: 999, background: '#f59e0b' }} />
+    </span>
+  )
+}
+
+function MetricSparkline({ values, color }: { values: number[]; color: string }) {
+  const points = values.slice(-7)
+  const safePoints = points.length > 1 ? points : [points[0] ?? 0, points[0] ?? 0]
+  const max = Math.max(...safePoints, 1)
+  const min = Math.min(...safePoints, 0)
+  const span = Math.max(max - min, 1)
+  const polyline = safePoints
+    .map((value, index) => {
+      const x = safePoints.length === 1 ? 0 : (index / (safePoints.length - 1)) * 100
+      const y = 34 - ((value - min) / span) * 26
+      return `${x},${y}`
+    })
+    .join(' ')
+
+  return (
+    <svg viewBox="0 0 100 38" aria-hidden="true" style={{ width: '100%', height: 42, display: 'block', marginTop: 18 }}>
+      <polyline points={polyline} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
@@ -357,22 +413,8 @@ function MiniSparkline({ rows, color }: { rows: BrandDailyPerformanceRow[]; colo
     .sort((left, right) => left.date.localeCompare(right.date))
     .slice(-7)
     .map((row) => row.revenue)
-  const max = Math.max(...points, 1)
-  const min = Math.min(...points, 0)
-  const span = Math.max(max - min, 1)
-  const polyline = points
-    .map((value, index) => {
-      const x = points.length === 1 ? 0 : (index / (points.length - 1)) * 100
-      const y = 34 - ((value - min) / span) * 28
-      return `${x},${y}`
-    })
-    .join(' ')
 
-  return (
-    <svg viewBox="0 0 100 38" role="img" aria-label="Revenue trend" style={{ width: '100%', height: 38, display: 'block' }}>
-      <polyline points={polyline} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+  return <MetricSparkline values={points} color={color} />
 }
 
 function BrandCard({
@@ -383,40 +425,42 @@ function BrandCard({
   brandSlug: PerformanceBrandSlug
 }) {
   const totals = sumRows(rows)
-  const color = brandColor.get(brandSlug) ?? '#2563eb'
+  const color = brandColor.get(brandSlug) ?? shopifyBlue
 
   return (
-    <div style={{ ...panelStyle, padding: 18, borderTop: `3px solid ${color}` }}>
+    <div style={{ ...panelStyle, padding: 12, minHeight: 164, display: 'grid', alignContent: 'space-between' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
         <div>
-          <div style={{ color: '#111827', fontSize: 16, fontWeight: 850 }}>{brandName.get(brandSlug) ?? brandSlug}</div>
-          <div style={{ ...mutedText, fontSize: 12, marginTop: 3 }}>Daily performance</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <MetricMark color={color} />
+            <span style={{ color: '#465a70', fontSize: 13, fontWeight: 500 }}>{brandName.get(brandSlug) ?? brandSlug}</span>
+          </div>
         </div>
-        <span style={{ color, background: brandTint.get(brandSlug), border: `1px solid ${color}22`, borderRadius: 999, padding: '5px 9px', fontSize: 11, fontWeight: 800 }}>
+        <span style={{ color, background: brandTint.get(brandSlug), border: `1px solid ${color}22`, borderRadius: 999, padding: '3px 7px', fontSize: 11, fontWeight: 650 }}>
           {rows.length} days
         </span>
       </div>
-      <div style={{ marginTop: 16 }}>
-        <div style={{ ...mono, color: '#111827', fontSize: 26, fontWeight: 850 }}>{formatMoney(totals.revenue)}</div>
-        <div style={{ color: '#697386', fontSize: 12, marginTop: 3 }}>
+      <div style={{ marginTop: 20 }}>
+        <div style={{ ...numericStyle, color: ink, fontSize: 27, lineHeight: 1.15, fontWeight: 650 }}>{formatMoney(totals.revenue)}</div>
+        <div style={{ color: subdued, fontSize: 12, lineHeight: 1.35, marginTop: 6 }}>
           {formatMoney(totals.totalAdSpend)} spend · {formatNumber(totals.orders)} orders
         </div>
       </div>
-      <div style={{ margin: '16px 0 12px' }}>
+      <div>
         <MiniSparkline rows={rows} color={color} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
         <div>
-          <div style={{ color: '#697386', fontSize: 11 }}>Platform ROAS</div>
-          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMetric(totals.platformRoas)}</strong>
+          <div style={{ color: subdued, fontSize: 11 }}>Platform ROAS</div>
+          <strong style={{ ...numericStyle, color: ink, fontSize: 15, fontWeight: 650 }}>{formatMetric(totals.platformRoas)}</strong>
         </div>
         <div>
-          <div style={{ color: '#697386', fontSize: 11 }}>Blended ROAS</div>
-          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMetric(totals.blendedRoas)}</strong>
+          <div style={{ color: subdued, fontSize: 11 }}>Blended ROAS</div>
+          <strong style={{ ...numericStyle, color: ink, fontSize: 15, fontWeight: 650 }}>{formatMetric(totals.blendedRoas)}</strong>
         </div>
         <div>
-          <div style={{ color: '#697386', fontSize: 11 }}>CPA</div>
-          <strong style={{ ...mono, color: '#111827', fontSize: 15 }}>{formatMoney(totals.cpa, 2)}</strong>
+          <div style={{ color: subdued, fontSize: 11 }}>CPA</div>
+          <strong style={{ ...numericStyle, color: ink, fontSize: 15, fontWeight: 650 }}>{formatMoney(totals.cpa, 2)}</strong>
         </div>
       </div>
     </div>
@@ -452,31 +496,31 @@ function PerformanceTrend({ rows }: { rows: BrandDailyPerformanceRow[] }) {
   const latest = dailyRows[dailyRows.length - 1]
 
   return (
-    <section style={{ ...panelStyle, padding: 18, minHeight: 250 }}>
+    <section style={{ ...panelStyle, padding: 16, minHeight: 250 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
         <div>
-          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Revenue, Spend, ROAS</h2>
-          <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>{dailyRows.length} day trend</div>
+          <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Revenue, Spend, ROAS</h2>
+          <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>{dailyRows.length} day trend</div>
         </div>
-        <div style={{ display: 'flex', gap: 12, color: '#697386', fontSize: 12, fontWeight: 750, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#2563eb' }} />Revenue</span>
+        <div style={{ display: 'flex', gap: 12, color: subdued, fontSize: 12, fontWeight: 550, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: shopifyBlue }} />Revenue</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#f97316' }} />Spend</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: '#059669' }} />ROAS {latest ? formatMetric(latest.blendedRoas) : ''}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 18, height: 3, background: shopifyGreen }} />ROAS {latest ? formatMetric(latest.blendedRoas) : ''}</span>
         </div>
       </div>
       <div style={{ marginTop: 16, overflow: 'hidden' }}>
         <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Revenue, spend, and blended ROAS trend" style={{ width: '100%', height: 210, display: 'block' }}>
           {[0, 1, 2, 3].map((line) => {
             const y = topPadding + (chartHeight / 3) * line
-            return <line key={line} x1="0" x2={width} y1={y} y2={y} stroke="#e4e8f0" strokeWidth="1" />
+            return <line key={line} x1="0" x2={width} y1={y} y2={y} stroke={hairline} strokeWidth="1" />
           })}
-          <polyline points={moneyPointsFor('revenue')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={moneyPointsFor('revenue')} fill="none" stroke={shopifyBlue} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           <polyline points={moneyPointsFor('totalAdSpend')} fill="none" stroke="#f97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points={roasPoints} fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 4" />
+          <polyline points={roasPoints} fill="none" stroke={shopifyGreen} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 4" />
           {dailyRows.map((row, index) => {
             if (dailyRows.length <= 8 || index % Math.ceil(dailyRows.length / 6) === 0 || index === dailyRows.length - 1) {
               return (
-                <text key={row.date} x={xFor(index)} y={height - 9} textAnchor={index === 0 ? 'start' : index === dailyRows.length - 1 ? 'end' : 'middle'} fill="#697386" fontSize="11">
+                <text key={row.date} x={xFor(index)} y={height - 9} textAnchor={index === 0 ? 'start' : index === dailyRows.length - 1 ? 'end' : 'middle'} fill={subdued} fontSize="11">
                   {formatDate(row.date)}
                 </text>
               )
@@ -500,48 +544,48 @@ function PlatformBreakdown({ rows }: { rows: BrandDailyPerformanceRow[] }) {
 
   return (
     <section style={{ ...panelStyle, overflow: 'hidden' }}>
-      <div style={{ padding: '16px 18px', borderBottom: '1px solid #e4e8f0', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ padding: '15px 16px', borderBottom: `1px solid ${hairline}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Platform Breakdown</h2>
-          <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>Self-reported attribution compared against Shopify actuals.</div>
+          <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Platform Breakdown</h2>
+          <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>Self-reported attribution compared against Shopify actuals.</div>
         </div>
-        <span style={{ color: '#697386', fontSize: 12, whiteSpace: 'nowrap' }}>{formatPercent(attributionShare)} attributed</span>
+        <span style={{ color: subdued, fontSize: 12, whiteSpace: 'nowrap' }}>{formatPercent(attributionShare)} attributed</span>
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ color: '#697386', background: '#fbfcfe', textAlign: 'left' }}>
+            <tr style={{ color: subdued, background: '#fbfcfd', textAlign: 'left' }}>
               {['Platform', 'Spend', 'Attributed Revenue', 'Purchases', 'Platform ROAS', 'CPA'].map((heading) => (
-                <th key={heading} style={{ padding: '11px 12px', fontWeight: 800, borderBottom: '1px solid #e4e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
+                <th key={heading} style={{ padding: '11px 12px', fontWeight: 650, borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{heading}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {platforms.map((platform) => (
               <tr key={platform.name} style={{ borderBottom: '1px solid #eef1f6' }}>
-                <td style={{ padding: '12px', color: '#111827', fontWeight: 820 }}>{platform.name}</td>
-                <td style={{ ...mono, padding: '12px', color: '#111827' }}>{formatMoney(platform.spend)}</td>
-                <td style={{ ...mono, padding: '12px', color: '#111827' }}>{formatMoney(platform.revenue)}</td>
-                <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(platform.purchases)}</td>
-                <td style={{ ...mono, padding: '12px', color: platform.roas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(platform.roas)}</td>
-                <td style={{ ...mono, padding: '12px', color: '#475467' }}>{platform.cpa > 0 ? formatMoney(platform.cpa, 2) : '—'}</td>
+                <td style={{ padding: '12px', color: ink, fontWeight: 550 }}>{platform.name}</td>
+                <td style={{ ...numericStyle, padding: '12px', color: ink }}>{formatMoney(platform.spend)}</td>
+                <td style={{ ...numericStyle, padding: '12px', color: ink }}>{formatMoney(platform.revenue)}</td>
+                <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatNumber(platform.purchases)}</td>
+                <td style={{ ...numericStyle, padding: '12px', color: platform.roas >= 2 ? '#047857' : '#b45309', fontWeight: 650 }}>{formatMetric(platform.roas)}</td>
+                <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{platform.cpa > 0 ? formatMoney(platform.cpa, 2) : '—'}</td>
               </tr>
             ))}
             <tr style={{ borderBottom: '1px solid #eef1f6', background: '#fbfcfe' }}>
-              <td style={{ padding: '12px', color: '#111827', fontWeight: 850 }}>Total attributed</td>
-              <td style={{ padding: '12px', color: '#697386' }}>—</td>
-              <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 850 }}>{formatMoney(totals.platformAttributedRevenue)}</td>
-              <td style={{ padding: '12px', color: '#697386' }}>—</td>
-              <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 850 }}>{formatMetric(totals.platformRoas)}</td>
-              <td style={{ padding: '12px', color: '#697386' }}>—</td>
+              <td style={{ padding: '12px', color: ink, fontWeight: 650 }}>Total attributed</td>
+              <td style={{ padding: '12px', color: subdued }}>—</td>
+              <td style={{ ...numericStyle, padding: '12px', color: ink, fontWeight: 650 }}>{formatMoney(totals.platformAttributedRevenue)}</td>
+              <td style={{ padding: '12px', color: subdued }}>—</td>
+              <td style={{ ...numericStyle, padding: '12px', color: ink, fontWeight: 650 }}>{formatMetric(totals.platformRoas)}</td>
+              <td style={{ padding: '12px', color: subdued }}>—</td>
             </tr>
             <tr style={{ background: '#ecfdf5' }}>
-              <td style={{ padding: '12px', color: '#047857', fontWeight: 850 }}>Shopify actual</td>
+              <td style={{ padding: '12px', color: '#047857', fontWeight: 650 }}>Shopify actual</td>
               <td style={{ padding: '12px', color: '#047857' }}>—</td>
-              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{formatMoney(totals.revenue)}</td>
-              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{formatNumber(totals.orders)}</td>
-              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{formatMetric(totals.blendedRoas)} blended</td>
-              <td style={{ ...mono, padding: '12px', color: '#047857', fontWeight: 850 }}>{totals.cpa > 0 ? formatMoney(totals.cpa, 2) : '—'}</td>
+              <td style={{ ...numericStyle, padding: '12px', color: '#047857', fontWeight: 650 }}>{formatMoney(totals.revenue)}</td>
+              <td style={{ ...numericStyle, padding: '12px', color: '#047857', fontWeight: 650 }}>{formatNumber(totals.orders)}</td>
+              <td style={{ ...numericStyle, padding: '12px', color: '#047857', fontWeight: 650 }}>{formatMetric(totals.blendedRoas)} blended</td>
+              <td style={{ ...numericStyle, padding: '12px', color: '#047857', fontWeight: 650 }}>{totals.cpa > 0 ? formatMoney(totals.cpa, 2) : '—'}</td>
             </tr>
           </tbody>
         </table>
@@ -554,9 +598,9 @@ function ShopifyExtras({ rows }: { rows: BrandDailyPerformanceRow[] }) {
   const totals = sumRows(rows)
 
   return (
-    <section style={{ ...panelStyle, padding: 18 }}>
-      <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Shopify Extras</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 }}>
+    <section>
+      <SectionHeading title="Store" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         {[
           ['AOV', totals.aov > 0 ? formatMoney(totals.aov, 2) : '—'],
           ['Gross sales', formatMoney(totals.grossSales)],
@@ -567,13 +611,28 @@ function ShopifyExtras({ rows }: { rows: BrandDailyPerformanceRow[] }) {
           ['Sessions', totals.sessions > 0 ? formatNumber(totals.sessions) : '—'],
           ['CVR', totals.cvr > 0 ? formatPercent(totals.cvr) : '—'],
         ].map(([label, value]) => (
-          <div key={label} style={{ border: '1px solid #e4e8f0', borderRadius: 7, padding: '10px 11px', minWidth: 0 }}>
-            <div style={{ color: '#697386', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-            <div style={{ ...mono, color: '#111827', fontSize: 16, fontWeight: 820, marginTop: 4 }}>{value}</div>
+          <div key={label} style={{ ...panelStyle, padding: 12, minHeight: 116, display: 'grid', alignContent: 'space-between', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <MetricMark color={shopifyGreen} />
+              <span style={{ color: '#465a70', fontSize: 13, fontWeight: 500 }}>{label}</span>
+            </div>
+            <div style={{ ...numericStyle, color: ink, fontSize: 26, lineHeight: 1.15, fontWeight: 650 }}>{value}</div>
           </div>
         ))}
       </div>
     </section>
+  )
+}
+
+function SectionHeading({ title, aside }: { title: string; aside?: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 14px' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: 3, background: '#6b7280', transform: 'rotate(-12deg)', display: 'inline-block' }} />
+        <h2 style={{ margin: 0, color: ink, fontSize: 20, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>{title}</h2>
+      </div>
+      {aside ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{aside}</div> : null}
+    </div>
   )
 }
 
@@ -697,7 +756,8 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const alerts = useMemo(() => buildAlerts(visibleRows), [visibleRows])
   const latestVisibleDate = latestDate(visibleRows)
   const latestRows = visibleRows.filter((row) => row.date === latestVisibleDate)
-  const showPerformanceTrend = useMemo(() => buildDailyTrendRows(visibleRows).length > 1, [visibleRows])
+  const dailyTrendRows = useMemo(() => buildDailyTrendRows(visibleRows), [visibleRows])
+  const showPerformanceTrend = dailyTrendRows.length > 1
   const displayedBrands = brandFilter === 'all'
     ? PERFORMANCE_BRANDS
     : PERFORMANCE_BRANDS.filter((brand) => brand.slug === brandFilter)
@@ -723,76 +783,59 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   return (
     <div style={pageShell}>
       <div style={pageInner}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'flex-start', marginBottom: 22 }}>
-          <div>
-            <div style={{ color: '#697386', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>
-              Performance / BlueBrands
-            </div>
-            <h1 style={{ color: '#111827', fontSize: 31, lineHeight: 1.08, margin: 0, fontWeight: 880, letterSpacing: 0 }}>
-              Daily Performance
+        <header style={{ minHeight: 46, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 34, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <h1 style={{ color: '#2f3a4a', fontSize: 20, lineHeight: 1.2, margin: 0, fontWeight: 500, letterSpacing: 0 }}>
+              Summary
             </h1>
-            <p style={{ color: '#697386', margin: '8px 0 0', maxWidth: 680, fontSize: 14, lineHeight: 1.55 }}>
-              Shopify revenue, paid spend, Platform ROAS, Blended ROAS, and contribution after ads for Pluxy, Vivi, and TrueClean. Dates are shown in EST.
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {headerUtilityContent}
-            <span style={{ ...panelStyle, padding: '8px 10px', color: errorMessage ? '#b45309' : '#047857', fontSize: 12, fontWeight: 750 }}>
-              {errorMessage ? 'Live data unavailable' : 'Live data'}
-            </span>
-          </div>
-        </header>
-
-        <div style={{ ...panelStyle, padding: 10, marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <button
               type="button"
               onClick={openDatePicker}
-              style={{
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#172033',
-                borderRadius: 6,
-                padding: '8px 12px',
-                fontSize: 12,
-                fontWeight: 850,
-                cursor: 'pointer',
-              }}
+              style={controlButtonStyle}
             >
-              {getPresetLabel(datePreset)} · {getRangeLabel(activeRange)}
+              {getPresetLabel(datePreset)}
             </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {headerUtilityContent}
+            <span style={{
+              ...controlButtonStyle,
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: errorMessage ? '#b45309' : '#16794f',
+              cursor: 'default',
+            }}>
+              {errorMessage ? 'Live data unavailable' : 'Live data'}
+            </span>
             <button
               type="button"
               onClick={refreshPerformance}
               disabled={refreshing || loading}
               style={{
-                border: '1px solid #111827',
-                background: refreshing || loading ? '#334155' : '#111827',
-                color: '#ffffff',
-                borderRadius: 6,
-                padding: '8px 12px',
-                fontSize: 12,
-                fontWeight: 850,
+                ...controlButtonStyle,
+                borderColor: shopifyBlue,
+                background: refreshing || loading ? '#dbeafe' : '#ffffff',
+                color: shopifyBlue,
                 cursor: refreshing || loading ? 'wait' : 'pointer',
-                minWidth: 104,
+                minWidth: 82,
               }}
             >
-              {refreshing || loading ? 'Refreshing...' : 'Refresh'}
+              {refreshing || loading ? 'Syncing' : 'Refresh'}
             </button>
           </div>
+        </header>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={() => setBrandFilter('all')}
               style={{
-                border: brandFilter === 'all' ? '1px solid #111827' : '1px solid #e4e8f0',
-                background: brandFilter === 'all' ? '#111827' : '#ffffff',
-                color: brandFilter === 'all' ? '#ffffff' : '#475467',
-                borderRadius: 6,
-                padding: '8px 11px',
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: 'pointer',
+                ...controlButtonStyle,
+                borderColor: brandFilter === 'all' ? shopifyBlue : '#cfd7e2',
+                background: brandFilter === 'all' ? '#eef6ff' : '#ffffff',
+                color: brandFilter === 'all' ? shopifyBlue : '#465a70',
+                fontWeight: brandFilter === 'all' ? 650 : 500,
               }}
             >
               All brands
@@ -803,125 +846,144 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
                 type="button"
                 onClick={() => setBrandFilter(brand.slug)}
                 style={{
-                  border: brandFilter === brand.slug ? `1px solid ${brand.color}` : '1px solid #e4e8f0',
+                  ...controlButtonStyle,
+                  borderColor: brandFilter === brand.slug ? brand.color : '#cfd7e2',
                   background: brandFilter === brand.slug ? brand.tint : '#ffffff',
-                  color: brandFilter === brand.slug ? brand.color : '#475467',
-                  borderRadius: 6,
-                  padding: '8px 11px',
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: 'pointer',
+                  color: brandFilter === brand.slug ? brand.color : '#465a70',
+                  fontWeight: brandFilter === brand.slug ? 650 : 500,
                 }}
               >
                 {brand.name}
               </button>
             ))}
           </div>
-          <div style={{ color: '#697386', fontSize: 12 }}>
+          <div style={{ color: subdued, fontSize: 12 }}>
             {loading ? 'Loading daily tracker...' : `Last refresh ${formatEstDateTime(generatedAt)}`}
           </div>
         </div>
 
         {errorMessage ? (
-          <div style={{ ...panelStyle, padding: 14, marginBottom: 14, borderColor: '#fbbf24', background: '#fffbeb', color: '#92400e', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ ...panelStyle, padding: '14px 16px', marginBottom: 20, borderColor: '#fbbf24', background: '#fffbeb', color: '#92400e', fontSize: 13, lineHeight: 1.5 }}>
             {errorMessage}
           </div>
         ) : null}
 
         {syncSummary ? (
-          <div style={{ ...panelStyle, padding: 14, marginBottom: 14, borderColor: '#bbf7d0', background: '#f0fdf4', color: '#047857', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ padding: '15px 16px', marginBottom: 20, background: shopifyBlue, color: '#ffffff', borderRadius: 0, boxShadow: '0 8px 18px rgba(31, 118, 242, 0.18)', fontSize: 13, lineHeight: 1.5 }}>
             {syncSummary}
           </div>
         ) : null}
 
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, marginBottom: 14 }}>
-          <StatTile
-            label="Revenue"
-            value={formatMoney(totals.revenue)}
-            helper={`${formatNumber(totals.orders)} orders · ${getRangeLabel(activeRange)}`}
-            accent="#2563eb"
-          />
-          <StatTile label="Ad Spend" value={formatMoney(totals.totalAdSpend)} helper={`Meta ${formatMoney(totals.metaSpend)} · Axon ${formatMoney(totals.axonSpend)} · Google ${formatMoney(totals.googleSpend)}`} accent="#f97316" />
-          <StatTile label="Blended ROAS" value={formatMetric(totals.blendedRoas)} helper="Shopify revenue ÷ total paid spend" accent="#059669" />
-          <StatTile label="Contribution" value={formatMoney(totals.contributionAfterAds)} helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`} accent="#111827" />
+        <section style={{ marginBottom: 58 }}>
+          <SectionHeading title="Pins" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+            <StatTile
+              label="Revenue"
+              value={formatMoney(totals.revenue)}
+              helper={`${formatNumber(totals.orders)} orders · ${getRangeLabel(activeRange)}`}
+              accent={shopifyGreen}
+              trend={dailyTrendRows.map((row) => row.revenue)}
+            />
+            <StatTile
+              label="Ad Spend"
+              value={formatMoney(totals.totalAdSpend)}
+              helper={`Meta ${formatMoney(totals.metaSpend)} · Axon ${formatMoney(totals.axonSpend)} · Google ${formatMoney(totals.googleSpend)}`}
+              accent={shopifyBlue}
+              trend={dailyTrendRows.map((row) => row.totalAdSpend)}
+            />
+            <StatTile
+              label="Blended ROAS"
+              value={formatMetric(totals.blendedRoas)}
+              helper="Shopify revenue ÷ total paid spend"
+              accent={totals.blendedRoas >= 2 ? shopifyGreen : shopifyRed}
+              trend={dailyTrendRows.map((row) => row.blendedRoas)}
+            />
+            <StatTile
+              label="Contribution"
+              value={formatMoney(totals.contributionAfterAds)}
+              helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`}
+              accent="#64748b"
+              trend={dailyTrendRows.map((row) => row.contributionAfterAds)}
+            />
+          </div>
         </section>
 
         {brandFilter === 'all' ? (
-          <section style={{ display: 'grid', gridTemplateColumns: `repeat(${displayedBrands.length}, minmax(0, 1fr))`, gap: 14, marginBottom: 14 }}>
-            {displayedBrands.map((brand) => (
-              <BrandCard
-                key={brand.slug}
-                brandSlug={brand.slug}
-                rows={visibleRows.filter((row) => row.brandSlug === brand.slug)}
-              />
-            ))}
+          <section style={{ marginBottom: 58 }}>
+            <SectionHeading title="Brands" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: 14 }}>
+              {displayedBrands.map((brand) => (
+                <BrandCard
+                  key={brand.slug}
+                  brandSlug={brand.slug}
+                  rows={visibleRows.filter((row) => row.brandSlug === brand.slug)}
+                />
+              ))}
+            </div>
           </section>
         ) : null}
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: showPerformanceTrend ? 'minmax(0, 1.25fr) minmax(360px, 0.75fr)' : 'minmax(360px, 455px)',
-            gap: 14,
-            alignItems: 'stretch',
-            marginBottom: 14,
-          }}
-        >
-          {showPerformanceTrend ? <PerformanceTrend rows={visibleRows} /> : null}
+        <div style={{ marginBottom: 58 }}>
           <ShopifyExtras rows={visibleRows} />
         </div>
 
-        <div style={{ marginBottom: 14 }}>
+        {showPerformanceTrend ? (
+          <div style={{ marginBottom: 58 }}>
+            <PerformanceTrend rows={visibleRows} />
+          </div>
+        ) : null}
+
+        <div style={{ marginBottom: 58 }}>
           <PlatformBreakdown rows={visibleRows} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 310px', gap: 14, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 14, alignItems: 'start' }}>
           <section style={{ ...panelStyle, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 18px', borderBottom: '1px solid #e4e8f0', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ padding: '15px 16px', borderBottom: `1px solid ${hairline}`, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <h2 style={{ margin: 0, color: '#111827', fontSize: 17, letterSpacing: 0 }}>Daily Tracker</h2>
-                <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>
+                <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Daily Tracker</h2>
+                <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>
                   Platform ROAS is attributed ad revenue ÷ paid spend. Blended ROAS is Shopify revenue ÷ paid spend.
                   {' '}Dates are shown in EST.
                 </div>
               </div>
-              <span style={{ color: '#697386', fontSize: 12, whiteSpace: 'nowrap' }}>
+              <span style={{ color: subdued, fontSize: 12, whiteSpace: 'nowrap' }}>
                 {visibleRows.length} rows
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', minWidth: 1240, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ color: '#697386', background: '#fbfcfe', textAlign: 'left' }}>
+                  <tr style={{ color: subdued, background: '#fbfcfd', textAlign: 'left' }}>
                     {['Date', 'Brand', 'Shopify Revenue', 'Orders', 'AOV', 'Meta', 'Axon', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Refunds', 'Contribution'].map((heading) => (
-                      <th key={heading} style={{ padding: '11px 12px', fontWeight: 800, borderBottom: '1px solid #e4e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
+                      <th key={heading} style={{ padding: '11px 12px', fontWeight: 650, borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{heading}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {visibleRows.map((row) => {
-                    const color = brandColor.get(row.brandSlug) ?? '#2563eb'
+                    const color = brandColor.get(row.brandSlug) ?? shopifyBlue
                     return (
-                      <tr key={`${row.date}-${row.brandSlug}`} style={{ borderBottom: '1px solid #eef1f6' }}>
-                        <td style={{ padding: '12px', color: '#111827', fontWeight: 760, whiteSpace: 'nowrap' }}>{formatLongDate(row.date)}</td>
+                      <tr key={`${row.date}-${row.brandSlug}`} style={{ borderBottom: '1px solid #eef1f4' }}>
+                        <td style={{ padding: '12px', color: ink, fontWeight: 550, whiteSpace: 'nowrap' }}>{formatLongDate(row.date)}</td>
                         <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: '#111827', fontWeight: 820 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, color: ink, fontWeight: 550 }}>
                             <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
                             {row.brandName}
                           </span>
                         </td>
-                        <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 760 }}>{formatMoney(row.revenue)}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatNumber(row.orders)}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.aov > 0 ? formatMoney(row.aov, 2) : '—'}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.metaSpend)}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.axonSpend > 0 ? formatMoney(row.axonSpend) : '—'}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#111827', fontWeight: 760 }}>{formatMoney(row.totalAdSpend)}</td>
-                        <td style={{ ...mono, padding: '12px', color: row.platformRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.platformRoas)}</td>
-                        <td style={{ ...mono, padding: '12px', color: row.blendedRoas >= 2 ? '#047857' : '#b45309', fontWeight: 820 }}>{formatMetric(row.blendedRoas)}</td>
-                        <td style={{ ...mono, padding: '12px', color: '#475467' }}>{formatMoney(row.cpa, 2)}</td>
-                        <td style={{ ...mono, padding: '12px', color: row.refunds > 0 ? '#be123c' : '#697386' }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
-                        <td style={{ ...mono, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 820 }}>{formatMoney(row.contributionAfterAds)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: ink, fontWeight: 550 }}>{formatMoney(row.revenue)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatNumber(row.orders)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.aov > 0 ? formatMoney(row.aov, 2) : '—'}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(row.metaSpend)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.axonSpend > 0 ? formatMoney(row.axonSpend) : '—'}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: ink, fontWeight: 550 }}>{formatMoney(row.totalAdSpend)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: row.platformRoas >= 2 ? '#047857' : '#b45309', fontWeight: 650 }}>{formatMetric(row.platformRoas)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: row.blendedRoas >= 2 ? '#047857' : '#b45309', fontWeight: 650 }}>{formatMetric(row.blendedRoas)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(row.cpa, 2)}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: row.refunds > 0 ? '#be123c' : subdued }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatMoney(row.contributionAfterAds)}</td>
                       </tr>
                     )
                   })}
@@ -931,26 +993,26 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           </section>
 
           <aside style={{ display: 'grid', gap: 14 }}>
-            <section style={{ ...panelStyle, padding: 18 }}>
-              <h2 style={{ margin: 0, color: '#111827', fontSize: 16, letterSpacing: 0 }}>Alerts</h2>
+            <section style={{ ...panelStyle, padding: 16 }}>
+              <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Alerts</h2>
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
                 {alerts.map((alert) => (
-                  <div key={`${alert.title}-${alert.detail}`} style={{ border: '1px solid #e4e8f0', borderLeft: `3px solid ${alert.tone}`, borderRadius: 7, padding: '11px 12px', background: '#ffffff' }}>
-                    <div style={{ color: '#111827', fontWeight: 820, fontSize: 13 }}>{alert.title}</div>
-                    <div style={{ color: '#697386', fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{alert.detail}</div>
+                  <div key={`${alert.title}-${alert.detail}`} style={{ border: `1px solid ${hairline}`, borderLeft: `3px solid ${alert.tone}`, borderRadius: 7, padding: '11px 12px', background: '#ffffff' }}>
+                    <div style={{ color: ink, fontWeight: 650, fontSize: 13 }}>{alert.title}</div>
+                    <div style={{ color: subdued, fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>{alert.detail}</div>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section style={{ ...panelStyle, padding: 18 }}>
-              <h2 style={{ margin: 0, color: '#111827', fontSize: 16, letterSpacing: 0 }}>Latest Day</h2>
-              <div style={{ color: '#697386', fontSize: 12, marginTop: 4 }}>{latestVisibleDate ? formatLongDate(latestVisibleDate) : '-'}</div>
+            <section style={{ ...panelStyle, padding: 16 }}>
+              <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Latest Day</h2>
+              <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>{latestVisibleDate ? formatLongDate(latestVisibleDate) : '-'}</div>
               <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
                 {latestRows.map((row) => (
                   <div key={row.brandSlug} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                    <span style={{ color: '#111827', fontWeight: 780 }}>{row.brandName}</span>
-                    <span style={{ ...mono, color: '#111827', fontWeight: 820 }}>{formatMetric(row.blendedRoas)}</span>
+                    <span style={{ color: ink, fontWeight: 550 }}>{row.brandName}</span>
+                    <span style={{ ...numericStyle, color: ink, fontWeight: 650 }}>{formatMetric(row.blendedRoas)}</span>
                   </div>
                 ))}
               </div>
