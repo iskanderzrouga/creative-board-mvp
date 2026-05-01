@@ -3061,9 +3061,20 @@ button {
 }
 
 .strategy-page-shell {
+  --surface: #fcfdff;
+  --surface-muted: #f3f7fb;
+  --line-shell: #d6e0ec;
+  --line-shell-soft: #e5ebf3;
+  --line-input: #ccd7e6;
+  --line-weak: #9aa9bb;
+  --text: #283241;
+  --text-strong: #111827;
+  --muted: #647386;
+  --muted-strong: #415166;
   gap: 18px;
   max-width: 1480px;
   margin: 0 auto;
+  color-scheme: light;
   color: var(--text);
 }
 
