@@ -3752,6 +3752,7 @@ function App() {
         {currentPage === 'finance' ? (
           <FinancePage
             headerUtilityContent={headerUtilityContent}
+            onOpenSettings={() => setPage('settings')}
           />
         ) : null}
 

@@ -1,4 +1,6 @@
 type BrandSlug = 'pluxy' | 'vivi' | 'trueclean'
+type ConnectionPlatform = 'shopify' | 'meta' | 'axon' | 'google_ads'
+type ConnectionStatus = 'healthy' | 'delayed' | 'no_data' | 'error' | 'not_configured'
 
 interface PlatformConfig {
   enabled?: boolean
@@ -93,6 +95,18 @@ interface PerformanceRow {
   lastSync: string | null
 }
 
+interface ConnectionHealth {
+  brandSlug: BrandSlug
+  brandName: string
+  platform: ConnectionPlatform
+  platformLabel: string
+  accountLabel: string
+  status: ConnectionStatus
+  detail: string
+  lastPulledAt: string | null
+  rowsPulled: number
+}
+
 interface JsonFetchResult<T> {
   ok: boolean
   status: number
@@ -116,6 +130,12 @@ type HandlerResponse = {
 
 const ALLOWED_EMAIL_KEYS = new Set(['iskander', 'nicolas', 'naomi'])
 const BRAND_SLUGS: BrandSlug[] = ['pluxy', 'vivi', 'trueclean']
+const CONNECTION_PLATFORMS: Array<{ platform: ConnectionPlatform; label: string }> = [
+  { platform: 'shopify', label: 'Shopify' },
+  { platform: 'meta', label: 'Meta Ads' },
+  { platform: 'google_ads', label: 'Google Ads' },
+  { platform: 'axon', label: 'Axon / Attribution' },
+]
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -256,6 +276,25 @@ function loadBrandConfigs() {
     .sort((left, right) => BRAND_SLUGS.indexOf(left.slug) - BRAND_SLUGS.indexOf(right.slug))
 }
 
+function fallbackBrandName(slug: BrandSlug, rows: PerformanceRow[]) {
+  return rows.find((row) => row.brandSlug === slug)?.brandName ?? (
+    slug === 'trueclean' ? 'TrueClean' : slug.charAt(0).toUpperCase() + slug.slice(1)
+  )
+}
+
+function loadBrandConfigsForHealth(rows: PerformanceRow[]) {
+  try {
+    return loadBrandConfigs()
+  } catch {
+    return BRAND_SLUGS.map((slug) => ({
+      slug,
+      name: fallbackBrandName(slug, rows),
+      enabled: true,
+      platforms: {},
+    }))
+  }
+}
+
 async function supabaseRestFetch(path: string, auth: string, init: RequestInit = {}, useServiceRole = false) {
   const supabaseUrl = getSupabaseUrl()
   const anonKey = getSupabaseAnonKey()
@@ -312,6 +351,152 @@ function apiErrorMessage(data: unknown, raw: string) {
     if (typeof maybe.error === 'string') return maybe.error
   }
   return raw.slice(0, 300)
+}
+
+function hasConfiguredPlatform(platform: ConnectionPlatform, config?: PlatformConfig) {
+  if (!config || config.enabled === false) {
+    return false
+  }
+
+  switch (platform) {
+    case 'shopify':
+      return Boolean(config.store && config.client_id && config.client_secret)
+    case 'meta':
+      return Boolean(config.access_token && config.ad_account_id)
+    case 'google_ads':
+      return Boolean(config.customer_id && getServerEnv('GOOGLE_DEVELOPER_TOKEN') && getServerEnv('GOOGLE_REFRESH_TOKEN'))
+    case 'axon':
+      return Boolean(config.report_key)
+    default:
+      return false
+  }
+}
+
+function getPlatformConfig(brand: BrandConfig, platform: ConnectionPlatform) {
+  return brand.platforms?.[platform]
+}
+
+function getAccountLabel(brand: BrandConfig, platform: ConnectionPlatform, config?: PlatformConfig) {
+  switch (platform) {
+    case 'shopify':
+      return config?.store ?? `${brand.name} store`
+    case 'meta':
+      return config?.ad_account_id ?? `${brand.name} Meta`
+    case 'google_ads':
+      return config?.customer_id ?? `${brand.name} Google Ads`
+    case 'axon':
+      return config?.report_key ? 'AppLovin report key configured' : 'Attribution source'
+    default:
+      return brand.name
+  }
+}
+
+function rowHasPlatformData(row: PerformanceRow, platform: ConnectionPlatform) {
+  switch (platform) {
+    case 'shopify':
+      return row.revenue > 0 || row.orders > 0 || row.totalSales > 0 || row.sessions > 0
+    case 'meta':
+      return row.metaSpend > 0 || row.metaRevenue > 0 || row.metaPurchases > 0
+    case 'google_ads':
+      return row.googleSpend > 0 || row.googleRevenue > 0 || row.googlePurchases > 0
+    case 'axon':
+      return row.axonSpend > 0 || row.axonRevenue > 0 || row.axonPurchases > 0
+    default:
+      return false
+  }
+}
+
+function latestSyncForRows(rows: PerformanceRow[]) {
+  return rows.reduce<string | null>((latest, row) => {
+    if (!row.lastSync) {
+      return latest
+    }
+    if (!latest) {
+      return row.lastSync
+    }
+    return row.lastSync > latest ? row.lastSync : latest
+  }, null)
+}
+
+function isDelayed(lastPulledAt: string | null) {
+  if (!lastPulledAt) {
+    return true
+  }
+  const parsed = Date.parse(lastPulledAt)
+  if (!Number.isFinite(parsed)) {
+    return true
+  }
+  return Date.now() - parsed > 36 * 60 * 60 * 1000
+}
+
+function buildConnectionHealth(brands: BrandConfig[], rows: PerformanceRow[], syncErrors: string[] = []): ConnectionHealth[] {
+  return brands.flatMap((brand) => {
+    const brandRows = rows.filter((row) => row.brandSlug === brand.slug)
+
+    return CONNECTION_PLATFORMS.map(({ platform, label }) => {
+      const config = getPlatformConfig(brand, platform)
+      const configured = hasConfiguredPlatform(platform, config)
+      const platformRows = brandRows.filter((row) => rowHasPlatformData(row, platform))
+      const lastPulledAt = latestSyncForRows(platformRows)
+      const error = syncErrors.find((item) => item.startsWith(`${brand.slug} ${platform === 'google_ads' ? 'google' : platform}:`))
+
+      if (!configured) {
+        return {
+          brandSlug: brand.slug,
+          brandName: brand.name,
+          platform,
+          platformLabel: label,
+          accountLabel: getAccountLabel(brand, platform, config),
+          status: 'not_configured',
+          detail: 'Needs setup',
+          lastPulledAt: null,
+          rowsPulled: 0,
+        }
+      }
+
+      if (error) {
+        return {
+          brandSlug: brand.slug,
+          brandName: brand.name,
+          platform,
+          platformLabel: label,
+          accountLabel: getAccountLabel(brand, platform, config),
+          status: 'error',
+          detail: error.replace(`${brand.slug} ${platform === 'google_ads' ? 'google' : platform}:`, '').trim(),
+          lastPulledAt,
+          rowsPulled: platformRows.length,
+        }
+      }
+
+      if (platformRows.length === 0) {
+        return {
+          brandSlug: brand.slug,
+          brandName: brand.name,
+          platform,
+          platformLabel: label,
+          accountLabel: getAccountLabel(brand, platform, config),
+          status: 'no_data',
+          detail: 'Configured, no rows in range',
+          lastPulledAt: null,
+          rowsPulled: 0,
+        }
+      }
+
+      const delayed = isDelayed(lastPulledAt)
+
+      return {
+        brandSlug: brand.slug,
+        brandName: brand.name,
+        platform,
+        platformLabel: label,
+        accountLabel: getAccountLabel(brand, platform, config),
+        status: delayed ? 'delayed' : 'healthy',
+        detail: delayed ? 'Last pull is old' : 'Pulling data',
+        lastPulledAt,
+        rowsPulled: platformRows.length,
+      }
+    })
+  })
 }
 
 function rowFromDb(row: Record<string, unknown>): PerformanceRow {
@@ -917,12 +1102,14 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
     if (method === 'POST') {
       const sync = await syncPerformance(from, to, access.auth, Boolean(getSupabaseServiceKey()))
       const rows = await readRows(from, to, access.auth, Boolean(getSupabaseServiceKey()))
-      return sendJson(res, { rows, generatedAt: new Date().toISOString(), source: 'supabase', sync })
+      const connections = buildConnectionHealth(loadBrandConfigsForHealth(rows), rows, sync.errors)
+      return sendJson(res, { rows, generatedAt: new Date().toISOString(), source: 'supabase', sync, connections })
     }
 
     if (method === 'GET') {
       const rows = await readRows(from, to, access.auth, Boolean(getSupabaseServiceKey()))
-      return sendJson(res, { rows, generatedAt: new Date().toISOString(), source: 'supabase' })
+      const connections = buildConnectionHealth(loadBrandConfigsForHealth(rows), rows)
+      return sendJson(res, { rows, generatedAt: new Date().toISOString(), source: 'supabase', connections })
     }
 
     return sendJson(res, { error: 'Method not allowed', rows: [] }, 405)

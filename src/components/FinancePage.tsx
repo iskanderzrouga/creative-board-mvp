@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   PERFORMANCE_BRANDS,
   loadBrandDailyPerformance,
   syncBrandDailyPerformance,
   type BrandDailyPerformanceRow,
+  type PerformanceConnectionHealth,
+  type PerformanceConnectionPlatform,
+  type PerformanceConnectionStatus,
   type PerformanceBrandSlug,
 } from '../financePerformance'
+import { SettingsIcon } from './icons/AppIcons'
 
 interface FinancePageProps {
   headerUtilityContent?: ReactNode
+  onOpenSettings?: () => void
 }
 
 type BrandFilter = PerformanceBrandSlug | 'all'
@@ -689,8 +694,358 @@ function buildAlerts(rows: BrandDailyPerformanceRow[]) {
   return alerts.slice(0, 5)
 }
 
-export function FinancePage({ headerUtilityContent }: FinancePageProps) {
+type ConnectionPanelStatus = PerformanceConnectionStatus | 'partial'
+
+interface ConnectionPanelRow {
+  platform: PerformanceConnectionPlatform
+  platformLabel: string
+  accountLabel: string
+  status: ConnectionPanelStatus
+  detail: string
+  lastPulledAt: string | null
+  rowsPulled: number
+}
+
+const CONNECTION_PLATFORM_ORDER: PerformanceConnectionPlatform[] = ['shopify', 'meta', 'google_ads', 'axon']
+
+const connectionStatusRank: Record<ConnectionPanelStatus, number> = {
+  error: 6,
+  delayed: 5,
+  no_data: 4,
+  partial: 3,
+  not_configured: 2,
+  healthy: 1,
+}
+
+const connectionStatusLabel: Record<ConnectionPanelStatus, string> = {
+  healthy: 'Healthy',
+  delayed: 'Delayed',
+  no_data: 'No data',
+  error: 'Error',
+  not_configured: 'Not configured',
+  partial: 'Partial',
+}
+
+const platformFallbackLabels: Record<PerformanceConnectionPlatform, string> = {
+  shopify: 'Shopify',
+  meta: 'Meta Ads',
+  google_ads: 'Google Ads',
+  axon: 'Axon / Attribution',
+}
+
+function getPlatformInitial(platform: PerformanceConnectionPlatform) {
+  switch (platform) {
+    case 'shopify':
+      return 'S'
+    case 'meta':
+      return 'M'
+    case 'google_ads':
+      return 'G'
+    case 'axon':
+      return 'A'
+    default:
+      return '?'
+  }
+}
+
+function getPlatformColor(platform: PerformanceConnectionPlatform) {
+  switch (platform) {
+    case 'shopify':
+      return '#10b981'
+    case 'meta':
+      return '#1877f2'
+    case 'google_ads':
+      return '#f59e0b'
+    case 'axon':
+      return '#64748b'
+    default:
+      return '#64748b'
+  }
+}
+
+function getConnectionStatusStyle(status: ConnectionPanelStatus): CSSProperties {
+  switch (status) {
+    case 'healthy':
+      return { background: '#dcfce7', color: '#047857' }
+    case 'delayed':
+      return { background: '#fef3c7', color: '#92400e' }
+    case 'error':
+      return { background: '#fee2e2', color: '#b91c1c' }
+    case 'no_data':
+      return { background: '#e0f2fe', color: '#0369a1' }
+    case 'partial':
+      return { background: '#eef2ff', color: '#3730a3' }
+    case 'not_configured':
+      return { background: '#f1f5f9', color: '#475569' }
+    default:
+      return { background: '#f1f5f9', color: '#475569' }
+  }
+}
+
+function formatPullAge(value: string | null) {
+  if (!value) {
+    return 'Never'
+  }
+
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) {
+    return value
+  }
+
+  const diffMs = Math.max(0, Date.now() - parsed)
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 1) {
+    return 'Just now'
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) {
+    return `${hours}h ago`
+  }
+  return `${Math.floor(hours / 24)}d ago`
+}
+
+function buildStatusDetail(connections: PerformanceConnectionHealth[]) {
+  const counts = connections.reduce<Record<ConnectionPanelStatus, number>>((acc, connection) => {
+    acc[connection.status] = (acc[connection.status] ?? 0) + 1
+    return acc
+  }, {
+    healthy: 0,
+    delayed: 0,
+    no_data: 0,
+    error: 0,
+    not_configured: 0,
+    partial: 0,
+  })
+
+  return (['error', 'delayed', 'no_data', 'healthy', 'not_configured'] as ConnectionPanelStatus[])
+    .filter((status) => counts[status] > 0)
+    .map((status) => `${counts[status]} ${connectionStatusLabel[status].toLowerCase()}`)
+    .join(' · ')
+}
+
+function summarizeConnections(
+  connections: PerformanceConnectionHealth[],
+  brandFilter: BrandFilter,
+): ConnectionPanelRow[] {
+  return CONNECTION_PLATFORM_ORDER.map((platform) => {
+    const platformConnections = connections.filter((connection) =>
+      connection.platform === platform && (brandFilter === 'all' || connection.brandSlug === brandFilter),
+    )
+
+    if (platformConnections.length === 0) {
+      return {
+        platform,
+        platformLabel: platformFallbackLabels[platform],
+        accountLabel: brandFilter === 'all' ? 'No accounts found' : `${brandName.get(brandFilter as PerformanceBrandSlug) ?? 'Brand'} account`,
+        status: 'not_configured',
+        detail: 'Waiting for API health',
+        lastPulledAt: null,
+        rowsPulled: 0,
+      }
+    }
+
+    const configuredCount = platformConnections.filter((connection) => connection.status !== 'not_configured').length
+    const sortedByStatus = [...platformConnections].sort((left, right) => {
+      const leftStatus = left.status
+      const rightStatus = right.status
+      return connectionStatusRank[rightStatus] - connectionStatusRank[leftStatus]
+    })
+    const worst = sortedByStatus[0]
+    const hasHealthy = platformConnections.some((connection) => connection.status === 'healthy')
+    const hasUnconfigured = platformConnections.some((connection) => connection.status === 'not_configured')
+    const status: ConnectionPanelStatus = hasHealthy && hasUnconfigured && worst.status === 'not_configured'
+      ? 'partial'
+      : worst.status
+    const lastPulledAt = platformConnections.reduce<string | null>((latest, connection) => {
+      if (!connection.lastPulledAt) {
+        return latest
+      }
+      return latest && latest > connection.lastPulledAt ? latest : connection.lastPulledAt
+    }, null)
+    const rowsPulled = platformConnections.reduce((total, connection) => total + connection.rowsPulled, 0)
+
+    return {
+      platform,
+      platformLabel: worst.platformLabel,
+      accountLabel: brandFilter === 'all'
+        ? `${configuredCount}/${platformConnections.length} accounts configured`
+        : worst.accountLabel,
+      status,
+      detail: brandFilter === 'all' ? buildStatusDetail(platformConnections) : worst.detail,
+      lastPulledAt,
+      rowsPulled,
+    }
+  })
+}
+
+function ConnectionSettingsPopover({
+  connections,
+  brandFilter,
+  syncing,
+  onRefreshAll,
+  onOpenSettings,
+}: {
+  connections: PerformanceConnectionHealth[]
+  brandFilter: BrandFilter
+  syncing: boolean
+  onRefreshAll: () => void
+  onOpenSettings?: () => void
+}) {
+  const connectionRows = useMemo(
+    () => summarizeConnections(connections, brandFilter),
+    [brandFilter, connections],
+  )
+  const scopeLabel = brandFilter === 'all'
+    ? 'All brand accounts'
+    : `${brandName.get(brandFilter) ?? brandFilter} accounts`
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Data connections"
+      style={{
+        ...panelStyle,
+        position: 'absolute',
+        right: 0,
+        top: 'calc(100% + 14px)',
+        width: 'min(386px, calc(100vw - 32px))',
+        zIndex: 40,
+        overflow: 'hidden',
+        boxShadow: '0 18px 45px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08)',
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: -7,
+          right: 28,
+          width: 14,
+          height: 14,
+          transform: 'rotate(45deg)',
+          background: '#ffffff',
+          borderLeft: '1px solid #e7ebef',
+          borderTop: '1px solid #e7ebef',
+        }}
+      />
+      <div style={{ padding: '17px 18px 14px' }}>
+        <h2 style={{ margin: 0, color: '#111827', fontSize: 18, lineHeight: 1.2, fontWeight: 650, letterSpacing: 0 }}>
+          Data connections
+        </h2>
+        <div style={{ color: subdued, fontSize: 12, marginTop: 5 }}>
+          {scopeLabel} · account health and last pulls
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${hairline}`, borderBottom: `1px solid ${hairline}` }}>
+        {connectionRows.map((connection, index) => {
+          const color = getPlatformColor(connection.platform)
+          const statusStyle = getConnectionStatusStyle(connection.status)
+          return (
+            <div
+              key={connection.platform}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '38px minmax(0, 1fr) auto',
+                gap: 12,
+                alignItems: 'center',
+                padding: '13px 16px',
+                borderTop: index === 0 ? 'none' : `1px solid ${hairline}`,
+                background: '#ffffff',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: '50%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: `${color}14`,
+                  border: `1px solid ${color}22`,
+                  color,
+                  fontWeight: 750,
+                  fontSize: 15,
+                }}
+              >
+                {getPlatformInitial(connection.platform)}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: ink, fontSize: 14, fontWeight: 650, lineHeight: 1.2 }}>{connection.platformLabel}</div>
+                <div style={{ color: subdued, fontSize: 12, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {connection.accountLabel}
+                </div>
+              </div>
+              <div style={{ display: 'grid', justifyItems: 'end', gap: 5, minWidth: 104 }}>
+                <span
+                  style={{
+                    ...statusStyle,
+                    borderRadius: 999,
+                    padding: '4px 9px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {connectionStatusLabel[connection.status]}
+                </span>
+                <span style={{ color: subdued, fontSize: 11, lineHeight: 1.2, textAlign: 'right' }}>
+                  {formatPullAge(connection.lastPulledAt)} · {connection.rowsPulled} rows
+                </span>
+              </div>
+              {connection.detail ? (
+                <div style={{ gridColumn: '2 / 4', color: subdued, fontSize: 11, lineHeight: 1.35, marginTop: -5 }}>
+                  {connection.detail}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <button
+          type="button"
+          onClick={onRefreshAll}
+          disabled={syncing}
+          style={{
+            ...controlButtonStyle,
+            borderColor: shopifyBlue,
+            color: shopifyBlue,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 7,
+            minHeight: 34,
+            padding: '0 12px',
+            cursor: syncing ? 'wait' : 'pointer',
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>{syncing ? '...' : '↻'}</span>
+          {syncing ? 'Refreshing' : 'Refresh all'}
+        </button>
+        {onOpenSettings ? (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            style={{ border: 'none', background: 'transparent', color: shopifyBlue, fontSize: 13, fontWeight: 650, padding: 0, cursor: 'pointer' }}
+          >
+            Open settings
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePageProps) {
   const [rows, setRows] = useState<BrandDailyPerformanceRow[]>([])
+  const [connections, setConnections] = useState<PerformanceConnectionHealth[]>([])
   const [generatedAt, setGeneratedAt] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [syncSummary, setSyncSummary] = useState<string | null>(null)
@@ -700,13 +1055,19 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
   const [datePreset, setDatePreset] = useState<DatePreset>('yesterday')
   const [customRange, setCustomRange] = useState<DateRange | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [connectionPanelOpen, setConnectionPanelOpen] = useState(false)
   const [draftPreset, setDraftPreset] = useState<DatePreset>('yesterday')
   const [draftRange, setDraftRange] = useState<DateRange | null>(null)
+  const connectionPanelRef = useRef<HTMLDivElement>(null)
   const anchorDate = getTodayInEst()
   const defaultRange = useMemo(() => getPresetRange('yesterday', anchorDate), [anchorDate])
 
-  const loadPerformance = async (range: DateRange | null, showRefresh = false) => {
+  const loadPerformance = useCallback(async (
+    range: DateRange | null,
+    options: { showRefresh?: boolean; onLoaded?: (dataHasRows: boolean, hasError: boolean) => void } = {},
+  ) => {
     const nextRange = range ?? defaultRange
+    const showRefresh = options.showRefresh ?? false
 
     if (showRefresh) {
       setRefreshing(true)
@@ -719,19 +1080,43 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
         ? await syncBrandDailyPerformance(nextRange)
         : await loadBrandDailyPerformance(nextRange)
       const sourceErrors = data.sync?.errors ?? []
-      setRows(data.rows)
-      setGeneratedAt(data.generatedAt)
-      setErrorMessage(data.error ?? (sourceErrors.length > 0 ? sourceErrors.slice(0, 3).join(' · ') : null))
-      setSyncSummary(data.sync ? `${data.sync.rowsWritten} live rows refreshed${data.sync.errors.length > 0 ? ` · ${data.sync.errors.length} source error(s)` : ''}` : null)
+      const nextError = data.error ?? (sourceErrors.length > 0 ? sourceErrors.slice(0, 3).join(' · ') : null)
+      const keepPreviousSnapshot = showRefresh && data.rows.length === 0 && Boolean(nextError)
+
+      setRows((currentRows) => (keepPreviousSnapshot && currentRows.length > 0 ? currentRows : data.rows))
+      if (!keepPreviousSnapshot) {
+        setGeneratedAt(data.generatedAt)
+      }
+      setConnections(data.connections ?? [])
+      setErrorMessage(nextError)
+      setSyncSummary(data.sync
+        ? keepPreviousSnapshot
+          ? `${data.sync.errors.length || 1} source error(s) · kept previous snapshot`
+          : `${data.sync.rowsWritten} live rows refreshed${data.sync.errors.length > 0 ? ` · ${data.sync.errors.length} source error(s)` : ''}`
+        : null)
+      options.onLoaded?.(data.rows.length > 0, Boolean(nextError))
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [defaultRange])
 
   useEffect(() => {
     void loadPerformance(defaultRange)
-  }, [defaultRange.from, defaultRange.to])
+  }, [defaultRange, loadPerformance])
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (connectionPanelRef.current && !connectionPanelRef.current.contains(event.target as Node)) {
+        setConnectionPanelOpen(false)
+      }
+    }
+
+    if (connectionPanelOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [connectionPanelOpen])
 
   const activeRange = useMemo(() => {
     if (datePreset === 'custom' && customRange) {
@@ -770,14 +1155,19 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
 
   const applyDatePicker = () => {
     const nextRange = draftRange ?? getPresetRange(draftPreset, anchorDate)
-    setDatePreset(draftPreset)
-    setCustomRange(draftPreset === 'custom' ? nextRange : null)
     setPickerOpen(false)
-    void loadPerformance(nextRange)
+    void loadPerformance(nextRange, {
+      onLoaded: (dataHasRows, hasError) => {
+        if (dataHasRows || !hasError) {
+          setDatePreset(draftPreset)
+          setCustomRange(draftPreset === 'custom' ? nextRange : null)
+        }
+      },
+    })
   }
 
   const refreshPerformance = () => {
-    void loadPerformance(activeRange, true)
+    void loadPerformance(activeRange, { showRefresh: true })
   }
 
   return (
@@ -798,6 +1188,39 @@ export function FinancePage({ headerUtilityContent }: FinancePageProps) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {headerUtilityContent}
+            <div ref={connectionPanelRef} style={{ position: 'relative', display: 'inline-flex' }}>
+              <button
+                type="button"
+                aria-label="Open data connection settings"
+                title="Data connections"
+                onClick={() => setConnectionPanelOpen((open) => !open)}
+                style={{
+                  ...controlButtonStyle,
+                  width: 34,
+                  padding: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: connectionPanelOpen ? shopifyBlue : '#52647a',
+                  borderColor: connectionPanelOpen ? shopifyBlue : '#cfd7e2',
+                  background: connectionPanelOpen ? '#eef6ff' : '#ffffff',
+                }}
+              >
+                <SettingsIcon style={{ width: 17, height: 17 }} />
+              </button>
+              {connectionPanelOpen ? (
+                <ConnectionSettingsPopover
+                  connections={connections}
+                  brandFilter={brandFilter}
+                  syncing={refreshing || loading}
+                  onRefreshAll={refreshPerformance}
+                  onOpenSettings={onOpenSettings ? () => {
+                    setConnectionPanelOpen(false)
+                    onOpenSettings()
+                  } : undefined}
+                />
+              ) : null}
+            </div>
             <span style={{
               ...controlButtonStyle,
               display: 'inline-flex',

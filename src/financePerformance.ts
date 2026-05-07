@@ -44,11 +44,27 @@ export interface BrandDailyPerformanceRow {
   lastSync: string | null
 }
 
+export type PerformanceConnectionPlatform = 'shopify' | 'meta' | 'axon' | 'google_ads'
+export type PerformanceConnectionStatus = 'healthy' | 'delayed' | 'no_data' | 'error' | 'not_configured'
+
+export interface PerformanceConnectionHealth {
+  brandSlug: PerformanceBrandSlug
+  brandName: string
+  platform: PerformanceConnectionPlatform
+  platformLabel: string
+  accountLabel: string
+  status: PerformanceConnectionStatus
+  detail: string
+  lastPulledAt: string | null
+  rowsPulled: number
+}
+
 export interface BrandDailyPerformanceBundle {
   rows: BrandDailyPerformanceRow[]
   source: 'supabase'
   generatedAt: string
   error?: string
+  connections?: PerformanceConnectionHealth[]
   sync?: {
     rowsWritten: number
     errors: string[]
@@ -114,6 +130,25 @@ function isPerformanceRow(value: unknown): value is BrandDailyPerformanceRow {
   )
 }
 
+function isPerformanceConnection(value: unknown): value is PerformanceConnectionHealth {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const connection = value as Partial<PerformanceConnectionHealth>
+  return (
+    typeof connection.brandSlug === 'string' &&
+    typeof connection.brandName === 'string' &&
+    typeof connection.platform === 'string' &&
+    typeof connection.platformLabel === 'string' &&
+    typeof connection.accountLabel === 'string' &&
+    typeof connection.status === 'string' &&
+    typeof connection.detail === 'string' &&
+    (typeof connection.lastPulledAt === 'string' || connection.lastPulledAt === null) &&
+    typeof connection.rowsPulled === 'number'
+  )
+}
+
 async function requestPerformance(
   method: 'GET' | 'POST',
   input: { from?: string; to?: string; days?: number } = {},
@@ -152,15 +187,20 @@ async function requestPerformance(
       rows?: unknown
       generatedAt?: unknown
       error?: unknown
+      connections?: unknown
       sync?: BrandDailyPerformanceBundle['sync']
     }
     const rows = Array.isArray(payload.rows) ? payload.rows.filter(isPerformanceRow) : []
+    const connections = Array.isArray(payload.connections)
+      ? payload.connections.filter(isPerformanceConnection)
+      : undefined
 
     return {
       rows,
       source: 'supabase',
       generatedAt: typeof payload.generatedAt === 'string' ? payload.generatedAt : new Date().toISOString(),
       error: response.ok ? undefined : stringifyApiError(payload.error),
+      connections,
       sync: payload.sync,
     }
   } catch (error) {
