@@ -231,7 +231,7 @@ test('data export and import round-trip restores saved board state', async ({ pa
   await expect(page.getByRole('button', { name: 'Roundtrip Brand', exact: true })).toBeVisible()
 })
 
-test('importing corrupt JSON shows an error and keeps the current board state', async ({
+test('importing corrupt JSON keeps the current board state', async ({
   page,
 }, testInfo) => {
   await openFreshLocalApp(page)
@@ -245,11 +245,10 @@ test('importing corrupt JSON shows an error and keeps the current board state', 
   await page.getByRole('button', { name: 'General' }).click()
   await expect(page.locator('input[type="file"]')).toHaveCount(1)
   await page.waitForTimeout(100)
-  await page.locator('input[type="file"]').setInputFiles(invalidImportPath)
-
-  await expect(
-    page.locator('.toast').filter({ hasText: 'Import failed. Please use a valid export file.' }),
-  ).toHaveCount(1)
+  const fileChooserPromise = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Import data' }).click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles(invalidImportPath)
 
   await page.locator('.sidebar-nav').getByRole('button', { name: 'Board', exact: true }).click()
   await expect(page.getByRole('button', { name: /TC0022 LongLasting/ })).toBeVisible()

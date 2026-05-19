@@ -1685,7 +1685,7 @@ function App() {
 
   function shouldUseScopedCardMutation() {
     return (
-      state.activeRole.mode === 'contributor' &&
+      state.activeRole.mode !== 'viewer' &&
       authEnabled &&
       authStatus === 'signed-in' &&
       accessStatus === 'granted' &&
@@ -1711,6 +1711,10 @@ function App() {
     return mergeRemoteAppStateWithLocalState(coerceAppState(remoteState), fallbackState)
   }
 
+  function shouldKeepaliveJsonBody(body: string) {
+    return new Blob([body]).size <= 60_000
+  }
+
   async function persistRemoteCardMutation(body: Record<string, unknown>, fallbackState: AppState) {
     const supabase = getSupabaseClient()
     if (!supabase) {
@@ -1727,14 +1731,16 @@ function App() {
       throw new Error('Sign in again before saving this card.')
     }
 
+    const serializedBody = JSON.stringify(body)
     const response = await fetch('/api/workspace/mutate-card', {
       method: 'POST',
+      keepalive: shouldKeepaliveJsonBody(serializedBody),
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(body),
+      body: serializedBody,
     })
 
     const payload = (await response.json().catch(() => ({}))) as {
@@ -1763,6 +1769,17 @@ function App() {
       lastSyncedAt: updatedAt ?? lastSyncedAt,
       pendingRemoteBaseUpdatedAt: null,
       pendingRemoteSignature: null,
+    })
+  }
+
+  function stagePendingRemoteMutation(nextState: AppState, reason: string) {
+    markMainDirty(reason)
+    replaceState(nextState)
+    persistAppState(nextState)
+    persistSyncMetadata({
+      lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(nextState),
     })
   }
 
@@ -1812,6 +1829,7 @@ function App() {
     }
 
     if (shouldUseScopedCardMutation()) {
+      stagePendingRemoteMutation(nextState, reason)
       try {
         const remote = await persistRemoteCardMutation(
           {
@@ -2839,14 +2857,16 @@ function App() {
       throw new Error('Sign in again before posting this comment.')
     }
 
+    const serializedBody = JSON.stringify({ portfolioId, cardId, comment })
     const response = await fetch('/api/workspace/add-card-comment', {
       method: 'POST',
+      keepalive: shouldKeepaliveJsonBody(serializedBody),
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ portfolioId, cardId, comment }),
+      body: serializedBody,
     })
 
     const payload = (await response.json().catch(() => ({}))) as {
@@ -2981,20 +3001,6 @@ function App() {
       accessStatus === 'granted' &&
       isSupabaseConfigured()
 
-    let remoteUpdatedAt: string | null = null
-    let remoteState: unknown = null
-    try {
-      if (shouldUseRemoteComment) {
-        const remote = await persistRemoteCardComment(portfolio.id, commentCard.id, comment)
-        remoteUpdatedAt = remote?.updatedAt ?? null
-        remoteState = remote?.state ?? null
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
-      showToast(`Comment failed: ${message}`, 'red')
-      return
-    }
-
     const notification = createNotification(
       'comment_added',
       `New comment on "${commentCard.title}"`,
@@ -3020,6 +3026,23 @@ function App() {
           : currentPortfolio,
       ),
       notifications: [...currentState.notifications, notification],
+    }
+
+    let remoteUpdatedAt: string | null = null
+    let remoteState: unknown = null
+    if (shouldUseRemoteComment) {
+      stagePendingRemoteMutation(nextState, 'add card comment')
+    }
+    try {
+      if (shouldUseRemoteComment) {
+        const remote = await persistRemoteCardComment(portfolio.id, commentCard.id, comment)
+        remoteUpdatedAt = remote?.updatedAt ?? null
+        remoteState = remote?.state ?? null
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
+      showToast(`Comment failed: ${message}`, 'red')
+      return
     }
 
     if (remoteUpdatedAt) {
@@ -3346,6 +3369,7 @@ function App() {
     }
 
     if (shouldUseScopedCardMutation()) {
+      stagePendingRemoteMutation(nextState, 'move card')
       void (async () => {
         try {
           const remote = await persistRemoteCardMutation(
@@ -3421,6 +3445,7 @@ function App() {
     }
 
     if (shouldUseScopedCardMutation()) {
+      stagePendingRemoteMutation(nextState, 'start editor timer')
       void (async () => {
         try {
           const remote = await persistRemoteCardMutation(
@@ -3470,6 +3495,7 @@ function App() {
     }
 
     if (shouldUseScopedCardMutation()) {
+      stagePendingRemoteMutation(nextState, 'set production priority')
       void (async () => {
         try {
           const remote = await persistRemoteCardMutation(

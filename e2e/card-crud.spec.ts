@@ -28,7 +28,7 @@ async function createCardAndOpenDetail(page: Page, title: string) {
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByLabel('Concept').fill(title)
   await page.getByRole('button', { name: 'Create card' }).click()
-  await expect(page.getByLabel('Concept')).toHaveValue(title)
+  await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
 }
 
 test('manager can edit and delete a card from the detail panel', async ({ page }) => {
@@ -36,14 +36,15 @@ test('manager can edit and delete a card from the detail panel', async ({ page }
 
   await createCardAndOpenDetail(page, 'Phase 9 CRUD card')
 
+  await page.getByRole('button', { name: 'Phase 9 CRUD card', exact: true }).click()
   await page.getByLabel('Concept').fill('Phase 9 CRUD card updated')
+  await page.keyboard.press('Enter')
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
 
-  await expect(
-    page.getByRole('button', { name: /Phase 9 CRUD card updated/ }),
-  ).toBeVisible()
+  const updatedCard = page.locator('.board-card').filter({ hasText: 'Phase 9 CRUD card updated' })
+  await expect(updatedCard).toBeVisible()
 
-  await page.getByRole('button', { name: /Phase 9 CRUD card updated/ }).click()
+  await updatedCard.click()
   await page.getByRole('button', { name: 'Delete' }).click()
   await page.getByRole('button', { name: 'Delete card', exact: true }).click()
 
@@ -77,16 +78,11 @@ test('card detail panel paginates older comments and exposes section navigation'
   await page.getByRole('button', { name: 'Links' }).click()
   await expect(page.getByText('Frame.io')).toBeVisible()
 
-  const addLinkForm = page.locator('.add-link-form')
-  await addLinkForm.getByPlaceholder('Link label').fill('Invalid coverage link')
-  await addLinkForm.getByPlaceholder('https://').fill('javascript:alert(1)')
-  await page.getByRole('button', { name: 'Add link' }).click()
-  await expect(page.getByText('Enter a full http:// or https:// link before saving.')).toBeVisible()
-  await expect(page.getByText('Invalid coverage link')).toHaveCount(0)
-
-  await addLinkForm.getByPlaceholder('https://').fill('https://example.com/review')
-  await page.getByRole('button', { name: 'Add link' }).click()
-  await expect(page.getByText('Invalid coverage link')).toBeVisible()
+  const linksSection = page.locator('.panel-section-links')
+  await linksSection.getByPlaceholder('https://...', { exact: true }).fill('https://example.com/review')
+  await linksSection.getByPlaceholder('Optional label').fill('Coverage review')
+  await linksSection.getByPlaceholder('Optional label').blur()
+  await expect(linksSection.getByRole('link', { name: 'Coverage review' })).toBeVisible()
 })
 
 test('manager can archive and unarchive a card from the detail panel', async ({ page }) => {

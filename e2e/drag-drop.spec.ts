@@ -28,9 +28,9 @@ async function createCardAndCloseDetail(page: Page, title: string) {
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByLabel('Concept').fill(title)
   await page.getByRole('button', { name: 'Create card' }).click()
-  await expect(page.getByLabel('Concept')).toHaveValue(title)
+  await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close card detail panel' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) })).toBeVisible()
+  await expect(getCardButton(page, title)).toBeVisible()
 }
 
 async function dragLocatorToTarget(page: Page, source: Locator, target: Locator) {
@@ -61,7 +61,7 @@ async function dragLocatorToTarget(page: Page, source: Locator, target: Locator)
 }
 
 function getCardButton(page: Page, title: string) {
-  return page.getByRole('button', { name: new RegExp(title) })
+  return page.locator('.board-card').filter({ hasText: title })
 }
 
 test('manager can drag a backlog card into Briefed and move it back with a revision reason', async ({
@@ -99,8 +99,8 @@ test('manager can drag a backlog card into Briefed and move it back with a revis
   )
 
   await expect(page.getByRole('dialog', { name: /Moving .* back to Briefed/ })).toBeVisible()
-  await page.getByLabel('Needs creative fixes · 4h').check()
-  await page.getByRole('button', { name: 'Move Back' }).click()
+  await page.locator('input[name="revision-reason"]').first().check()
+  await page.getByRole('button', { name: 'Move Back' }).evaluate((button: HTMLElement) => button.click())
 
   await expect(page.locator('.toast').filter({ hasText: /moved back to Briefed/ })).toHaveCount(1)
   await expect(briefedLane.getByRole('button', { name: new RegExp(title) })).toBeVisible()
@@ -127,7 +127,9 @@ test('manager gets a capacity warning when dragging into a full in-production la
     fullLaneDropTarget,
   )
 
-  await expect(page.locator('.toast').filter({ hasText: 'Ezequiel is at capacity (3/3)' })).toHaveCount(1)
+  await expect(
+    page.locator('.toast').filter({ hasText: 'Ezequiel already has 3 cards in production.' }),
+  ).toHaveCount(1)
   await expect(briefedLane.getByRole('button', { name: new RegExp(title) })).toBeVisible()
 })
 

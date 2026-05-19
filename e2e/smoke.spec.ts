@@ -59,14 +59,14 @@ test('owner can create a card and the state survives reload', async ({ page }) =
   await page.getByLabel('Concept').fill('Phase 1 smoke test card')
   await page.getByRole('button', { name: 'Create card' }).click()
 
-  await expect(page.getByRole('button', { name: /Phase 1 smoke test card/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Phase 1 smoke test card', exact: true })).toBeVisible()
 
   await page.reload()
 
-  await expect(page.getByRole('button', { name: /Phase 1 smoke test card/ })).toBeVisible()
+  await expect(page.locator('.board-card').filter({ hasText: 'Phase 1 smoke test card' })).toBeVisible()
 })
 
-test('viewer can access analytics while owner-only settings stay locked down', async ({
+test('viewer stays on read-only board routes while owner-only pages stay hidden', async ({
   page,
 }) => {
   ensureArtifactsDir()
@@ -75,10 +75,10 @@ test('viewer can access analytics while owner-only settings stay locked down', a
   await setLocalRole(page, 'viewer')
 
   const settingsNav = page.getByRole('button', { name: 'Settings' })
-  await expect(settingsNav).toBeDisabled()
+  await expect(settingsNav).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Analytics' }).click()
-  await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Analytics' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Creative Board' })).toBeVisible()
 
   await page.screenshot({
     path: 'artifacts/phase-1/viewer-analytics.png',

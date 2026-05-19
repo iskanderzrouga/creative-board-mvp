@@ -160,7 +160,7 @@ test('authenticated team login syncs the shared workspace across pages', async (
   await page.getByLabel('Concept').fill('Authenticated sync card')
   await page.getByRole('button', { name: 'Create card' }).click()
 
-  await expect(page.getByRole('button', { name: /Authenticated sync card/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Authenticated sync card', exact: true })).toBeVisible()
   await page.waitForFunction(
     ({ remoteStateKey, cardTitle }) => {
       const raw = window.localStorage.getItem(remoteStateKey)

@@ -333,6 +333,68 @@ describe('remote app state sync', () => {
     ).toBe(true)
   })
 
+  it('keeps pending card text, links, and comments on refresh until they sync', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const basePortfolio = seed.portfolios[0]!
+    const sourceCard = basePortfolio.cards[0]!
+    const pendingComment = {
+      author: 'Daniel T',
+      text: 'Please use the second hook.',
+      timestamp: '2026-05-19T10:00:00.000Z',
+    }
+    const pendingState = {
+      ...seed,
+      portfolios: seed.portfolios.map((portfolio) =>
+        portfolio.id === basePortfolio.id
+          ? {
+              ...portfolio,
+              cards: portfolio.cards.map((card) =>
+                card.id === sourceCard.id
+                  ? {
+                      ...card,
+                      brief: 'Refresh-safe brief draft',
+                      landingPage: 'https://example.com/refresh-safe-lp',
+                      links: [{ url: 'https://frame.io/review/refresh-safe', label: 'Frame.io review' }],
+                      comments: [...card.comments, pendingComment],
+                      updatedAt: pendingComment.timestamp,
+                    }
+                  : card,
+              ),
+            }
+          : portfolio,
+      ),
+    }
+
+    persistAppState(pendingState)
+    persistSyncMetadata({
+      lastSyncedAt: firstLoad.lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: firstLoad.lastSyncedAt,
+      pendingRemoteSignature: getRemoteStateSignature(pendingState),
+    })
+
+    const rehydrated = await loadOrCreateRemoteAppState(loadAppState(), {
+      ...loadSyncMetadata(),
+      pendingStatePatch: loadPendingAppStatePatch(),
+    })
+    const rehydratedCard = rehydrated.state.portfolios[0]?.cards.find((card) => card.id === sourceCard.id)
+
+    expect(rehydrated.keptLocalChanges).toBe(true)
+    expect(rehydratedCard?.brief).toBe('Refresh-safe brief draft')
+    expect(rehydratedCard?.landingPage).toBe('https://example.com/refresh-safe-lp')
+    expect(rehydratedCard?.links?.[0]?.url).toBe('https://frame.io/review/refresh-safe')
+    expect(rehydratedCard?.comments.map((comment) => comment.text)).toContain(pendingComment.text)
+
+    await saveRemoteAppStateWithRetryMerge(rehydrated.state, rehydrated.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCard = synced.state.portfolios[0]?.cards.find((card) => card.id === sourceCard.id)
+
+    expect(syncedCard?.brief).toBe('Refresh-safe brief draft')
+    expect(syncedCard?.landingPage).toBe('https://example.com/refresh-safe-lp')
+    expect(syncedCard?.links?.[0]?.url).toBe('https://frame.io/review/refresh-safe')
+    expect(syncedCard?.comments.map((comment) => comment.text)).toContain(pendingComment.text)
+  })
+
   it('keeps a pending local card deletion on refresh when only the small pending patch is available', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)
