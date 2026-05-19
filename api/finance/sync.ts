@@ -1,6 +1,67 @@
 export const config = { runtime: 'edge' };
 
 const SLASH = 'https://api.joinslash.com';
+const DEFAULT_ALLOWED_FINANCE_EMAILS = new Set([
+  'iskander@bluebrands.co',
+  'nicolas@bluebrands.co',
+  'naomi@bluebrands.co',
+]);
+
+function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function getAllowedFinanceEmails() {
+  const configured = process.env.FINANCE_ALLOWED_EMAILS;
+  if (!configured) return DEFAULT_ALLOWED_FINANCE_EMAILS;
+
+  const emails = configured
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  return emails.length > 0 ? new Set(emails) : DEFAULT_ALLOWED_FINANCE_EMAILS;
+}
+
+function getSupabaseUrl() {
+  return process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+}
+
+function getSupabaseAnonKey() {
+  return process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+}
+
+async function requireAllowedUser(req: Request) {
+  const supabaseUrl = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
+  const auth = req.headers.get('authorization');
+
+  if (!supabaseUrl || !anonKey || !auth) {
+    return { ok: false as const, status: 401, error: 'finance_auth_required' };
+  }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: auth,
+    },
+  });
+
+  if (!response.ok) {
+    return { ok: false as const, status: 401, error: 'finance_auth_invalid' };
+  }
+
+  const user = (await response.json()) as { email?: unknown };
+  const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+  if (!email || !getAllowedFinanceEmails().has(email)) {
+    return { ok: false as const, status: 403, error: 'finance_access_denied' };
+  }
+
+  return { ok: true as const, email };
+}
 
 async function slashGet(path: string, apiKey: string) {
   const res = await fetch(`${SLASH}${path}`, {
@@ -29,12 +90,17 @@ function unwrap(json: unknown): unknown[] {
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
+  const user = await requireAllowedUser(req);
+  if (!user.ok) {
+    return jsonResponse({ error: user.error }, user.status);
   }
 
   const apiKey = process.env.SLASH_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'SLASH_API_KEY not configured' }), { status: 500 });
+    return jsonResponse({ error: 'SLASH_API_KEY not configured' }, 500);
   }
 
   try {
@@ -83,8 +149,8 @@ export default async function handler(req: Request): Promise<Response> {
       if (txRes.ok) transactions = unwrap(txRes.data);
     }
 
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         transactions,
         accounts,
         debug: {
@@ -94,17 +160,10 @@ export default async function handler(req: Request): Promise<Response> {
           entityIds: entities.map((e) => (e as Record<string, unknown>).id),
           accountIds: accounts.map((a) => (a as Record<string, unknown>).id),
         },
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
       },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: 'Sync failed: ' + message, transactions: [], accounts: [] }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Sync failed: ' + message, transactions: [], accounts: [] });
   }
 }

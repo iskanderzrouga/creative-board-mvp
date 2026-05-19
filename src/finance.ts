@@ -376,10 +376,22 @@ export async function deleteFinanceTransaction(id: string) {
 
 export async function syncFinanceFromSlash(dateFrom?: number): Promise<FinanceSyncSummary> {
   const supabase = getRequiredSupabase()
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) {
+    throw sessionError
+  }
+
+  const token = sessionData.session?.access_token
+  if (!token) {
+    throw new Error('Sign in with an approved finance account before syncing Slash.')
+  }
 
   const response = await fetch('/api/finance/sync', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({ dateFrom }),
   })
 

@@ -38,6 +38,87 @@ function isAlreadyRegisteredError(message: string) {
   )
 }
 
+function getBearerToken(request: Request) {
+  const authorization = request.headers.get('authorization')?.trim() ?? ''
+  if (!authorization.toLowerCase().startsWith('bearer ')) {
+    return null
+  }
+
+  return authorization.slice('bearer '.length).trim()
+}
+
+async function getRequestUserEmail(
+  request: Request,
+  supabaseUrl: string,
+  publishableKey: string,
+) {
+  const token = getBearerToken(request)
+  if (!token) {
+    return { ok: false as const, status: 401, error: 'Authentication is required.' }
+  }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: publishableKey,
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (!response.ok) {
+    return { ok: false as const, status: 401, error: 'Authentication is invalid or expired.' }
+  }
+
+  const user = (await response.json()) as { email?: unknown }
+  const email = typeof user.email === 'string' ? normalizeEmail(user.email) : ''
+  if (!email) {
+    return { ok: false as const, status: 401, error: 'Authenticated user email is missing.' }
+  }
+
+  return { ok: true as const, email }
+}
+
+async function requireMaintenanceAccess(
+  request: Request,
+  supabaseUrl: string,
+  publishableKey: string,
+  admin: ReturnType<typeof createClient>,
+) {
+  const user = await getRequestUserEmail(request, supabaseUrl, publishableKey)
+  if (!user.ok) {
+    return user
+  }
+
+  const { data: accessRow, error: accessError } = await admin
+    .from('workspace_access')
+    .select('role_mode')
+    .eq('email', user.email)
+    .maybeSingle()
+
+  if (accessError) {
+    return { ok: false as const, status: 500, error: accessError.message }
+  }
+
+  if (accessRow?.role_mode === 'owner') {
+    return { ok: true as const, email: user.email }
+  }
+
+  const { data: ownerRows, error: ownerError } = await admin
+    .from('workspace_access')
+    .select('email')
+    .eq('role_mode', 'owner')
+    .limit(1)
+
+  if (ownerError) {
+    return { ok: false as const, status: 500, error: ownerError.message }
+  }
+
+  if (accessRow?.role_mode === 'manager' && !ownerRows?.length) {
+    return { ok: true as const, email: user.email }
+  }
+
+  return { ok: false as const, status: 403, error: 'Workspace owner access is required.' }
+}
+
 async function ensurePasswordUser(
   admin: {
     auth: {
@@ -90,9 +171,20 @@ Deno.serve(async (request) => {
 
   const body = (await request.json()) as RequestBody
   const action = body.action ?? 'sign-in'
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
 
   // ---------- Reload PostgREST schema cache ----------
   if (action === 'reload-schema') {
+    const access = await requireMaintenanceAccess(request, supabaseUrl, publishableKey, admin)
+    if (!access.ok) {
+      return json({ error: access.error }, access.status)
+    }
+
     const dbUrl = Deno.env.get('SUPABASE_DB_URL')
     if (!dbUrl) {
       return json({ error: 'SUPABASE_DB_URL not available.' }, 500)
@@ -109,6 +201,11 @@ Deno.serve(async (request) => {
 
   // ---------- Auto-migration: ensure scope columns exist ----------
   if (action === 'ensure-schema') {
+    const access = await requireMaintenanceAccess(request, supabaseUrl, publishableKey, admin)
+    if (!access.ok) {
+      return json({ error: access.error }, access.status)
+    }
+
     const dbUrl = Deno.env.get('SUPABASE_DB_URL')
     if (!dbUrl) {
       return json({ error: 'SUPABASE_DB_URL not available.' }, 500)
@@ -240,13 +337,6 @@ Deno.serve(async (request) => {
   if (!email) {
     return json({ error: 'Email is required.' }, 400)
   }
-
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
 
   // Check workspace_access table to verify this email is approved
   const { data: accessRows, error: accessError } = await admin
