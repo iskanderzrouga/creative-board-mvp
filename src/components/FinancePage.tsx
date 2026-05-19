@@ -46,6 +46,7 @@ interface DailyTrendRow {
   totalAdSpend: number
   blendedRoas: number
   contributionAfterAds: number
+  netProfit: number
 }
 
 const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
@@ -72,6 +73,8 @@ const shopifyRed = '#dc2626'
 const ink = '#202223'
 const subdued = '#5f6f82'
 const hairline = '#dde3ea'
+const refundReserveRate = 0.05
+const processingFeeRate = 0.026
 
 const pageShell: CSSProperties = {
   background: '#f5f6f7',
@@ -299,7 +302,9 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
       shippingCost: acc.shippingCost + (row.shippingCost ?? 0),
       variableCost: acc.variableCost + (row.variableCost ?? ((row.productCogs ?? row.cogs) + (row.shippingCost ?? 0))),
       contributionAfterAds: acc.contributionAfterAds + row.contributionAfterAds,
-      netProfit: acc.netProfit + row.netProfit,
+      refundReserve: acc.refundReserve + (row.refundReserve ?? (row.revenue * refundReserveRate)),
+      processingFees: acc.processingFees + (row.processingFees ?? (row.revenue * processingFeeRate)),
+      netProfit: acc.netProfit + (row.netProfit ?? (row.contributionAfterAds - (row.revenue * refundReserveRate) - (row.revenue * processingFeeRate))),
     }),
     {
       revenue: 0,
@@ -328,6 +333,8 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
       shippingCost: 0,
       variableCost: 0,
       contributionAfterAds: 0,
+      refundReserve: 0,
+      processingFees: 0,
       netProfit: 0,
     },
   )
@@ -338,6 +345,7 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
     blendedRoas: totals.totalAdSpend > 0 ? totals.revenue / totals.totalAdSpend : 0,
     cpa: totals.orders > 0 ? totals.totalAdSpend / totals.orders : 0,
     contributionMargin: totals.revenue > 0 ? totals.contributionAfterAds / totals.revenue : 0,
+    netProfitMargin: totals.revenue > 0 ? totals.netProfit / totals.revenue : 0,
     aov: totals.orders > 0 ? totals.revenue / totals.orders : 0,
     cvr: totals.sessions > 0 ? (totals.orders / totals.sessions) * 100 : 0,
     metaRoas: totals.metaSpend > 0 ? totals.metaRevenue / totals.metaSpend : 0,
@@ -368,6 +376,7 @@ function buildDailyTrendRows(rows: BrandDailyPerformanceRow[]): DailyTrendRow[] 
         totalAdSpend: totals.totalAdSpend,
         blendedRoas: totals.blendedRoas,
         contributionAfterAds: totals.contributionAfterAds,
+        netProfit: totals.netProfit,
       }
     })
     .sort((left, right) => left.date.localeCompare(right.date))
@@ -634,6 +643,8 @@ function ShopifyExtras({ rows, showCostMetrics }: { rows: BrandDailyPerformanceR
           ['Product COGS', formatMoney(totals.productCogs)],
           ['Shipping cost', formatMoney(totals.shippingCost)],
           ['Variable cost', formatMoney(totals.variableCost)],
+          ['Refund reserve', formatMoney(totals.refundReserve)],
+          ['Processing fees', formatMoney(totals.processingFees)],
         ]
       : []),
     ['Refunds', formatMoney(totals.refunds)],
@@ -1746,9 +1757,18 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               <StatTile
                 label="Contribution"
                 value={formatMoney(totals.contributionAfterAds)}
-                helper={`${(totals.contributionMargin * 100).toFixed(1)}% after product, shipping, ads`}
+                helper={`${formatPercent(totals.contributionMargin * 100)} of revenue`}
                 accent="#64748b"
                 trend={dailyTrendRows.map((row) => row.contributionAfterAds)}
+              />
+            ) : null}
+            {showCostMetrics ? (
+              <StatTile
+                label="Net Profit"
+                value={formatMoney(totals.netProfit)}
+                helper={`${formatPercent(totals.netProfitMargin * 100)} after 5% refund reserve + 2.6% fees`}
+                accent={totals.netProfit >= 0 ? shopifyGreen : shopifyRed}
+                trend={dailyTrendRows.map((row) => row.netProfit)}
               />
             ) : null}
           </div>
@@ -1815,7 +1835,7 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: showCostMetrics ? 1460 : 1220, borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', minWidth: showCostMetrics ? 1760 : 1220, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: subdued, background: '#fbfcfd', textAlign: 'left' }}>
                     {[
@@ -1833,7 +1853,7 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
                       'Blended ROAS',
                       'CPA',
                       'Refunds',
-                      ...(showCostMetrics ? ['Contribution'] : []),
+                      ...(showCostMetrics ? ['Refund Reserve', 'Fees', 'Contribution', 'Contribution %', 'Net Profit', 'Net %'] : []),
                     ].map((heading) => (
                       <th key={heading} style={{ padding: '11px 12px', fontWeight: 650, borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{heading}</th>
                     ))}
@@ -1842,6 +1862,11 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
                 <tbody>
                   {visibleRows.map((row) => {
                     const color = brandColor.get(row.brandSlug) ?? shopifyBlue
+                    const rowRefundReserve = row.refundReserve ?? (row.revenue * refundReserveRate)
+                    const rowProcessingFees = row.processingFees ?? (row.revenue * processingFeeRate)
+                    const rowNetProfit = row.netProfit ?? (row.contributionAfterAds - rowRefundReserve - rowProcessingFees)
+                    const rowContributionMargin = row.revenue > 0 ? (row.contributionMargin ?? (row.contributionAfterAds / row.revenue)) : 0
+                    const rowNetProfitMargin = row.revenue > 0 ? (row.netProfitMargin ?? (rowNetProfit / row.revenue)) : 0
                     return (
                       <tr key={`${row.date}-${row.brandSlug}`} style={{ borderBottom: '1px solid #eef1f4' }}>
                         <td style={{ padding: '12px', color: ink, fontWeight: 550, whiteSpace: 'nowrap' }}>{formatLongDate(row.date)}</td>
@@ -1869,7 +1894,14 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(row.cpa, 2)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: row.refunds > 0 ? '#be123c' : subdued }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
                         {showCostMetrics ? (
-                          <td style={{ ...numericStyle, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatMoney(row.contributionAfterAds)}</td>
+                          <>
+                            <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(rowRefundReserve)}</td>
+                            <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(rowProcessingFees)}</td>
+                            <td style={{ ...numericStyle, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatMoney(row.contributionAfterAds)}</td>
+                            <td style={{ ...numericStyle, padding: '12px', color: rowContributionMargin >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatPercent(rowContributionMargin * 100)}</td>
+                            <td style={{ ...numericStyle, padding: '12px', color: rowNetProfit >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatMoney(rowNetProfit)}</td>
+                            <td style={{ ...numericStyle, padding: '12px', color: rowNetProfitMargin >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatPercent(rowNetProfitMargin * 100)}</td>
+                          </>
                         ) : null}
                       </tr>
                     )

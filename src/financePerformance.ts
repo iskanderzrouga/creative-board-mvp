@@ -44,7 +44,11 @@ export interface BrandDailyPerformanceRow {
   variableCost: number
   costRulesApplied: Record<string, number>
   contributionAfterAds: number
+  contributionMargin: number
+  refundReserve: number
+  processingFees: number
   netProfit: number
+  netProfitMargin: number
   lastSync: string | null
 }
 

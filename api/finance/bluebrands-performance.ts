@@ -2,6 +2,9 @@ type BrandSlug = 'pluxy' | 'vivi' | 'trueclean'
 type ConnectionPlatform = 'shopify' | 'meta' | 'axon' | 'google_ads'
 type ConnectionStatus = 'healthy' | 'delayed' | 'no_data' | 'error' | 'not_configured'
 
+const REFUND_RESERVE_RATE = 0.05
+const PROCESSING_FEE_RATE = 0.026
+
 interface PlatformConfig {
   enabled?: boolean
   access_token?: string
@@ -166,7 +169,11 @@ interface PerformanceRow {
   variableCost: number
   costRulesApplied: Record<string, number>
   contributionAfterAds: number
+  contributionMargin: number
+  refundReserve: number
+  processingFees: number
   netProfit: number
+  netProfitMargin: number
   lastSync: string | null
 }
 
@@ -629,11 +636,17 @@ function buildConnectionHealth(brands: BrandConfig[], rows: PerformanceRow[], sy
 }
 
 function rowFromDb(row: Record<string, unknown>): PerformanceRow {
+  const revenue = toNumber(row.revenue)
+  const contributionAfterAds = toNumber(row.contribution_after_ads)
+  const refundReserve = toNumber(row.refund_reserve ?? revenue * REFUND_RESERVE_RATE)
+  const processingFees = toNumber(row.processing_fees ?? revenue * PROCESSING_FEE_RATE)
+  const netProfit = toNumber(row.net_profit ?? (contributionAfterAds - refundReserve - processingFees))
+
   return {
     date: String(row.date),
     brandSlug: String(row.brand_slug) as BrandSlug,
     brandName: String(row.brand_name),
-    revenue: toNumber(row.revenue),
+    revenue,
     orders: toNumber(row.orders),
     metaSpend: toNumber(row.meta_spend),
     metaRevenue: toNumber(row.meta_revenue),
@@ -670,8 +683,12 @@ function rowFromDb(row: Record<string, unknown>): PerformanceRow {
     shippingCost: toNumber(row.shipping_cost),
     variableCost: toNumber(row.variable_cost ?? (toNumber(row.product_cogs ?? row.cogs) + toNumber(row.shipping_cost))),
     costRulesApplied: toMetadata(row.cost_rules_applied) as Record<string, number>,
-    contributionAfterAds: toNumber(row.contribution_after_ads),
-    netProfit: toNumber(row.net_profit),
+    contributionAfterAds,
+    contributionMargin: toNumber(row.contribution_margin ?? (revenue > 0 ? contributionAfterAds / revenue : 0)),
+    refundReserve,
+    processingFees,
+    netProfit,
+    netProfitMargin: toNumber(row.net_profit_margin ?? (revenue > 0 ? netProfit / revenue : 0)),
     lastSync: typeof row.last_sync === 'string' ? row.last_sync : null,
   }
 }
@@ -1494,6 +1511,11 @@ function buildRows(
     const shippingCost = hasCalculatedCosts ? toNumber(shopifyCosts?.shippingCost) : 0
     const variableCost = productCogs + shippingCost
     const contributionAfterAds = revenue - variableCost - totalAdSpend
+    const contributionMargin = revenue > 0 ? contributionAfterAds / revenue : 0
+    const refundReserve = revenue * REFUND_RESERVE_RATE
+    const processingFees = revenue * PROCESSING_FEE_RATE
+    const netProfit = contributionAfterAds - refundReserve - processingFees
+    const netProfitMargin = revenue > 0 ? netProfit / revenue : 0
 
     return {
       brand_slug: brand.slug,
@@ -1537,7 +1559,11 @@ function buildRows(
       variable_cost: variableCost,
       cost_rules_applied: shopifyCosts?.rulesApplied ?? {},
       contribution_after_ads: contributionAfterAds,
-      net_profit: contributionAfterAds,
+      contribution_margin: contributionMargin,
+      refund_reserve: refundReserve,
+      processing_fees: processingFees,
+      net_profit: netProfit,
+      net_profit_margin: netProfitMargin,
       last_sync: lastSync,
       updated_at: lastSync,
     }
