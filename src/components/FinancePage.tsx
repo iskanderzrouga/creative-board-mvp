@@ -43,6 +43,7 @@ interface DateRange {
 interface DailyTrendRow {
   date: string
   revenue: number
+  orders: number
   totalAdSpend: number
   blendedRoas: number
   contributionAfterAds: number
@@ -373,6 +374,7 @@ function buildDailyTrendRows(rows: BrandDailyPerformanceRow[]): DailyTrendRow[] 
       return {
         date,
         revenue: totals.revenue,
+        orders: totals.orders,
         totalAdSpend: totals.totalAdSpend,
         blendedRoas: totals.blendedRoas,
         contributionAfterAds: totals.contributionAfterAds,
@@ -1719,9 +1721,16 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
             <StatTile
               label="Revenue"
               value={formatMoney(totals.revenue)}
-              helper={`${formatNumber(totals.orders)} orders · ${getRangeLabel(activeRange)}`}
+              helper={getRangeLabel(activeRange)}
               accent={shopifyGreen}
               trend={dailyTrendRows.map((row) => row.revenue)}
+            />
+            <StatTile
+              label="Orders"
+              value={formatNumber(totals.orders)}
+              helper={totals.orders > 0 ? `${formatMoney(totals.aov, 2)} AOV` : 'No orders in range'}
+              accent="#0f766e"
+              trend={dailyTrendRows.map((row) => row.orders)}
             />
             <StatTile
               label="Ad Spend"
