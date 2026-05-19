@@ -39,9 +39,45 @@ export interface BrandDailyPerformanceRow {
   sessions: number
   cvr: number
   cogs: number
+  productCogs: number
+  shippingCost: number
+  variableCost: number
+  costRulesApplied: Record<string, number>
   contributionAfterAds: number
   netProfit: number
   lastSync: string | null
+}
+
+export type PerformanceCostType = 'product' | 'shipping'
+export type PerformanceCostRuleStatus = 'active' | 'paused'
+
+export interface PerformanceCostRule {
+  id: string
+  brandSlug: PerformanceBrandSlug
+  costType: PerformanceCostType
+  label: string
+  status: PerformanceCostRuleStatus
+  priority: number
+  regionKey: string | null
+  countryCode: string | null
+  provinceCodes: string[]
+  skuPattern: string | null
+  titlePattern: string | null
+  variantPattern: string | null
+  minKitQuantity: number | null
+  maxKitQuantity: number | null
+  kitMultiplier: number | null
+  cartridgesPerKit: number | null
+  dispenserUnitCost: number | null
+  cartridgeUnitCost: number | null
+  fixedCost: number | null
+  perExtraKitCost: number | null
+  effectiveFrom: string | null
+  effectiveTo: string | null
+  notes: string | null
+  metadata: Record<string, unknown>
+  createdAt: string | null
+  updatedAt: string | null
 }
 
 export type PerformanceConnectionPlatform = 'shopify' | 'meta' | 'axon' | 'google_ads'
@@ -149,6 +185,90 @@ function isPerformanceConnection(value: unknown): value is PerformanceConnection
   )
 }
 
+function toNumberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function toStringOrNull(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function toStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function toMetadata(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function mapCostRuleFromDb(row: Record<string, unknown>): PerformanceCostRule {
+  return {
+    id: String(row.id),
+    brandSlug: String(row.brand_slug) as PerformanceBrandSlug,
+    costType: String(row.cost_type) as PerformanceCostType,
+    label: String(row.label ?? ''),
+    status: String(row.status ?? 'active') as PerformanceCostRuleStatus,
+    priority: Number(row.priority ?? 100),
+    regionKey: toStringOrNull(row.region_key),
+    countryCode: toStringOrNull(row.country_code),
+    provinceCodes: toStringArray(row.province_codes),
+    skuPattern: toStringOrNull(row.sku_pattern),
+    titlePattern: toStringOrNull(row.title_pattern),
+    variantPattern: toStringOrNull(row.variant_pattern),
+    minKitQuantity: toNumberOrNull(row.min_kit_quantity),
+    maxKitQuantity: toNumberOrNull(row.max_kit_quantity),
+    kitMultiplier: toNumberOrNull(row.kit_multiplier),
+    cartridgesPerKit: toNumberOrNull(row.cartridges_per_kit),
+    dispenserUnitCost: toNumberOrNull(row.dispenser_unit_cost),
+    cartridgeUnitCost: toNumberOrNull(row.cartridge_unit_cost),
+    fixedCost: toNumberOrNull(row.fixed_cost),
+    perExtraKitCost: toNumberOrNull(row.per_extra_kit_cost),
+    effectiveFrom: toStringOrNull(row.effective_from),
+    effectiveTo: toStringOrNull(row.effective_to),
+    notes: toStringOrNull(row.notes),
+    metadata: toMetadata(row.metadata),
+    createdAt: toStringOrNull(row.created_at),
+    updatedAt: toStringOrNull(row.updated_at),
+  }
+}
+
+function mapCostRuleToDb(rule: PerformanceCostRule) {
+  return {
+    brand_slug: rule.brandSlug,
+    cost_type: rule.costType,
+    label: rule.label,
+    status: rule.status,
+    priority: rule.priority,
+    region_key: rule.regionKey || null,
+    country_code: rule.countryCode || null,
+    province_codes: rule.provinceCodes,
+    sku_pattern: rule.skuPattern || null,
+    title_pattern: rule.titlePattern || null,
+    variant_pattern: rule.variantPattern || null,
+    min_kit_quantity: rule.minKitQuantity,
+    max_kit_quantity: rule.maxKitQuantity,
+    kit_multiplier: rule.kitMultiplier,
+    cartridges_per_kit: rule.cartridgesPerKit,
+    dispenser_unit_cost: rule.dispenserUnitCost,
+    cartridge_unit_cost: rule.cartridgeUnitCost,
+    fixed_cost: rule.fixedCost,
+    per_extra_kit_cost: rule.perExtraKitCost,
+    effective_from: rule.effectiveFrom || null,
+    effective_to: rule.effectiveTo || null,
+    notes: rule.notes || null,
+    metadata: rule.metadata,
+  }
+}
+
 async function requestPerformance(
   method: 'GET' | 'POST',
   input: { from?: string; to?: string; days?: number } = {},
@@ -219,4 +339,82 @@ export function loadBrandDailyPerformance(input: { from?: string; to?: string; d
 
 export function syncBrandDailyPerformance(input: { from?: string; to?: string; days?: number } = {}) {
   return requestPerformance('POST', input)
+}
+
+export async function loadPerformanceCostRules() {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { rules: [] as PerformanceCostRule[], error: 'Sign in with a real Supabase session to load cost rules.' }
+  }
+
+  const { data, error } = await supabase
+    .from('performance_cost_rules')
+    .select('*')
+    .order('brand_slug', { ascending: true })
+    .order('cost_type', { ascending: true })
+    .order('priority', { ascending: true })
+    .order('label', { ascending: true })
+
+  if (error) {
+    return { rules: [] as PerformanceCostRule[], error: error.message }
+  }
+
+  return {
+    rules: (data ?? []).map((row) => mapCostRuleFromDb(row as Record<string, unknown>)),
+    error: null,
+  }
+}
+
+export async function savePerformanceCostRule(rule: PerformanceCostRule) {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Sign in with a real Supabase session to save cost rules.')
+  }
+
+  if (rule.id.startsWith('draft-')) {
+    const { data, error } = await supabase
+      .from('performance_cost_rules')
+      .insert(mapCostRuleToDb(rule))
+      .select('*')
+      .single()
+
+    if (error) {
+      throw error
+    }
+
+    return mapCostRuleFromDb(data as Record<string, unknown>)
+  }
+
+  const { data, error } = await supabase
+    .from('performance_cost_rules')
+    .update(mapCostRuleToDb(rule))
+    .eq('id', rule.id)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return mapCostRuleFromDb(data as Record<string, unknown>)
+}
+
+export async function deletePerformanceCostRule(rule: PerformanceCostRule) {
+  if (rule.id.startsWith('draft-')) {
+    return
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    throw new Error('Sign in with a real Supabase session to delete cost rules.')
+  }
+
+  const { error } = await supabase
+    .from('performance_cost_rules')
+    .delete()
+    .eq('id', rule.id)
+
+  if (error) {
+    throw error
+  }
 }

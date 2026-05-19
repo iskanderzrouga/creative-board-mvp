@@ -53,6 +53,77 @@ interface ShopifyDay {
   cvr?: number
 }
 
+type CostRuleType = 'product' | 'shipping'
+type CostRuleStatus = 'active' | 'paused'
+
+interface PerformanceCostRule {
+  id: string
+  brandSlug: BrandSlug
+  costType: CostRuleType
+  label: string
+  status: CostRuleStatus
+  priority: number
+  regionKey: string | null
+  countryCode: string | null
+  provinceCodes: string[]
+  skuPattern: string | null
+  titlePattern: string | null
+  variantPattern: string | null
+  minKitQuantity: number | null
+  maxKitQuantity: number | null
+  kitMultiplier: number | null
+  cartridgesPerKit: number | null
+  dispenserUnitCost: number | null
+  cartridgeUnitCost: number | null
+  fixedCost: number | null
+  perExtraKitCost: number | null
+  effectiveFrom: string | null
+  effectiveTo: string | null
+  notes: string | null
+  metadata: Record<string, unknown>
+}
+
+interface ShopifyCostDay {
+  productCogs: number
+  shippingCost: number
+  ordersCosted: number
+  rulesApplied: Record<string, number>
+}
+
+interface ShopifyCostLineItem {
+  sku?: string | null
+  title?: string | null
+  name?: string | null
+  variantTitle?: string | null
+  quantity?: number | string | null
+  requiresShipping?: boolean | null
+  product?: {
+    title?: string | null
+  } | null
+  variant?: {
+    sku?: string | null
+    title?: string | null
+  } | null
+}
+
+interface ShopifyCostOrder {
+  id: string
+  name?: string | null
+  createdAt?: string | null
+  cancelledAt?: string | null
+  displayFinancialStatus?: string | null
+  displayFulfillmentStatus?: string | null
+  shippingAddress?: {
+    countryCodeV2?: string | null
+    provinceCode?: string | null
+  } | null
+  lineItems?: {
+    edges?: Array<{
+      node?: ShopifyCostLineItem | null
+    }>
+  } | null
+}
+
 interface PerformanceRow {
   date: string
   brandSlug: BrandSlug
@@ -90,6 +161,10 @@ interface PerformanceRow {
   sessions: number
   cvr: number
   cogs: number
+  productCogs: number
+  shippingCost: number
+  variableCost: number
+  costRulesApplied: Record<string, number>
   contributionAfterAds: number
   netProfit: number
   lastSync: string | null
@@ -323,6 +398,60 @@ function toNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0
 }
 
+function toNumberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function toStringOrNull(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function toStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function toMetadata(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function rowToCostRule(row: Record<string, unknown>): PerformanceCostRule {
+  return {
+    id: String(row.id),
+    brandSlug: String(row.brand_slug) as BrandSlug,
+    costType: String(row.cost_type) as CostRuleType,
+    label: String(row.label ?? ''),
+    status: String(row.status ?? 'active') as CostRuleStatus,
+    priority: toNumber(row.priority) || 100,
+    regionKey: toStringOrNull(row.region_key),
+    countryCode: toStringOrNull(row.country_code)?.toUpperCase() ?? null,
+    provinceCodes: toStringArray(row.province_codes).map((province) => province.toUpperCase()),
+    skuPattern: toStringOrNull(row.sku_pattern),
+    titlePattern: toStringOrNull(row.title_pattern),
+    variantPattern: toStringOrNull(row.variant_pattern),
+    minKitQuantity: toNumberOrNull(row.min_kit_quantity),
+    maxKitQuantity: toNumberOrNull(row.max_kit_quantity),
+    kitMultiplier: toNumberOrNull(row.kit_multiplier),
+    cartridgesPerKit: toNumberOrNull(row.cartridges_per_kit),
+    dispenserUnitCost: toNumberOrNull(row.dispenser_unit_cost),
+    cartridgeUnitCost: toNumberOrNull(row.cartridge_unit_cost),
+    fixedCost: toNumberOrNull(row.fixed_cost),
+    perExtraKitCost: toNumberOrNull(row.per_extra_kit_cost),
+    effectiveFrom: toStringOrNull(row.effective_from),
+    effectiveTo: toStringOrNull(row.effective_to),
+    notes: toStringOrNull(row.notes),
+    metadata: toMetadata(row.metadata),
+  }
+}
+
 function parseJson(raw: string) {
   if (!raw.trim()) return {}
   return JSON.parse(raw)
@@ -537,6 +666,10 @@ function rowFromDb(row: Record<string, unknown>): PerformanceRow {
     sessions: toNumber(row.sessions),
     cvr: toNumber(row.cvr),
     cogs: toNumber(row.cogs),
+    productCogs: toNumber(row.product_cogs ?? row.cogs),
+    shippingCost: toNumber(row.shipping_cost),
+    variableCost: toNumber(row.variable_cost ?? (toNumber(row.product_cogs ?? row.cogs) + toNumber(row.shipping_cost))),
+    costRulesApplied: toMetadata(row.cost_rules_applied) as Record<string, number>,
     contributionAfterAds: toNumber(row.contribution_after_ads),
     netProfit: toNumber(row.net_profit),
     lastSync: typeof row.last_sync === 'string' ? row.last_sync : null,
@@ -558,6 +691,26 @@ async function readRows(from: string, to: string, auth: string, useServiceRole =
 
   const rows = (await response.json()) as Array<Record<string, unknown>>
   return rows.map(rowFromDb)
+}
+
+async function readCostRules(auth: string, useServiceRole = false) {
+  const response = await supabaseRestFetch(
+    'performance_cost_rules?select=*&order=brand_slug.asc,cost_type.asc,priority.asc,label.asc',
+    auth,
+    {},
+    useServiceRole,
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    if (text.includes('performance_cost_rules')) {
+      return []
+    }
+    throw new Error(`Supabase cost rules read failed: ${text}`)
+  }
+
+  const rows = (await response.json()) as Array<Record<string, unknown>>
+  return rows.map(rowToCostRule)
 }
 
 async function metaDaily(brand: BrandConfig, since: string, until: string) {
@@ -744,6 +897,346 @@ async function shopifyDaily(brand: BrandConfig, since: string, until: string) {
       sessions: toNumber(item.sessions),
       cvr: toNumber(item.conversion_rate),
     })
+  }
+
+  return rows
+}
+
+async function shopifyAdminGraphql<T>(brand: BrandConfig, token: string, query: string, variables: Record<string, unknown>) {
+  const store = brand.platforms?.shopify?.store
+  const apiVersion = getServerEnv('SHOPIFY_API_VERSION') || 'unstable'
+  const response = await fetchJson<{ data?: T; errors?: Array<{ message?: string }> }>(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`${brand.slug} Shopify Admin GraphQL failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
+  }
+
+  if (response.data.errors?.length) {
+    throw new Error(`${brand.slug} Shopify Admin GraphQL errors: ${response.data.errors.map((error) => error.message ?? 'unknown error').join(' · ')}`)
+  }
+
+  return response.data.data as T
+}
+
+function normalizeForMatch(value: unknown) {
+  return String(value ?? '').trim()
+}
+
+function matchesPattern(value: string, pattern: string | null) {
+  if (!pattern) {
+    return true
+  }
+
+  const normalizedValue = value.toLowerCase()
+  const parts = pattern.split('|').map((part) => part.trim()).filter(Boolean)
+  if (parts.length === 0) {
+    return true
+  }
+
+  return parts.some((part) => {
+    try {
+      return new RegExp(part, 'i').test(value)
+    } catch {
+      return normalizedValue.includes(part.toLowerCase())
+    }
+  })
+}
+
+function isRuleEffective(rule: PerformanceCostRule, date: string) {
+  return (
+    rule.status === 'active' &&
+    (!rule.effectiveFrom || date >= rule.effectiveFrom) &&
+    (!rule.effectiveTo || date <= rule.effectiveTo)
+  )
+}
+
+function lineSku(line: ShopifyCostLineItem) {
+  return normalizeForMatch(line.sku || line.variant?.sku)
+}
+
+function lineTitle(line: ShopifyCostLineItem) {
+  return [line.title, line.name, line.product?.title].map(normalizeForMatch).filter(Boolean).join(' ')
+}
+
+function lineVariant(line: ShopifyCostLineItem) {
+  return normalizeForMatch(line.variantTitle || line.variant?.title)
+}
+
+function ruleMatchesLine(rule: PerformanceCostRule, line: ShopifyCostLineItem) {
+  const hasPattern = Boolean(rule.skuPattern || rule.titlePattern || rule.variantPattern)
+  if (!hasPattern) {
+    return true
+  }
+
+  return (
+    (rule.skuPattern ? matchesPattern(lineSku(line), rule.skuPattern) : false) ||
+    (rule.titlePattern ? matchesPattern(lineTitle(line), rule.titlePattern) : false) ||
+    (rule.variantPattern ? matchesPattern(lineVariant(line), rule.variantPattern) : false)
+  )
+}
+
+function inferKitMultiplier(line: ShopifyCostLineItem) {
+  const sku = lineSku(line)
+  const modernSku = sku.match(/SNS-0?([1-9])(?:-|$)/i)
+  if (modernSku) {
+    return Number(modernSku[1])
+  }
+
+  const legacySku = sku.match(/TC-SNS-[A-Z]+-([1-9])$/i)
+  if (legacySku) {
+    return Number(legacySku[1])
+  }
+
+  const variant = lineVariant(line)
+  const variantMatch = variant.match(/(\d+)\s*(?:kit|kits|toilet|toilets)/i)
+  if (variantMatch) {
+    return Number(variantMatch[1])
+  }
+
+  return 1
+}
+
+function inferRefillMultiplier(line: ShopifyCostLineItem) {
+  const title = lineTitle(line)
+  const refillMatch = title.match(/(\d+)\s*x\s*10[- ]?year/i)
+  if (refillMatch) {
+    return Number(refillMatch[1])
+  }
+
+  return 1
+}
+
+function costRuleUnitMultiplier(rule: PerformanceCostRule, line: ShopifyCostLineItem) {
+  if (rule.kitMultiplier !== null) {
+    return rule.kitMultiplier
+  }
+
+  if (rule.metadata.offer === '10_year_refill') {
+    return inferRefillMultiplier(line)
+  }
+
+  return inferKitMultiplier(line)
+}
+
+function addRuleApplied(rulesApplied: Record<string, number>, label: string) {
+  rulesApplied[label] = (rulesApplied[label] ?? 0) + 1
+}
+
+function orderWasCancelledBeforeFulfillment(order: ShopifyCostOrder) {
+  if (!order.cancelledAt) {
+    return false
+  }
+
+  const fulfillmentStatus = normalizeForMatch(order.displayFulfillmentStatus).toLowerCase()
+  return !fulfillmentStatus.includes('fulfilled')
+}
+
+function activeRulesForDate(rules: PerformanceCostRule[], date: string, costType: CostRuleType) {
+  return rules
+    .filter((rule) => rule.costType === costType && isRuleEffective(rule, date))
+    .sort((left, right) => left.priority - right.priority || left.label.localeCompare(right.label))
+}
+
+function calculateOrderProductCosts(order: ShopifyCostOrder, rules: PerformanceCostRule[], date: string) {
+  const productRules = activeRulesForDate(rules, date, 'product')
+  const rulesApplied: Record<string, number> = {}
+  let productCogs = 0
+  let shippingKitQuantity = 0
+
+  for (const edge of order.lineItems?.edges ?? []) {
+    const line = edge.node
+    if (!line) {
+      continue
+    }
+
+    const quantity = toNumber(line.quantity)
+    if (quantity <= 0) {
+      continue
+    }
+
+    const rule = productRules.find((candidate) => ruleMatchesLine(candidate, line))
+    const inferredKits = inferKitMultiplier(line) * quantity
+    if (!rule) {
+      shippingKitQuantity += line.requiresShipping === false ? 0 : inferredKits
+      continue
+    }
+
+    const unitMultiplier = costRuleUnitMultiplier(rule, line)
+    const fixedCost = toNumber(rule.fixedCost)
+    const dispenserCost = toNumber(rule.dispenserUnitCost) * unitMultiplier
+    const cartridgeCost = toNumber(rule.cartridgeUnitCost) * toNumber(rule.cartridgesPerKit) * unitMultiplier
+    productCogs += quantity * (fixedCost + dispenserCost + cartridgeCost)
+
+    if (rule.metadata.count_for_shipping !== false && line.requiresShipping !== false) {
+      shippingKitQuantity += unitMultiplier * quantity
+    }
+
+    addRuleApplied(rulesApplied, rule.label)
+  }
+
+  return { productCogs, shippingKitQuantity, rulesApplied }
+}
+
+function shippingRuleMatchesOrder(rule: PerformanceCostRule, order: ShopifyCostOrder, date: string, kitQuantity: number) {
+  if (!isRuleEffective(rule, date)) {
+    return false
+  }
+
+  const countryCode = normalizeForMatch(order.shippingAddress?.countryCodeV2).toUpperCase()
+  const provinceCode = normalizeForMatch(order.shippingAddress?.provinceCode).toUpperCase()
+  if (rule.countryCode && countryCode !== rule.countryCode) {
+    return false
+  }
+  if (rule.provinceCodes.length > 0 && !rule.provinceCodes.includes(provinceCode)) {
+    return false
+  }
+  if (rule.regionKey === 'us_contiguous' && countryCode === 'US' && ['AK', 'HI'].includes(provinceCode)) {
+    return false
+  }
+  if (rule.regionKey === 'us_ak_hi' && !(countryCode === 'US' && ['AK', 'HI'].includes(provinceCode))) {
+    return false
+  }
+  if (rule.minKitQuantity !== null && kitQuantity < rule.minKitQuantity) {
+    return false
+  }
+  if (rule.maxKitQuantity !== null && kitQuantity > rule.maxKitQuantity) {
+    return false
+  }
+
+  return kitQuantity > 0
+}
+
+function calculateOrderShippingCost(order: ShopifyCostOrder, rules: PerformanceCostRule[], date: string, kitQuantity: number) {
+  const roundedKitQuantity = Math.ceil(kitQuantity)
+  const rule = activeRulesForDate(rules, date, 'shipping')
+    .find((candidate) => shippingRuleMatchesOrder(candidate, order, date, roundedKitQuantity))
+
+  if (!rule) {
+    return { shippingCost: 0, ruleLabel: null as string | null }
+  }
+
+  const baseKitQuantity = toNumber(rule.metadata.base_kit_quantity)
+  const extraKits = baseKitQuantity > 0 ? Math.max(0, roundedKitQuantity - baseKitQuantity) : 0
+  const shippingCost = toNumber(rule.fixedCost) + (extraKits * toNumber(rule.perExtraKitCost))
+  return { shippingCost, ruleLabel: rule.label }
+}
+
+async function shopifyOrderCostsDaily(brand: BrandConfig, since: string, until: string, costRules: PerformanceCostRule[]) {
+  const activeCostRules = costRules.filter((rule) => rule.brandSlug === brand.slug && rule.status === 'active')
+  if (activeCostRules.length === 0) {
+    return new Map<string, ShopifyCostDay>()
+  }
+
+  const token = await shopifyToken(brand)
+  if (!token) {
+    return new Map<string, ShopifyCostDay>()
+  }
+
+  const orderQuery = `created_at:>=${since} created_at:<${addIsoDays(until, 1)}`
+  const query = `
+    query TrueCostOrders($cursor: String, $orderQuery: String!) {
+      orders(first: 100, after: $cursor, query: $orderQuery, sortKey: CREATED_AT) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        edges {
+          node {
+            id
+            name
+            createdAt
+            cancelledAt
+            displayFinancialStatus
+            displayFulfillmentStatus
+            shippingAddress {
+              countryCodeV2
+              provinceCode
+            }
+            lineItems(first: 100) {
+              edges {
+                node {
+                  sku
+                  title
+                  name
+                  variantTitle
+                  quantity
+                  requiresShipping
+                  product {
+                    title
+                  }
+                  variant {
+                    sku
+                    title
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `
+  const rows = new Map<string, ShopifyCostDay>()
+  let cursor: string | null = null
+  let page = 0
+
+  while (page < 30) {
+    page += 1
+    const payload = await shopifyAdminGraphql<{
+      orders?: {
+        pageInfo?: {
+          hasNextPage?: boolean
+          endCursor?: string | null
+        }
+        edges?: Array<{
+          node?: ShopifyCostOrder | null
+        }>
+      }
+    }>(brand, token, query, { cursor, orderQuery })
+
+    for (const edge of payload.orders?.edges ?? []) {
+      const order = edge.node
+      if (!order?.createdAt || orderWasCancelledBeforeFulfillment(order)) {
+        continue
+      }
+
+      const date = formatDateInTimezone(new Date(order.createdAt), brand.timezone || 'America/New_York')
+      if (date < since || date > until) {
+        continue
+      }
+
+      const product = calculateOrderProductCosts(order, activeCostRules, date)
+      const shipping = calculateOrderShippingCost(order, activeCostRules, date, product.shippingKitQuantity)
+      const current = rows.get(date) ?? { productCogs: 0, shippingCost: 0, ordersCosted: 0, rulesApplied: {} }
+      const rulesApplied = { ...current.rulesApplied }
+
+      for (const [label, count] of Object.entries(product.rulesApplied)) {
+        rulesApplied[label] = (rulesApplied[label] ?? 0) + count
+      }
+      if (shipping.ruleLabel) {
+        addRuleApplied(rulesApplied, shipping.ruleLabel)
+      }
+
+      rows.set(date, {
+        productCogs: current.productCogs + product.productCogs,
+        shippingCost: current.shippingCost + shipping.shippingCost,
+        ordersCosted: current.ordersCosted + 1,
+        rulesApplied,
+      })
+    }
+
+    if (!payload.orders?.pageInfo?.hasNextPage || !payload.orders.pageInfo.endCursor) {
+      break
+    }
+
+    cursor = payload.orders.pageInfo.endCursor
   }
 
   return rows
@@ -963,13 +1456,23 @@ async function googleDaily(brand: BrandConfig, since: string, until: string) {
   return rows
 }
 
-function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; shopify: Map<string, ShopifyDay>; axon: Map<string, PlatformDay>; google: Map<string, PlatformDay> }) {
-  const dates = new Set([...maps.meta.keys(), ...maps.shopify.keys(), ...maps.axon.keys(), ...maps.google.keys()])
+function buildRows(
+  brand: BrandConfig,
+  maps: {
+    meta: Map<string, PlatformDay>
+    shopify: Map<string, ShopifyDay>
+    shopifyCosts: Map<string, ShopifyCostDay>
+    axon: Map<string, PlatformDay>
+    google: Map<string, PlatformDay>
+  },
+) {
+  const dates = new Set([...maps.meta.keys(), ...maps.shopify.keys(), ...maps.shopifyCosts.keys(), ...maps.axon.keys(), ...maps.google.keys()])
   const lastSync = new Date().toISOString()
 
   return [...dates].map((date) => {
     const meta = maps.meta.get(date) ?? {}
     const shopify = maps.shopify.get(date) ?? {}
+    const shopifyCosts = maps.shopifyCosts.get(date)
     const axon = maps.axon.get(date) ?? {}
     const google = maps.google.get(date) ?? {}
     const revenue = toNumber(shopify.revenue)
@@ -985,8 +1488,12 @@ function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; s
     const googlePurchases = toNumber(google.purchases)
     const totalAdSpend = metaSpend + axonSpend + googleSpend
     const attributedRevenue = metaRevenue + axonRevenue + googleRevenue
-    const cogs = revenue * (toNumber(brand.costs?.cogs_pct) / 100)
-    const contributionAfterAds = revenue - cogs - totalAdSpend
+    const fallbackCogs = revenue * (toNumber(brand.costs?.cogs_pct) / 100)
+    const hasCalculatedCosts = Boolean(shopifyCosts && shopifyCosts.ordersCosted > 0)
+    const productCogs = hasCalculatedCosts ? toNumber(shopifyCosts?.productCogs) : fallbackCogs
+    const shippingCost = hasCalculatedCosts ? toNumber(shopifyCosts?.shippingCost) : 0
+    const variableCost = productCogs + shippingCost
+    const contributionAfterAds = revenue - variableCost - totalAdSpend
 
     return {
       brand_slug: brand.slug,
@@ -1024,7 +1531,11 @@ function buildRows(brand: BrandConfig, maps: { meta: Map<string, PlatformDay>; s
       shipping: toNumber(shopify.shipping),
       sessions: toNumber(shopify.sessions),
       cvr: toNumber(shopify.cvr),
-      cogs,
+      cogs: productCogs,
+      product_cogs: productCogs,
+      shipping_cost: shippingCost,
+      variable_cost: variableCost,
+      cost_rules_applied: shopifyCosts?.rulesApplied ?? {},
       contribution_after_ads: contributionAfterAds,
       net_profit: contributionAfterAds,
       last_sync: lastSync,
@@ -1056,9 +1567,14 @@ async function syncPerformance(from: string, to: string, auth: string, useServic
   const brands = loadBrandConfigs()
   const errors: string[] = []
   let rowsWritten = 0
+  const costRules = await readCostRules(auth, useServiceRole).catch((error) => {
+    errors.push(`cost rules: ${error instanceof Error ? error.message : 'unknown error'}`)
+    return [] as PerformanceCostRule[]
+  })
 
   for (const brand of brands) {
-    const [meta, shopify, axon, google] = await Promise.all([
+    const brandCostRules = costRules.filter((rule) => rule.brandSlug === brand.slug)
+    const [meta, shopify, shopifyCosts, axon, google] = await Promise.all([
       metaDaily(brand, from, to).catch((error) => {
         errors.push(`${brand.slug} meta: ${error instanceof Error ? error.message : 'unknown error'}`)
         return new Map<string, PlatformDay>()
@@ -1066,6 +1582,10 @@ async function syncPerformance(from: string, to: string, auth: string, useServic
       shopifyDaily(brand, from, to).catch((error) => {
         errors.push(`${brand.slug} shopify: ${error instanceof Error ? error.message : 'unknown error'}`)
         return new Map<string, ShopifyDay>()
+      }),
+      shopifyOrderCostsDaily(brand, from, to, brandCostRules).catch((error) => {
+        errors.push(`${brand.slug} shopify costs: ${error instanceof Error ? error.message : 'unknown error'}`)
+        return new Map<string, ShopifyCostDay>()
       }),
       axonDaily(brand, from, to).catch((error) => {
         errors.push(`${brand.slug} axon: ${error instanceof Error ? error.message : 'unknown error'}`)
@@ -1076,7 +1596,7 @@ async function syncPerformance(from: string, to: string, auth: string, useServic
         return new Map<string, PlatformDay>()
       }),
     ])
-    const rows = buildRows(brand, { meta, shopify, axon, google })
+    const rows = buildRows(brand, { meta, shopify, shopifyCosts, axon, google })
 
     try {
       await upsertRows(rows, auth, useServiceRole)

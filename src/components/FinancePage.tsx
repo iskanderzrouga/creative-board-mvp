@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   PERFORMANCE_BRANDS,
+  deletePerformanceCostRule,
   loadBrandDailyPerformance,
+  loadPerformanceCostRules,
+  savePerformanceCostRule,
   syncBrandDailyPerformance,
   type BrandDailyPerformanceRow,
+  type PerformanceCostRule,
+  type PerformanceCostType,
   type PerformanceConnectionHealth,
   type PerformanceConnectionPlatform,
   type PerformanceConnectionStatus,
@@ -280,6 +285,9 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
       shipping: acc.shipping + row.shipping,
       sessions: acc.sessions + row.sessions,
       cogs: acc.cogs + row.cogs,
+      productCogs: acc.productCogs + (row.productCogs ?? row.cogs),
+      shippingCost: acc.shippingCost + (row.shippingCost ?? 0),
+      variableCost: acc.variableCost + (row.variableCost ?? ((row.productCogs ?? row.cogs) + (row.shippingCost ?? 0))),
       contributionAfterAds: acc.contributionAfterAds + row.contributionAfterAds,
       netProfit: acc.netProfit + row.netProfit,
     }),
@@ -306,6 +314,9 @@ function sumRows(rows: BrandDailyPerformanceRow[]) {
       shipping: 0,
       sessions: 0,
       cogs: 0,
+      productCogs: 0,
+      shippingCost: 0,
+      variableCost: 0,
       contributionAfterAds: 0,
       netProfit: 0,
     },
@@ -612,6 +623,10 @@ function ShopifyExtras({ rows }: { rows: BrandDailyPerformanceRow[] }) {
           ['Net sales', formatMoney(totals.netSales)],
           ['Discounts', formatMoney(totals.discounts)],
           ['Taxes', formatMoney(totals.taxes)],
+          ['Shipping charged', formatMoney(totals.shipping)],
+          ['Product COGS', formatMoney(totals.productCogs)],
+          ['Shipping cost', formatMoney(totals.shippingCost)],
+          ['Variable cost', formatMoney(totals.variableCost)],
           ['Refunds', formatMoney(totals.refunds)],
           ['Sessions', totals.sessions > 0 ? formatNumber(totals.sessions) : '—'],
           ['CVR', totals.cvr > 0 ? formatPercent(totals.cvr) : '—'],
@@ -625,6 +640,310 @@ function ShopifyExtras({ rows }: { rows: BrandDailyPerformanceRow[] }) {
           </div>
         ))}
       </div>
+    </section>
+  )
+}
+
+const costInputStyle: CSSProperties = {
+  width: '100%',
+  minWidth: 0,
+  border: '1px solid #d6dee8',
+  borderRadius: 6,
+  padding: '7px 8px',
+  color: ink,
+  fontSize: 12,
+  background: '#ffffff',
+  boxSizing: 'border-box',
+}
+
+function parseOptionalNumber(value: string) {
+  if (value.trim() === '') {
+    return null
+  }
+
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function createDraftCostRule(brandSlug: PerformanceBrandSlug, costType: PerformanceCostType): PerformanceCostRule {
+  const now = new Date().toISOString()
+
+  return {
+    id: `draft-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+    brandSlug,
+    costType,
+    label: costType === 'product' ? 'New product cost rule' : 'New shipping cost rule',
+    status: 'active',
+    priority: 100,
+    regionKey: costType === 'shipping' ? 'default' : null,
+    countryCode: costType === 'shipping' ? 'US' : null,
+    provinceCodes: [],
+    skuPattern: null,
+    titlePattern: null,
+    variantPattern: null,
+    minKitQuantity: costType === 'shipping' ? 1 : null,
+    maxKitQuantity: costType === 'shipping' ? 1 : null,
+    kitMultiplier: null,
+    cartridgesPerKit: costType === 'product' ? 0 : null,
+    dispenserUnitCost: costType === 'product' ? 0 : null,
+    cartridgeUnitCost: costType === 'product' ? 0 : null,
+    fixedCost: 0,
+    perExtraKitCost: null,
+    effectiveFrom: null,
+    effectiveTo: null,
+    notes: null,
+    metadata: {},
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function TextField({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string | null
+  placeholder?: string
+  onChange: (value: string | null) => void
+}) {
+  return (
+    <input
+      value={value ?? ''}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value.trim() === '' ? null : event.target.value)}
+      style={costInputStyle}
+    />
+  )
+}
+
+function NumberField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: number | null
+  onChange: (value: number | null) => void
+  placeholder?: string
+}) {
+  return (
+    <input
+      type="number"
+      step="0.01"
+      value={value ?? ''}
+      placeholder={placeholder}
+      onChange={(event) => onChange(parseOptionalNumber(event.target.value))}
+      style={{ ...costInputStyle, ...numericStyle }}
+    />
+  )
+}
+
+function CostRuleGrid({
+  title,
+  rules,
+  onChangeRule,
+  onDeleteRule,
+}: {
+  title: string
+  rules: PerformanceCostRule[]
+  onChangeRule: (id: string, patch: Partial<PerformanceCostRule>) => void
+  onDeleteRule: (rule: PerformanceCostRule) => void
+}) {
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <h3 style={{ margin: 0, color: '#111827', fontSize: 14, lineHeight: 1.2, fontWeight: 700, letterSpacing: 0 }}>{title}</h3>
+      <div style={{ overflowX: 'auto', border: `1px solid ${hairline}`, borderRadius: 8 }}>
+        <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: subdued, background: '#fbfcfd', textAlign: 'left' }}>
+              {['On', 'Rule', 'Priority', 'Match', 'Region', 'Qty', 'Unit costs', 'Dates', 'Notes', ''].map((heading) => (
+                <th key={heading} style={{ padding: '10px 9px', fontWeight: 650, borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{heading}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((rule) => (
+              <tr key={rule.id} style={{ borderBottom: '1px solid #eef1f4', verticalAlign: 'top' }}>
+                <td style={{ padding: 9, width: 54 }}>
+                  <input
+                    aria-label={`${rule.label} active`}
+                    type="checkbox"
+                    checked={rule.status === 'active'}
+                    onChange={(event) => onChangeRule(rule.id, { status: event.target.checked ? 'active' : 'paused' })}
+                  />
+                </td>
+                <td style={{ padding: 9, width: 210 }}>
+                  <TextField value={rule.label} onChange={(value) => onChangeRule(rule.id, { label: value ?? '' })} />
+                </td>
+                <td style={{ padding: 9, width: 90 }}>
+                  <NumberField value={rule.priority} onChange={(value) => onChangeRule(rule.id, { priority: value ?? 100 })} />
+                </td>
+                <td style={{ padding: 9, width: 240 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <TextField value={rule.skuPattern} placeholder="SKU" onChange={(value) => onChangeRule(rule.id, { skuPattern: value })} />
+                    <TextField value={rule.titlePattern} placeholder="Title" onChange={(value) => onChangeRule(rule.id, { titlePattern: value })} />
+                    <TextField value={rule.variantPattern} placeholder="Variant" onChange={(value) => onChangeRule(rule.id, { variantPattern: value })} />
+                  </div>
+                </td>
+                <td style={{ padding: 9, width: 190 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <TextField value={rule.regionKey} placeholder="Region" onChange={(value) => onChangeRule(rule.id, { regionKey: value })} />
+                    <TextField value={rule.countryCode} placeholder="Country" onChange={(value) => onChangeRule(rule.id, { countryCode: value?.toUpperCase() ?? null })} />
+                    <TextField
+                      value={rule.provinceCodes.join(', ')}
+                      placeholder="States"
+                      onChange={(value) => onChangeRule(rule.id, {
+                        provinceCodes: value
+                          ? value.split(',').map((part) => part.trim().toUpperCase()).filter(Boolean)
+                          : [],
+                      })}
+                    />
+                  </div>
+                </td>
+                <td style={{ padding: 9, width: 150 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    <NumberField value={rule.minKitQuantity} placeholder="Min" onChange={(value) => onChangeRule(rule.id, { minKitQuantity: value })} />
+                    <NumberField value={rule.maxKitQuantity} placeholder="Max" onChange={(value) => onChangeRule(rule.id, { maxKitQuantity: value })} />
+                    <NumberField value={rule.kitMultiplier} placeholder="Kits" onChange={(value) => onChangeRule(rule.id, { kitMultiplier: value })} />
+                    <NumberField value={rule.cartridgesPerKit} placeholder="Carts" onChange={(value) => onChangeRule(rule.id, { cartridgesPerKit: value })} />
+                  </div>
+                </td>
+                <td style={{ padding: 9, width: 190 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    <NumberField value={rule.dispenserUnitCost} placeholder="Disp" onChange={(value) => onChangeRule(rule.id, { dispenserUnitCost: value })} />
+                    <NumberField value={rule.cartridgeUnitCost} placeholder="Cart" onChange={(value) => onChangeRule(rule.id, { cartridgeUnitCost: value })} />
+                    <NumberField value={rule.fixedCost} placeholder="Fixed" onChange={(value) => onChangeRule(rule.id, { fixedCost: value })} />
+                    <NumberField value={rule.perExtraKitCost} placeholder="Extra" onChange={(value) => onChangeRule(rule.id, { perExtraKitCost: value })} />
+                  </div>
+                </td>
+                <td style={{ padding: 9, width: 170 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <input
+                      type="date"
+                      value={rule.effectiveFrom ?? ''}
+                      onChange={(event) => onChangeRule(rule.id, { effectiveFrom: event.target.value || null })}
+                      style={costInputStyle}
+                    />
+                    <input
+                      type="date"
+                      value={rule.effectiveTo ?? ''}
+                      onChange={(event) => onChangeRule(rule.id, { effectiveTo: event.target.value || null })}
+                      style={costInputStyle}
+                    />
+                  </div>
+                </td>
+                <td style={{ padding: 9, width: 220 }}>
+                  <textarea
+                    value={rule.notes ?? ''}
+                    onChange={(event) => onChangeRule(rule.id, { notes: event.target.value.trim() === '' ? null : event.target.value })}
+                    style={{ ...costInputStyle, minHeight: 68, resize: 'vertical', lineHeight: 1.35 }}
+                  />
+                </td>
+                <td style={{ padding: 9, width: 70 }}>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteRule(rule)}
+                    style={{ ...controlButtonStyle, borderColor: '#fecaca', color: '#be123c', minHeight: 30 }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {rules.length === 0 ? (
+              <tr>
+                <td colSpan={10} style={{ padding: 14, color: subdued }}>No rules yet.</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function CostRulesPanel({
+  rules,
+  selectedBrand,
+  loading,
+  saving,
+  error,
+  onSelectBrand,
+  onAddRule,
+  onChangeRule,
+  onDeleteRule,
+  onSave,
+}: {
+  rules: PerformanceCostRule[]
+  selectedBrand: PerformanceBrandSlug
+  loading: boolean
+  saving: boolean
+  error: string | null
+  onSelectBrand: (brand: PerformanceBrandSlug) => void
+  onAddRule: (costType: PerformanceCostType) => void
+  onChangeRule: (id: string, patch: Partial<PerformanceCostRule>) => void
+  onDeleteRule: (rule: PerformanceCostRule) => void
+  onSave: () => void
+}) {
+  const brandRules = rules.filter((rule) => rule.brandSlug === selectedBrand)
+  const productRules = brandRules.filter((rule) => rule.costType === 'product')
+  const shippingRules = brandRules.filter((rule) => rule.costType === 'shipping')
+
+  return (
+    <section style={{ ...panelStyle, padding: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Costs</h2>
+          <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>{brandName.get(selectedBrand)} · {brandRules.length} rules</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {PERFORMANCE_BRANDS.map((brand) => (
+            <button
+              key={brand.slug}
+              type="button"
+              onClick={() => onSelectBrand(brand.slug)}
+              style={{
+                ...controlButtonStyle,
+                borderColor: selectedBrand === brand.slug ? brand.color : '#cfd7e2',
+                background: selectedBrand === brand.slug ? brand.tint : '#ffffff',
+                color: selectedBrand === brand.slug ? brand.color : '#465a70',
+                fontWeight: selectedBrand === brand.slug ? 650 : 500,
+              }}
+            >
+              {brand.name}
+            </button>
+          ))}
+          <button type="button" onClick={() => onAddRule('product')} style={{ ...controlButtonStyle, borderColor: shopifyGreen, color: shopifyGreen }}>Add product</button>
+          <button type="button" onClick={() => onAddRule('shipping')} style={{ ...controlButtonStyle, borderColor: shopifyBlue, color: shopifyBlue }}>Add shipping</button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || loading}
+            style={{
+              ...controlButtonStyle,
+              borderColor: '#111827',
+              background: saving ? '#eef2f7' : '#111827',
+              color: saving ? '#52647a' : '#ffffff',
+              cursor: saving || loading ? 'wait' : 'pointer',
+            }}
+          >
+            {saving ? 'Saving' : 'Save costs'}
+          </button>
+        </div>
+      </div>
+      {error ? (
+        <div style={{ border: '1px solid #fbbf24', background: '#fffbeb', color: '#92400e', borderRadius: 7, padding: '10px 12px', fontSize: 12, marginBottom: 14 }}>
+          {error}
+        </div>
+      ) : null}
+      {loading ? (
+        <div style={{ color: subdued, fontSize: 13 }}>Loading costs...</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 18 }}>
+          <CostRuleGrid title="Product COGS" rules={productRules} onChangeRule={onChangeRule} onDeleteRule={onDeleteRule} />
+          <CostRuleGrid title="Shipping Cost" rules={shippingRules} onChangeRule={onChangeRule} onDeleteRule={onDeleteRule} />
+        </div>
+      )}
     </section>
   )
 }
@@ -1049,6 +1368,11 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
   const [generatedAt, setGeneratedAt] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [syncSummary, setSyncSummary] = useState<string | null>(null)
+  const [costRules, setCostRules] = useState<PerformanceCostRule[]>([])
+  const [costRulesLoading, setCostRulesLoading] = useState(true)
+  const [costRulesSaving, setCostRulesSaving] = useState(false)
+  const [costRulesError, setCostRulesError] = useState<string | null>(null)
+  const [costRuleBrand, setCostRuleBrand] = useState<PerformanceBrandSlug>('trueclean')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [brandFilter, setBrandFilter] = useState<BrandFilter>('all')
@@ -1101,9 +1425,27 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
     }
   }, [defaultRange])
 
+  const loadCosts = useCallback(async () => {
+    setCostRulesLoading(true)
+    const result = await loadPerformanceCostRules()
+    setCostRules(result.rules)
+    setCostRulesError(result.error)
+    setCostRulesLoading(false)
+  }, [])
+
   useEffect(() => {
     void loadPerformance(defaultRange)
   }, [defaultRange, loadPerformance])
+
+  useEffect(() => {
+    void loadCosts()
+  }, [loadCosts])
+
+  useEffect(() => {
+    if (brandFilter !== 'all') {
+      setCostRuleBrand(brandFilter)
+    }
+  }, [brandFilter])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -1168,6 +1510,48 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
 
   const refreshPerformance = () => {
     void loadPerformance(activeRange, { showRefresh: true })
+  }
+
+  const changeCostRule = (id: string, patch: Partial<PerformanceCostRule>) => {
+    setCostRules((currentRules) => currentRules.map((rule) => rule.id === id ? { ...rule, ...patch } : rule))
+  }
+
+  const addCostRule = (costType: PerformanceCostType) => {
+    setCostRules((currentRules) => [createDraftCostRule(costRuleBrand, costType), ...currentRules])
+  }
+
+  const removeCostRule = (rule: PerformanceCostRule) => {
+    const nextRules = costRules.filter((item) => item.id !== rule.id)
+    setCostRules(nextRules)
+
+    if (!rule.id.startsWith('draft-')) {
+      void deletePerformanceCostRule(rule).catch((error) => {
+        setCostRules(costRules)
+        setCostRulesError(error instanceof Error ? error.message : 'Could not delete cost rule.')
+      })
+    }
+  }
+
+  const saveCostRules = async () => {
+    setCostRulesSaving(true)
+    setCostRulesError(null)
+
+    try {
+      const savedRules: PerformanceCostRule[] = []
+      for (const rule of costRules) {
+        savedRules.push(await savePerformanceCostRule(rule))
+      }
+      setCostRules(savedRules.sort((left, right) =>
+        left.brandSlug.localeCompare(right.brandSlug) ||
+        left.costType.localeCompare(right.costType) ||
+        left.priority - right.priority ||
+        left.label.localeCompare(right.label),
+      ))
+    } catch (error) {
+      setCostRulesError(error instanceof Error ? error.message : 'Could not save cost rules.')
+    } finally {
+      setCostRulesSaving(false)
+    }
   }
 
   return (
@@ -1315,6 +1699,18 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               trend={dailyTrendRows.map((row) => row.totalAdSpend)}
             />
             <StatTile
+              label="Product COGS"
+              value={formatMoney(totals.productCogs)}
+              helper={`${totals.revenue > 0 ? ((totals.productCogs / totals.revenue) * 100).toFixed(1) : '0.0'}% of revenue`}
+              accent="#7c3aed"
+            />
+            <StatTile
+              label="Shipping Cost"
+              value={formatMoney(totals.shippingCost)}
+              helper={`${totals.orders > 0 ? formatMoney(totals.shippingCost / totals.orders, 2) : '—'} per order`}
+              accent="#f97316"
+            />
+            <StatTile
               label="Blended ROAS"
               value={formatMetric(totals.blendedRoas)}
               helper="Shopify revenue ÷ total paid spend"
@@ -1324,7 +1720,7 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
             <StatTile
               label="Contribution"
               value={formatMoney(totals.contributionAfterAds)}
-              helper={`${(totals.contributionMargin * 100).toFixed(1)}% after ads`}
+              helper={`${(totals.contributionMargin * 100).toFixed(1)}% after product, shipping, ads`}
               accent="#64748b"
               trend={dailyTrendRows.map((row) => row.contributionAfterAds)}
             />
@@ -1348,6 +1744,21 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
 
         <div style={{ marginBottom: 58 }}>
           <ShopifyExtras rows={visibleRows} />
+        </div>
+
+        <div style={{ marginBottom: 58 }}>
+          <CostRulesPanel
+            rules={costRules}
+            selectedBrand={costRuleBrand}
+            loading={costRulesLoading}
+            saving={costRulesSaving}
+            error={costRulesError}
+            onSelectBrand={setCostRuleBrand}
+            onAddRule={addCostRule}
+            onChangeRule={changeCostRule}
+            onDeleteRule={removeCostRule}
+            onSave={saveCostRules}
+          />
         </div>
 
         {showPerformanceTrend ? (
@@ -1375,10 +1786,10 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: 1240, borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', minWidth: 1460, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: subdued, background: '#fbfcfd', textAlign: 'left' }}>
-                    {['Date', 'Brand', 'Shopify Revenue', 'Orders', 'AOV', 'Meta', 'Axon', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Refunds', 'Contribution'].map((heading) => (
+                    {['Date', 'Brand', 'Shopify Revenue', 'Orders', 'AOV', 'Product COGS', 'Ship Cost', 'Meta', 'Axon', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Refunds', 'Contribution'].map((heading) => (
                       <th key={heading} style={{ padding: '11px 12px', fontWeight: 650, borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{heading}</th>
                     ))}
                   </tr>
@@ -1398,6 +1809,8 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
                         <td style={{ ...numericStyle, padding: '12px', color: ink, fontWeight: 550 }}>{formatMoney(row.revenue)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatNumber(row.orders)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.aov > 0 ? formatMoney(row.aov, 2) : '—'}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{(row.productCogs ?? row.cogs) > 0 ? formatMoney(row.productCogs ?? row.cogs) : '—'}</td>
+                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{(row.shippingCost ?? 0) > 0 ? formatMoney(row.shippingCost) : '—'}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(row.metaSpend)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.axonSpend > 0 ? formatMoney(row.axonSpend) : '—'}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
