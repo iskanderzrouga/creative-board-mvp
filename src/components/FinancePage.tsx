@@ -132,6 +132,16 @@ function formatMetric(value: number) {
   return Number.isFinite(value) && value > 0 ? `${value.toFixed(2)}x` : '—'
 }
 
+function hasMissingTrueCleanCostData(rows: BrandDailyPerformanceRow[]) {
+  return rows.some((row) =>
+    row.brandSlug === 'trueclean' &&
+    row.revenue > 0 &&
+    row.orders > 0 &&
+    (row.productCogs ?? row.cogs ?? 0) === 0 &&
+    (row.shippingCost ?? 0) === 0,
+  )
+}
+
 function formatDate(value: string) {
   const parsed = new Date(`${value}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) {
@@ -610,27 +620,32 @@ function PlatformBreakdown({ rows }: { rows: BrandDailyPerformanceRow[] }) {
   )
 }
 
-function ShopifyExtras({ rows }: { rows: BrandDailyPerformanceRow[] }) {
+function ShopifyExtras({ rows, showCostMetrics }: { rows: BrandDailyPerformanceRow[]; showCostMetrics: boolean }) {
   const totals = sumRows(rows)
+  const metrics = [
+    ['AOV', totals.aov > 0 ? formatMoney(totals.aov, 2) : '—'],
+    ['Gross sales', formatMoney(totals.grossSales)],
+    ['Net sales', formatMoney(totals.netSales)],
+    ['Discounts', formatMoney(totals.discounts)],
+    ['Taxes', formatMoney(totals.taxes)],
+    ['Shipping charged (revenue)', formatMoney(totals.shipping)],
+    ...(showCostMetrics
+      ? [
+          ['Product COGS', formatMoney(totals.productCogs)],
+          ['Shipping cost', formatMoney(totals.shippingCost)],
+          ['Variable cost', formatMoney(totals.variableCost)],
+        ]
+      : []),
+    ['Refunds', formatMoney(totals.refunds)],
+    ['Sessions', totals.sessions > 0 ? formatNumber(totals.sessions) : '—'],
+    ['CVR', totals.cvr > 0 ? formatPercent(totals.cvr) : '—'],
+  ]
 
   return (
     <section>
       <SectionHeading title="Store" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
-        {[
-          ['AOV', totals.aov > 0 ? formatMoney(totals.aov, 2) : '—'],
-          ['Gross sales', formatMoney(totals.grossSales)],
-          ['Net sales', formatMoney(totals.netSales)],
-          ['Discounts', formatMoney(totals.discounts)],
-          ['Taxes', formatMoney(totals.taxes)],
-          ['Shipping charged', formatMoney(totals.shipping)],
-          ['Product COGS', formatMoney(totals.productCogs)],
-          ['Shipping cost', formatMoney(totals.shippingCost)],
-          ['Variable cost', formatMoney(totals.variableCost)],
-          ['Refunds', formatMoney(totals.refunds)],
-          ['Sessions', totals.sessions > 0 ? formatNumber(totals.sessions) : '—'],
-          ['CVR', totals.cvr > 0 ? formatPercent(totals.cvr) : '—'],
-        ].map(([label, value]) => (
+        {metrics.map(([label, value]) => (
           <div key={label} style={{ ...panelStyle, padding: 12, minHeight: 116, display: 'grid', alignContent: 'space-between', minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <MetricMark color={shopifyGreen} />
@@ -1400,9 +1415,14 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
     }
 
     try {
-      const data = showRefresh
+      let data = showRefresh
         ? await syncBrandDailyPerformance(nextRange)
         : await loadBrandDailyPerformance(nextRange)
+
+      if (!showRefresh && hasMissingTrueCleanCostData(data.rows)) {
+        data = await syncBrandDailyPerformance(nextRange)
+      }
+
       const sourceErrors = data.sync?.errors ?? []
       const nextError = data.error ?? (sourceErrors.length > 0 ? sourceErrors.slice(0, 3).join(' · ') : null)
       const keepPreviousSnapshot = showRefresh && data.rows.length === 0 && Boolean(nextError)
@@ -1485,6 +1505,7 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
   const latestRows = visibleRows.filter((row) => row.date === latestVisibleDate)
   const dailyTrendRows = useMemo(() => buildDailyTrendRows(visibleRows), [visibleRows])
   const showPerformanceTrend = dailyTrendRows.length > 1
+  const showCostMetrics = brandFilter !== 'all'
   const displayedBrands = brandFilter === 'all'
     ? PERFORMANCE_BRANDS
     : PERFORMANCE_BRANDS.filter((brand) => brand.slug === brandFilter)
@@ -1698,18 +1719,22 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               accent={shopifyBlue}
               trend={dailyTrendRows.map((row) => row.totalAdSpend)}
             />
-            <StatTile
-              label="Product COGS"
-              value={formatMoney(totals.productCogs)}
-              helper={`${totals.revenue > 0 ? ((totals.productCogs / totals.revenue) * 100).toFixed(1) : '0.0'}% of revenue`}
-              accent="#7c3aed"
-            />
-            <StatTile
-              label="Shipping Cost"
-              value={formatMoney(totals.shippingCost)}
-              helper={`${totals.orders > 0 ? formatMoney(totals.shippingCost / totals.orders, 2) : '—'} per order`}
-              accent="#f97316"
-            />
+            {showCostMetrics ? (
+              <>
+                <StatTile
+                  label="Product COGS"
+                  value={formatMoney(totals.productCogs)}
+                  helper={`${totals.revenue > 0 ? ((totals.productCogs / totals.revenue) * 100).toFixed(1) : '0.0'}% of revenue`}
+                  accent="#7c3aed"
+                />
+                <StatTile
+                  label="Shipping Cost"
+                  value={formatMoney(totals.shippingCost)}
+                  helper={`${totals.orders > 0 ? formatMoney(totals.shippingCost / totals.orders, 2) : '—'} per order`}
+                  accent="#f97316"
+                />
+              </>
+            ) : null}
             <StatTile
               label="Blended ROAS"
               value={formatMetric(totals.blendedRoas)}
@@ -1717,13 +1742,15 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               accent={totals.blendedRoas >= 2 ? shopifyGreen : shopifyRed}
               trend={dailyTrendRows.map((row) => row.blendedRoas)}
             />
-            <StatTile
-              label="Contribution"
-              value={formatMoney(totals.contributionAfterAds)}
-              helper={`${(totals.contributionMargin * 100).toFixed(1)}% after product, shipping, ads`}
-              accent="#64748b"
-              trend={dailyTrendRows.map((row) => row.contributionAfterAds)}
-            />
+            {showCostMetrics ? (
+              <StatTile
+                label="Contribution"
+                value={formatMoney(totals.contributionAfterAds)}
+                helper={`${(totals.contributionMargin * 100).toFixed(1)}% after product, shipping, ads`}
+                accent="#64748b"
+                trend={dailyTrendRows.map((row) => row.contributionAfterAds)}
+              />
+            ) : null}
           </div>
         </section>
 
@@ -1743,23 +1770,25 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
         ) : null}
 
         <div style={{ marginBottom: 58 }}>
-          <ShopifyExtras rows={visibleRows} />
+          <ShopifyExtras rows={visibleRows} showCostMetrics={showCostMetrics} />
         </div>
 
-        <div style={{ marginBottom: 58 }}>
-          <CostRulesPanel
-            rules={costRules}
-            selectedBrand={costRuleBrand}
-            loading={costRulesLoading}
-            saving={costRulesSaving}
-            error={costRulesError}
-            onSelectBrand={setCostRuleBrand}
-            onAddRule={addCostRule}
-            onChangeRule={changeCostRule}
-            onDeleteRule={removeCostRule}
-            onSave={saveCostRules}
-          />
-        </div>
+        {showCostMetrics ? (
+          <div style={{ marginBottom: 58 }}>
+            <CostRulesPanel
+              rules={costRules}
+              selectedBrand={costRuleBrand}
+              loading={costRulesLoading}
+              saving={costRulesSaving}
+              error={costRulesError}
+              onSelectBrand={setCostRuleBrand}
+              onAddRule={addCostRule}
+              onChangeRule={changeCostRule}
+              onDeleteRule={removeCostRule}
+              onSave={saveCostRules}
+            />
+          </div>
+        ) : null}
 
         {showPerformanceTrend ? (
           <div style={{ marginBottom: 58 }}>
@@ -1786,10 +1815,26 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: 1460, borderCollapse: 'collapse', fontSize: 12 }}>
+              <table style={{ width: '100%', minWidth: showCostMetrics ? 1460 : 1220, borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: subdued, background: '#fbfcfd', textAlign: 'left' }}>
-                    {['Date', 'Brand', 'Shopify Revenue', 'Orders', 'AOV', 'Product COGS', 'Ship Cost', 'Meta', 'Axon', 'Google', 'Total Spend', 'Platform ROAS', 'Blended ROAS', 'CPA', 'Refunds', 'Contribution'].map((heading) => (
+                    {[
+                      'Date',
+                      'Brand',
+                      'Shopify Revenue',
+                      'Orders',
+                      'AOV',
+                      ...(showCostMetrics ? ['Product COGS', 'Ship Cost'] : []),
+                      'Meta',
+                      'Axon',
+                      'Google',
+                      'Total Spend',
+                      'Platform ROAS',
+                      'Blended ROAS',
+                      'CPA',
+                      'Refunds',
+                      ...(showCostMetrics ? ['Contribution'] : []),
+                    ].map((heading) => (
                       <th key={heading} style={{ padding: '11px 12px', fontWeight: 650, borderBottom: `1px solid ${hairline}`, whiteSpace: 'nowrap' }}>{heading}</th>
                     ))}
                   </tr>
@@ -1809,8 +1854,12 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
                         <td style={{ ...numericStyle, padding: '12px', color: ink, fontWeight: 550 }}>{formatMoney(row.revenue)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatNumber(row.orders)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.aov > 0 ? formatMoney(row.aov, 2) : '—'}</td>
-                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{(row.productCogs ?? row.cogs) > 0 ? formatMoney(row.productCogs ?? row.cogs) : '—'}</td>
-                        <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{(row.shippingCost ?? 0) > 0 ? formatMoney(row.shippingCost) : '—'}</td>
+                        {showCostMetrics ? (
+                          <>
+                            <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{(row.productCogs ?? row.cogs) > 0 ? formatMoney(row.productCogs ?? row.cogs) : '—'}</td>
+                            <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{(row.shippingCost ?? 0) > 0 ? formatMoney(row.shippingCost) : '—'}</td>
+                          </>
+                        ) : null}
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(row.metaSpend)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.axonSpend > 0 ? formatMoney(row.axonSpend) : '—'}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{row.googleSpend > 0 ? formatMoney(row.googleSpend) : '—'}</td>
@@ -1819,7 +1868,9 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
                         <td style={{ ...numericStyle, padding: '12px', color: row.blendedRoas >= 2 ? '#047857' : '#b45309', fontWeight: 650 }}>{formatMetric(row.blendedRoas)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: '#465a70' }}>{formatMoney(row.cpa, 2)}</td>
                         <td style={{ ...numericStyle, padding: '12px', color: row.refunds > 0 ? '#be123c' : subdued }}>{row.refunds > 0 ? formatMoney(row.refunds) : '—'}</td>
-                        <td style={{ ...numericStyle, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatMoney(row.contributionAfterAds)}</td>
+                        {showCostMetrics ? (
+                          <td style={{ ...numericStyle, padding: '12px', color: row.contributionAfterAds >= 0 ? '#047857' : '#be123c', fontWeight: 650 }}>{formatMoney(row.contributionAfterAds)}</td>
+                        ) : null}
                       </tr>
                     )
                   })}
