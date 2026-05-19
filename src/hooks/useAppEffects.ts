@@ -90,6 +90,10 @@ interface UseAppEffectsOptions {
   localFallbackStateRef: MutableRefObject<AppState>
   remoteHydratedRef: MutableRefObject<boolean>
   remoteSaveTimerRef: MutableRefObject<number | null>
+  acknowledgedRemoteMutationRef: MutableRefObject<{
+    signature: string
+    updatedAt: string | null
+  } | null>
   mainDirtyRef: MutableRefObject<boolean>
   backlogDirtyRef: MutableRefObject<boolean>
   transferInProgressRef: MutableRefObject<boolean>
@@ -139,6 +143,7 @@ export function useAppEffects({
   localFallbackStateRef,
   remoteHydratedRef,
   remoteSaveTimerRef,
+  acknowledgedRemoteMutationRef,
   mainDirtyRef,
   backlogDirtyRef,
   transferInProgressRef,
@@ -352,6 +357,24 @@ export function useAppEffects({
     let cancelled = false
     let retryTimerId: number | null = null
     const currentRemoteStateSignature = getRemoteStateSignature(state)
+    const acknowledgedMutation = acknowledgedRemoteMutationRef.current
+
+    if (acknowledgedMutation?.signature === currentRemoteStateSignature) {
+      acknowledgedRemoteMutationRef.current = null
+      lastRemoteStateSignatureRef.current = currentRemoteStateSignature
+      if (acknowledgedMutation.updatedAt) {
+        lastSyncedAtRef.current = acknowledgedMutation.updatedAt
+        setLastSyncedAt(acknowledgedMutation.updatedAt)
+      }
+      mainDirtyRef.current = false
+      setSyncStatus(acknowledgedMutation.updatedAt ? 'synced' : 'local')
+      persistSyncMetadata({
+        lastSyncedAt: acknowledgedMutation.updatedAt ?? lastSyncedAtRef.current,
+        pendingRemoteBaseUpdatedAt: null,
+        pendingRemoteSignature: null,
+      })
+      return
+    }
 
     if (lastRemoteStateSignatureRef.current === currentRemoteStateSignature) {
       mainDirtyRef.current = false
@@ -464,6 +487,7 @@ export function useAppEffects({
     accessStatus,
     authEnabled,
     authStatus,
+    acknowledgedRemoteMutationRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
     remoteSyncErrorShown,

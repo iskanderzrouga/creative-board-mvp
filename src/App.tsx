@@ -105,6 +105,7 @@ import {
   getQuickCreateDefaults,
   getTaskTypeById,
   getTeamMemberById,
+  getTeamMemberByName,
   getVisibleCards,
   getVisibleColumns,
   isProductionDevHandoffCard,
@@ -118,6 +119,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   dismissNotification,
+  coerceAppState,
   loadAppState,
   loadSyncMetadata,
   persistAppState,
@@ -146,7 +148,10 @@ import {
   type Timeframe,
   type ViewerContext,
 } from './board'
-import { getRemoteStateSignature } from './remoteAppState'
+import {
+  getRemoteStateSignature,
+  mergeRemoteAppStateWithLocalState,
+} from './remoteAppState'
 import {
   notifyCreativeBlockerAdded,
   notifyCreativeBlockerRemoved,
@@ -466,6 +471,10 @@ function App() {
   const localFallbackStateRef = useRef(state)
   const remoteHydratedRef = useRef(!authEnabled)
   const remoteSaveTimerRef = useRef<number | null>(null)
+  const acknowledgedRemoteMutationRef = useRef<{
+    signature: string
+    updatedAt: string | null
+  } | null>(null)
   const mainDirtyRef = useRef(false)
   const backlogDirtyRef = useRef(false)
   const transferInProgressRef = useRef(false)
@@ -1098,6 +1107,7 @@ function App() {
     localFallbackStateRef,
     remoteHydratedRef,
     remoteSaveTimerRef,
+    acknowledgedRemoteMutationRef,
     mainDirtyRef,
     backlogDirtyRef,
     transferInProgressRef,
@@ -1665,6 +1675,161 @@ function App() {
         portfolio.id === portfolioId ? updater(portfolio) : portfolio,
       ),
     }))
+  }
+
+  function shouldUseScopedCardMutation() {
+    return (
+      state.activeRole.mode === 'contributor' &&
+      authEnabled &&
+      authStatus === 'signed-in' &&
+      accessStatus === 'granted' &&
+      isSupabaseConfigured()
+    )
+  }
+
+  function acknowledgeRemoteMutation(nextState: AppState, updatedAt: string | null) {
+    acknowledgedRemoteMutationRef.current = {
+      signature: getRemoteStateSignature(nextState),
+      updatedAt,
+    }
+    if (updatedAt) {
+      setLastSyncedAt(updatedAt)
+    }
+  }
+
+  function mergeRemoteMutationState(remoteState: unknown, fallbackState: AppState) {
+    if (!remoteState) {
+      return fallbackState
+    }
+
+    return mergeRemoteAppStateWithLocalState(coerceAppState(remoteState), fallbackState)
+  }
+
+  async function persistRemoteCardMutation(body: Record<string, unknown>, fallbackState: AppState) {
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      return { updatedAt: null, state: fallbackState }
+    }
+
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      throw error
+    }
+
+    const token = data.session?.access_token
+    if (!token) {
+      throw new Error('Sign in again before saving this card.')
+    }
+
+    const response = await fetch('/api/workspace/mutate-card', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean
+      updatedAt?: unknown
+      state?: unknown
+      error?: unknown
+    }
+
+    if (!response.ok || !payload.success) {
+      const message = typeof payload.error === 'string' ? payload.error : 'Card update did not reach the shared board.'
+      throw new Error(message)
+    }
+
+    return {
+      updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
+      state: mergeRemoteMutationState(payload.state, fallbackState),
+    }
+  }
+
+  function commitLocalRemoteMutation(nextState: AppState, updatedAt: string | null) {
+    acknowledgeRemoteMutation(nextState, updatedAt)
+    replaceState(nextState)
+    persistAppState(nextState)
+    persistSyncMetadata({
+      lastSyncedAt: updatedAt ?? lastSyncedAt,
+      pendingRemoteBaseUpdatedAt: null,
+      pendingRemoteSignature: null,
+    })
+  }
+
+  async function saveCardUpdates(
+    portfolioId: string,
+    cardId: string,
+    updates: Partial<Card>,
+    reason: string,
+  ) {
+    const currentState = localFallbackStateRef.current
+    const portfolio = currentState.portfolios.find((item) => item.id === portfolioId) ?? null
+    if (!portfolio) {
+      showToast('Card update failed because the portfolio could not be found.', 'red')
+      return null
+    }
+
+    const actor = getActorName(portfolio)
+    const timestamp = new Date().toISOString()
+    let nextPortfolio = portfolio
+    try {
+      nextPortfolio = applyCardUpdates(
+        portfolio,
+        currentState.settings,
+        cardId,
+        updates,
+        actor,
+        timestamp,
+        viewerContext,
+      )
+    } catch (error) {
+      console.error('Failed to update Production card.', { portfolioId, cardId, error })
+      showToast(
+        error instanceof Error ? `Card update failed: ${error.message}` : 'Card update failed due to an unexpected error.',
+        'red',
+      )
+      return null
+    }
+
+    if (nextPortfolio === portfolio) {
+      showToast('This card update is not allowed by the current board rules.', 'red')
+      return null
+    }
+
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((item) => (item.id === portfolioId ? nextPortfolio : item)),
+    }
+
+    if (shouldUseScopedCardMutation()) {
+      try {
+        const remote = await persistRemoteCardMutation(
+          {
+            action: 'update',
+            portfolioId,
+            cardId,
+            updates,
+            actor,
+            timestamp,
+          },
+          nextState,
+        )
+        commitLocalRemoteMutation(remote.state, remote.updatedAt)
+        return remote.state
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Card update did not reach the shared board.'
+        showToast(`Update failed: ${message}`, 'red')
+        return null
+      }
+    }
+
+    markMainDirty(reason)
+    replaceState(nextState)
+    return nextState
   }
 
   async function createDriveFolderForCard(
@@ -2448,18 +2613,7 @@ function App() {
       return
     }
 
-    const actor = getActorName(state.portfolios.find((portfolio) => portfolio.id === portfolioId) ?? null)
-    updatePortfolio(portfolioId, (portfolio) =>
-      applyCardUpdates(
-        portfolio,
-        state.settings,
-        cardId,
-        { title: nextTitle },
-        actor,
-        new Date().toISOString(),
-        viewerContext,
-      ),
-    )
+    void saveCardUpdates(portfolioId, cardId, { title: nextTitle }, 'update card title')
   }
 
   function handleSaveLaunchLearning(portfolioId: string, cardId: string, learning: string) {
@@ -2470,33 +2624,7 @@ function App() {
       return
     }
 
-    const actor = getActorName(portfolio)
-    const timestamp = new Date().toISOString()
-    const nextState = {
-      ...currentState,
-      portfolios: currentState.portfolios.map((currentPortfolio) =>
-        currentPortfolio.id === portfolioId
-          ? applyCardUpdates(
-              currentPortfolio,
-              currentState.settings,
-              cardId,
-              { launchLearning: learning },
-              actor,
-              timestamp,
-              viewerContext,
-            )
-          : currentPortfolio,
-      ),
-    }
-
-    markMainDirty('update launch learning')
-    replaceState(nextState)
-    persistAppState(nextState)
-    persistSyncMetadata({
-      lastSyncedAt,
-      pendingRemoteBaseUpdatedAt: lastSyncedAt,
-      pendingRemoteSignature: getRemoteStateSignature(nextState),
-    })
+    void saveCardUpdates(portfolioId, cardId, { launchLearning: learning }, 'update launch learning')
   }
 
   function requestCloseSelectedCard() {
@@ -2513,25 +2641,25 @@ function App() {
   }
 
   function saveOpenCard(updates: Partial<Card>) {
+    void saveOpenCardUpdates(updates)
+  }
+
+  async function saveOpenCardUpdates(updates: Partial<Card>) {
     if (!selectedCard || !activeSelectedPortfolio) {
       return
     }
 
     const previousCard = activeSelectedPortfolio.cards.find((card) => card.id === selectedCard.cardId) ?? null
-    const nextCard = previousCard ? { ...previousCard, ...updates } : null
-
-    const actor = getActorName(activeSelectedPortfolio)
-    updatePortfolio(activeSelectedPortfolio.id, (portfolio) =>
-      applyCardUpdates(
-        portfolio,
-        state.settings,
-        selectedCard.cardId,
-        updates,
-        actor,
-        new Date().toISOString(),
-        viewerContext,
-      ),
+    const nextState = await saveCardUpdates(
+      activeSelectedPortfolio.id,
+      selectedCard.cardId,
+      updates,
+      'update open card',
     )
+
+    const nextCard = nextState
+      ?.portfolios.find((portfolio) => portfolio.id === activeSelectedPortfolio.id)
+      ?.cards.find((card) => card.id === selectedCard.cardId) ?? null
 
     if (!previousCard || !nextCard) {
       return
@@ -2541,7 +2669,11 @@ function App() {
       if (!memberId) {
         return 'Unassigned'
       }
-      return getTeamMemberById(activeSelectedPortfolio, memberId)?.name ?? 'Unassigned'
+      return (
+        getTeamMemberByName(activeSelectedPortfolio, memberId)?.name ??
+        getTeamMemberById(activeSelectedPortfolio, memberId)?.name ??
+        'Unassigned'
+      )
     }
     const isDevCard = isProductionDevHandoffCard(state.settings, nextCard)
     const assigneeName = resolveCreativeMemberName(nextCard.owner ?? previousCard.owner)
@@ -2670,6 +2802,7 @@ function App() {
     const payload = (await response.json().catch(() => ({}))) as {
       success?: boolean
       updatedAt?: unknown
+      state?: unknown
       error?: unknown
     }
 
@@ -2678,7 +2811,10 @@ function App() {
       throw new Error(message)
     }
 
-    return typeof payload.updatedAt === 'string' ? payload.updatedAt : null
+    return {
+      updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
+      state: payload.state,
+    }
   }
 
   async function persistRemoteCardComment(portfolioId: string, cardId: string, comment: CommentEntry) {
@@ -2710,6 +2846,7 @@ function App() {
     const payload = (await response.json().catch(() => ({}))) as {
       success?: boolean
       updatedAt?: unknown
+      state?: unknown
       error?: unknown
     }
 
@@ -2718,7 +2855,10 @@ function App() {
       throw new Error(message)
     }
 
-    return typeof payload.updatedAt === 'string' ? payload.updatedAt : null
+    return {
+      updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
+      state: payload.state,
+    }
   }
 
   async function handleDeleteCard() {
@@ -2766,9 +2906,12 @@ function App() {
 
     setDeleteCardPending(true)
     let remoteUpdatedAt: string | null = null
+    let remoteState: unknown = null
     try {
       if (shouldUseRemoteDelete) {
-        remoteUpdatedAt = await persistRemoteCardDeletion(portfolio.id, deletedCardId)
+        const remote = await persistRemoteCardDeletion(portfolio.id, deletedCardId)
+        remoteUpdatedAt = remote?.updatedAt ?? null
+        remoteState = remote?.state ?? null
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Card delete did not reach the shared board.'
@@ -2777,16 +2920,17 @@ function App() {
       return
     }
 
-    markMainDirty('delete card')
-    replaceState(nextState)
-    persistAppState(nextState)
-    persistSyncMetadata({
-      lastSyncedAt: remoteUpdatedAt ?? lastSyncedAt,
-      pendingRemoteBaseUpdatedAt: remoteUpdatedAt ? null : lastSyncedAt,
-      pendingRemoteSignature: remoteUpdatedAt ? null : getRemoteStateSignature(nextState),
-    })
     if (remoteUpdatedAt) {
-      setLastSyncedAt(remoteUpdatedAt)
+      commitLocalRemoteMutation(mergeRemoteMutationState(remoteState, nextState), remoteUpdatedAt)
+    } else {
+      markMainDirty('delete card')
+      replaceState(nextState)
+      persistAppState(nextState)
+      persistSyncMetadata({
+        lastSyncedAt,
+        pendingRemoteBaseUpdatedAt: lastSyncedAt,
+        pendingRemoteSignature: getRemoteStateSignature(nextState),
+      })
     }
 
     setPendingDeleteCard(null)
@@ -2832,9 +2976,12 @@ function App() {
       isSupabaseConfigured()
 
     let remoteUpdatedAt: string | null = null
+    let remoteState: unknown = null
     try {
       if (shouldUseRemoteComment) {
-        remoteUpdatedAt = await persistRemoteCardComment(portfolio.id, commentCard.id, comment)
+        const remote = await persistRemoteCardComment(portfolio.id, commentCard.id, comment)
+        remoteUpdatedAt = remote?.updatedAt ?? null
+        remoteState = remote?.state ?? null
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
@@ -2869,16 +3016,29 @@ function App() {
       notifications: [...currentState.notifications, notification],
     }
 
-    markMainDirty('add card comment')
-    replaceState(nextState)
-    persistAppState(nextState)
-    persistSyncMetadata({
-      lastSyncedAt: remoteUpdatedAt ?? lastSyncedAt,
-      pendingRemoteBaseUpdatedAt: remoteUpdatedAt ? null : lastSyncedAt,
-      pendingRemoteSignature: remoteUpdatedAt ? null : getRemoteStateSignature(nextState),
-    })
     if (remoteUpdatedAt) {
-      setLastSyncedAt(remoteUpdatedAt)
+      const remoteMergedState = mergeRemoteMutationState(remoteState, nextState)
+      const localMergedState = {
+        ...remoteMergedState,
+        notifications: [...remoteMergedState.notifications, notification],
+      }
+      replaceState(localMergedState)
+      acknowledgeRemoteMutation(localMergedState, remoteUpdatedAt)
+      persistAppState(localMergedState)
+      persistSyncMetadata({
+        lastSyncedAt: remoteUpdatedAt,
+        pendingRemoteBaseUpdatedAt: null,
+        pendingRemoteSignature: null,
+      })
+    } else {
+      markMainDirty('add card comment')
+      replaceState(nextState)
+      persistAppState(nextState)
+      persistSyncMetadata({
+        lastSyncedAt,
+        pendingRemoteBaseUpdatedAt: lastSyncedAt,
+        pendingRemoteSignature: getRemoteStateSignature(nextState),
+      })
     }
   }
 
@@ -3031,7 +3191,8 @@ function App() {
     revisionEstimatedHours?: number | null,
     revisionFeedback?: string,
   ) {
-    const portfolio = state.portfolios.find((item) => item.id === portfolioId)
+    const currentState = localFallbackStateRef.current
+    const portfolio = currentState.portfolios.find((item) => item.id === portfolioId)
     if (!portfolio) {
       console.error('Failed to move Production card because portfolio was not found.', {
         portfolioId,
@@ -3050,26 +3211,22 @@ function App() {
       showToast('Card move failed because the selected card could not be found.', 'red')
       return
     }
-    let moved = false
+    let nextPortfolio = portfolio
     try {
-      updatePortfolio(portfolioId, (currentPortfolio) => {
-        const nextPortfolio = moveCardInPortfolio(
-          currentPortfolio,
-          cardId,
-          destinationStage,
-          destinationOwner,
-          destinationIndex,
-          movedAt,
-          actor,
-          viewerContext,
-          revisionReason,
-          revisionEstimatedHours,
-          revisionFeedback,
-          state.settings,
-        )
-        moved = nextPortfolio !== currentPortfolio
-        return nextPortfolio
-      })
+      nextPortfolio = moveCardInPortfolio(
+        portfolio,
+        cardId,
+        destinationStage,
+        destinationOwner,
+        destinationIndex,
+        movedAt,
+        actor,
+        viewerContext,
+        revisionReason,
+        revisionEstimatedHours,
+        revisionFeedback,
+        currentState.settings,
+      )
     } catch (error) {
       console.error('Failed to move Production board card.', {
         portfolioId,
@@ -3086,89 +3243,134 @@ function App() {
       return
     }
 
-    if (!moved) {
+    if (nextPortfolio === portfolio) {
       showToast('This move is not allowed by the current board rules.', 'red')
       return
     }
 
-    if (destinationOwner && card.owner !== destinationOwner) {
-      const destinationOwnerName = getTeamMemberById(portfolio, destinationOwner)?.name ?? 'Unassigned'
-      try {
-        if (isProductionDevHandoffCard(state.settings, card)) {
-          notifyDevTaskAssigned({
-            cardTitle: card.title,
-            assigneeName: destinationOwnerName,
-          })
-        } else {
-          notifyCreativeTaskAssigned({
-            cardTitle: card.title,
-            brand: card.brand,
-            editorName: destinationOwnerName,
-          })
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((item) => (item.id === portfolioId ? nextPortfolio : item)),
+    }
+
+    const finishMove = () => {
+      if (destinationOwner && card.owner !== destinationOwner) {
+        const destinationOwnerName =
+          getTeamMemberByName(portfolio, destinationOwner)?.name ??
+          getTeamMemberById(portfolio, destinationOwner)?.name ??
+          'Unassigned'
+        try {
+          if (isProductionDevHandoffCard(currentState.settings, card)) {
+            notifyDevTaskAssigned({
+              cardTitle: card.title,
+              assigneeName: destinationOwnerName,
+            })
+          } else {
+            notifyCreativeTaskAssigned({
+              cardTitle: card.title,
+              brand: card.brand,
+              editorName: destinationOwnerName,
+            })
+          }
+        } catch (error) {
+          console.error('Task assignment notification trigger failed.', error)
         }
-      } catch (error) {
-        console.error('Task assignment notification trigger failed.', error)
+      }
+
+      if (card.stage !== 'Review' && destinationStage === 'Review') {
+        const reviewOwnerName =
+          getTeamMemberByName(portfolio, destinationOwner ?? card.owner)?.name ??
+          getTeamMemberById(portfolio, destinationOwner ?? card.owner)?.name ??
+          'Unassigned'
+        try {
+          if (isProductionDevHandoffCard(currentState.settings, card)) {
+            notifyDevReadyForReview({
+              cardTitle: card.title,
+              assigneeName: reviewOwnerName,
+            })
+          } else {
+            notifyCreativeReadyForReview({
+              cardTitle: card.title,
+              brand: card.brand,
+              editorName: reviewOwnerName,
+            })
+          }
+        } catch (error) {
+          console.error('Ready-for-review notification trigger failed.', error)
+        }
+      }
+
+      if (revisionReason) {
+        showToast(`${card.id} moved back to ${destinationStage}`, 'amber')
+        const notification = createNotification(
+          'revision_requested',
+          `"${card.title}" moved back to ${destinationStage}`,
+          cardId,
+          portfolioId,
+        )
+        setState((prev) => ({
+          ...prev,
+          notifications: [...prev.notifications, notification],
+        }))
+      } else if (card.stage === 'Backlog' && destinationOwner) {
+        showToast(`${card.id} assigned to ${destinationOwner}`, 'blue')
+        const notification = createNotification(
+          'card_assigned',
+          `"${card.title}" assigned to ${destinationOwner}`,
+          cardId,
+          portfolioId,
+        )
+        setState((prev) => ({
+          ...prev,
+          notifications: [...prev.notifications, notification],
+        }))
+      } else {
+        showToast(`${card.id} → ${destinationStage}`, 'green')
+        const notification = createNotification(
+          'card_moved',
+          `"${card.title}" moved to ${destinationStage}`,
+          cardId,
+          portfolioId,
+        )
+        setState((prev) => ({
+          ...prev,
+          notifications: [...prev.notifications, notification],
+        }))
       }
     }
 
-    if (card.stage !== 'Review' && destinationStage === 'Review') {
-      const reviewOwnerName =
-        getTeamMemberById(portfolio, destinationOwner ?? card.owner)?.name ?? 'Unassigned'
-      try {
-        if (isProductionDevHandoffCard(state.settings, card)) {
-          notifyDevReadyForReview({
-            cardTitle: card.title,
-            assigneeName: reviewOwnerName,
-          })
-        } else {
-          notifyCreativeReadyForReview({
-            cardTitle: card.title,
-            brand: card.brand,
-            editorName: reviewOwnerName,
-          })
+    if (shouldUseScopedCardMutation()) {
+      void (async () => {
+        try {
+          const remote = await persistRemoteCardMutation(
+            {
+              action: 'move',
+              portfolioId,
+              cardId,
+              destinationStage,
+              destinationOwner,
+              destinationIndex,
+              movedAt,
+              actor,
+              revisionReason,
+              revisionEstimatedHours,
+              revisionFeedback,
+            },
+            nextState,
+          )
+          commitLocalRemoteMutation(remote.state, remote.updatedAt)
+          finishMove()
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Card move did not reach the shared board.'
+          showToast(`Move failed: ${message}`, 'red')
         }
-      } catch (error) {
-        console.error('Ready-for-review notification trigger failed.', error)
-      }
+      })()
+      return
     }
 
-    if (revisionReason) {
-      showToast(`${card.id} moved back to ${destinationStage}`, 'amber')
-      const notification = createNotification(
-        'revision_requested',
-        `"${card.title}" moved back to ${destinationStage}`,
-        cardId,
-        portfolioId,
-      )
-      setState((prev) => ({
-        ...prev,
-        notifications: [...prev.notifications, notification],
-      }))
-    } else if (card.stage === 'Backlog' && destinationOwner) {
-      showToast(`${card.id} assigned to ${destinationOwner}`, 'blue')
-      const notification = createNotification(
-        'card_assigned',
-        `"${card.title}" assigned to ${destinationOwner}`,
-        cardId,
-        portfolioId,
-      )
-      setState((prev) => ({
-        ...prev,
-        notifications: [...prev.notifications, notification],
-      }))
-    } else {
-      showToast(`${card.id} → ${destinationStage}`, 'green')
-      const notification = createNotification(
-        'card_moved',
-        `"${card.title}" moved to ${destinationStage}`,
-        cardId,
-        portfolioId,
-      )
-      setState((prev) => ({
-        ...prev,
-        notifications: [...prev.notifications, notification],
-      }))
-    }
+    markMainDirty('move card')
+    replaceState(nextState)
+    finishMove()
   }
 
   function handleCycleProductionPriority(portfolioId: string, cardId: string) {
@@ -3186,7 +3388,8 @@ function App() {
       return
     }
 
-    const portfolio = state.portfolios.find((item) => item.id === portfolioId)
+    const currentState = localFallbackStateRef.current
+    const portfolio = currentState.portfolios.find((item) => item.id === portfolioId)
     const card = portfolio?.cards.find((item) => item.id === cardId)
     if (
       !portfolio ||
@@ -3200,9 +3403,41 @@ function App() {
     }
 
     const startedAt = new Date().toISOString()
-    updatePortfolio(portfolioId, (currentPortfolio) =>
-      startEditorTimerForCard(currentPortfolio, cardId, startedAt),
-    )
+    const nextPortfolio = startEditorTimerForCard(portfolio, cardId, startedAt)
+    if (nextPortfolio === portfolio) {
+      showToast('This timer could not be started.', 'red')
+      return
+    }
+
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((item) => (item.id === portfolioId ? nextPortfolio : item)),
+    }
+
+    if (shouldUseScopedCardMutation()) {
+      void (async () => {
+        try {
+          const remote = await persistRemoteCardMutation(
+            {
+              action: 'start-timer',
+              portfolioId,
+              cardId,
+              startedAt,
+            },
+            nextState,
+          )
+          commitLocalRemoteMutation(remote.state, remote.updatedAt)
+          showToast(`${card.id} is now in progress`, 'blue')
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Timer update did not reach the shared board.'
+          showToast(`Timer failed: ${message}`, 'red')
+        }
+      })()
+      return
+    }
+
+    markMainDirty('start editor timer')
+    replaceState(nextState)
     showToast(`${card.id} is now in progress`, 'blue')
   }
 
@@ -3211,14 +3446,46 @@ function App() {
     cardId: string,
     nextPriority: 1 | 2 | 3,
   ) {
-    setState((prev) => ({
-      ...prev,
-      portfolios: prev.portfolios.map((currentPortfolio) =>
-        currentPortfolio.id === portfolioId
-          ? setInProductionCardPriority(currentPortfolio, cardId, nextPriority)
-          : currentPortfolio,
-      ),
-    }))
+    const currentState = localFallbackStateRef.current
+    const portfolio = currentState.portfolios.find((item) => item.id === portfolioId) ?? null
+    if (!portfolio) {
+      return
+    }
+
+    const nextPortfolio = setInProductionCardPriority(portfolio, cardId, nextPriority)
+    if (nextPortfolio === portfolio) {
+      showToast('This priority update is not allowed by the current board rules.', 'red')
+      return
+    }
+
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((item) => (item.id === portfolioId ? nextPortfolio : item)),
+    }
+
+    if (shouldUseScopedCardMutation()) {
+      void (async () => {
+        try {
+          const remote = await persistRemoteCardMutation(
+            {
+              action: 'set-priority',
+              portfolioId,
+              cardId,
+              priority: nextPriority,
+            },
+            nextState,
+          )
+          commitLocalRemoteMutation(remote.state, remote.updatedAt)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Priority update did not reach the shared board.'
+          showToast(`Priority failed: ${message}`, 'red')
+        }
+      })()
+      return
+    }
+
+    markMainDirty('set production priority')
+    replaceState(nextState)
   }
 
   function handleBoardDragEnd(event: DragEndEvent) {

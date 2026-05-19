@@ -173,6 +173,7 @@ export function CardDetailPanel({
   const canManage = viewerMode === 'owner' || viewerMode === 'manager'
   const isOwnedEditor = viewerMode === 'contributor' && viewerName === card.owner
   const canEditOwnedContent = canManage || isOwnedEditor
+  const canEditPlanningMetadata = canManage
   const isLaunchOpsViewer = viewerMode === 'contributor' && isLaunchOpsRole(viewerMemberRole)
   const canComment = canManage || isLaunchOpsViewer || viewerName === card.owner
   const canEditFrameio = canManage || isOwnedEditor
@@ -640,7 +641,7 @@ export function CardDetailPanel({
               <div className="metadata-grid">
                 <label>
                   <span>Brand</span>
-                  {canEditOwnedContent ? (
+                  {canEditPlanningMetadata ? (
                     <select value={card.brand} onChange={(event) => onSave({ brand: event.target.value })}>
                       {portfolio.brands.map((brand) => (
                         <option key={brand.name} value={brand.name}>
@@ -654,7 +655,7 @@ export function CardDetailPanel({
                 </label>
                 <label>
                   <span>Product</span>
-                  {canEditOwnedContent ? (
+                  {canEditPlanningMetadata ? (
                     <select value={card.product} onChange={(event) => onSave({ product: event.target.value })}>
                       {(getBrandByName(portfolio, card.brand)?.products ?? []).map((product) => (
                         <option key={product} value={product}>
@@ -668,7 +669,7 @@ export function CardDetailPanel({
                 </label>
                 <label>
                   <span>Task Type</span>
-                  {canEditOwnedContent ? (
+                  {canEditPlanningMetadata ? (
                     <select value={card.taskTypeId} onChange={(event) => handleTaskTypeChange(event.target.value)}>
                       {getTaskTypeGroups(settings).map((group) => (
                         <optgroup key={group.category} label={group.category}>
@@ -690,7 +691,7 @@ export function CardDetailPanel({
                 </label>
                 <label>
                   <span>Assigned To</span>
-                  {canEditOwnedContent ? (
+                  {canEditPlanningMetadata ? (
                     <select value={card.owner ?? ''} onChange={(event) => onSave({ owner: event.target.value || null })}>
                       {canClearOwner ? <option value="">Unassigned</option> : null}
                       {getEditorOptions(portfolio).map((member) => (
@@ -820,7 +821,7 @@ export function CardDetailPanel({
                 <div className="metadata-grid">
                   <label>
                     <span>Platform</span>
-                    {canEditOwnedContent ? (
+                    {canEditPlanningMetadata ? (
                       <select
                         value={card.platform}
                         onChange={(event) => onSave({ platform: event.target.value as Card['platform'] })}
@@ -837,7 +838,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Funnel Stage</span>
-                    {canEditOwnedContent ? (
+                    {canEditPlanningMetadata ? (
                       <select
                         value={card.funnelStage}
                         onChange={(event) => onSave({ funnelStage: event.target.value as Card['funnelStage'] })}
@@ -853,7 +854,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Angle / Theme</span>
-                    {canEditOwnedContent ? (
+                    {canEditPlanningMetadata ? (
                       renderEditableTextField({
                         fieldKey: 'angle',
                         value: angleDraft,
@@ -866,7 +867,7 @@ export function CardDetailPanel({
                   </label>
                   <label>
                     <span>Audience</span>
-                    {canEditOwnedContent ? (
+                    {canEditPlanningMetadata ? (
                       renderEditableTextField({
                         fieldKey: 'audience',
                         value: audienceDraft,

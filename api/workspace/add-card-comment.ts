@@ -519,6 +519,7 @@ async function addCommentWithRetry(
       return {
         ok: true as const,
         updatedAt: patched.updated_at,
+        state: next.nextState,
         added: next.added,
         retried: latestConflict,
       }
@@ -569,6 +570,7 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
       portfolioId,
       cardId,
       updatedAt: result.updatedAt,
+      state: result.state,
       added: result.added,
       retried: result.retried,
     })

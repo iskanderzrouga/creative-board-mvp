@@ -406,6 +406,7 @@ async function deleteCardWithRetry(portfolioId: string, cardId: string, access: 
       return {
         ok: true as const,
         updatedAt: patched.updated_at,
+        state: deletion.nextState,
         removed: deletion.removed,
         retried: latestConflict,
       }
@@ -451,6 +452,7 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
       portfolioId,
       cardId,
       updatedAt: result.updatedAt,
+      state: result.state,
       removed: result.removed,
       retried: result.retried,
     })
