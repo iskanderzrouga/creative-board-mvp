@@ -457,6 +457,10 @@ export function onAuthStateChange(
       return () => undefined
     }
 
+    const initialEventTimerId = window.setTimeout(() => {
+      callback(getE2EAuthChangeEvent(), getE2EAuthSession())
+    }, 0)
+
     const handleStorage = (event: StorageEvent) => {
       if (
         event.key === E2E_AUTH_MODE_KEY ||
@@ -468,7 +472,10 @@ export function onAuthStateChange(
     }
 
     window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
+    return () => {
+      window.clearTimeout(initialEventTimerId)
+      window.removeEventListener('storage', handleStorage)
+    }
   }
 
   const supabase = getSupabaseClient()

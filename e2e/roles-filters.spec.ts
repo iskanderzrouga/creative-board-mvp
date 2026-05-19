@@ -191,17 +191,16 @@ test('contributor can update owned card content and move it forward one stage', 
   await briefEditor.fill('Contributor-owned update for coverage')
   await page.getByRole('button', { name: 'Links' }).click()
 
-  const addLinkForm = page.locator('.add-link-form')
-  await addLinkForm.getByPlaceholder('Link label').fill('Editor note')
-  await addLinkForm.getByPlaceholder('https://').fill('https://example.com/editor-note')
-  await page.getByRole('button', { name: 'Add link' }).click()
+  const linksSection = page.locator('.panel-section-links')
+  await linksSection.getByPlaceholder('https://...').first().fill('https://example.com/editor-note')
+  await linksSection.getByPlaceholder('Optional label').first().fill('Editor note')
+  await linksSection.getByPlaceholder('Optional label').first().blur()
   await expect(page.getByText('Editor note')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Close card detail panel' }).click()
-  await expect(page.getByRole('button', { name: /PX0020 PRICE \/ Color/ })).toBeVisible()
 
   const briefedLane = page.getByRole('group', { name: 'Briefed lane for Daniel T' })
   const inProductionLane = page.getByRole('group', { name: 'In Production lane for Daniel T' })
+  await page.getByRole('button', { name: 'Close card detail panel' }).click()
+  await expect(briefedLane.getByRole('button', { name: /PX0020 PRICE \/ Color/ })).toBeVisible()
   await dragLocatorToTarget(
     page,
     briefedLane.getByRole('button', { name: /PX0020 PRICE \/ Color/ }),
