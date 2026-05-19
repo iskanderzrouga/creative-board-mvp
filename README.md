@@ -24,6 +24,8 @@ VITE_MAGIC_LINK_REDIRECT_URL="https://your-production-url.vercel.app"
 
 `VITE_SUPABASE_ANON_KEY` is supported only as a legacy fallback. Prefer `VITE_SUPABASE_PUBLISHABLE_KEY`.
 
+Slack webhooks and performance backend secrets are server-only Vercel env vars. Use `SLACK_WEBHOOK_VIDEO`, `SLACK_WEBHOOK_DEV`, `SLACK_DM_WEBHOOK`, and the non-`VITE_` performance variables from `.env.example`.
+
 ## Local development
 
 ```bash

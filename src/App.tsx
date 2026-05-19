@@ -209,8 +209,16 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
-const BACKLOG_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
-const PERFORMANCE_ALLOWED_EMAIL_KEYS = new Set(['nicolas', 'naomi', 'iskander'])
+const BACKLOG_ALLOWED_EMAILS = new Set([
+  'iskander@bluebrands.co',
+  'nicolas@bluebrands.co',
+  'naomi@bluebrands.co',
+])
+const PERFORMANCE_ALLOWED_EMAILS = new Set([
+  'iskander@bluebrands.co',
+  'nicolas@bluebrands.co',
+  'naomi@bluebrands.co',
+])
 const STRATEGY_LEADERS = [
   { name: 'Iskander', email: 'iskander@creativeboard.local' },
   { name: 'Naomi', email: 'naomi@creativeboard.local' },
@@ -303,8 +311,7 @@ function canAccessBacklogByEmail(email: string | null) {
     return false
   }
 
-  const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
-  return BACKLOG_ALLOWED_EMAIL_KEYS.has(localPart)
+  return BACKLOG_ALLOWED_EMAILS.has(email.trim().toLowerCase())
 }
 
 function canAccessPerformanceByEmail(email: string | null) {
@@ -312,8 +319,7 @@ function canAccessPerformanceByEmail(email: string | null) {
     return false
   }
 
-  const localPart = email.trim().toLowerCase().split('@')[0] ?? ''
-  return PERFORMANCE_ALLOWED_EMAIL_KEYS.has(localPart)
+  return PERFORMANCE_ALLOWED_EMAILS.has(email.trim().toLowerCase())
 }
 
 const DEFAULT_DRIVE_WEBHOOK_URL =

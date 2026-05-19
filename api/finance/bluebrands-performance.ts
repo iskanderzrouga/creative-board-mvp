@@ -210,7 +210,11 @@ type HandlerResponse = {
   statusCode?: number
 }
 
-const ALLOWED_EMAIL_KEYS = new Set(['iskander', 'nicolas', 'naomi'])
+const DEFAULT_ALLOWED_EMAILS = [
+  'iskander@bluebrands.co',
+  'nicolas@bluebrands.co',
+  'naomi@bluebrands.co',
+]
 const BRAND_SLUGS: BrandSlug[] = ['pluxy', 'vivi', 'trueclean']
 const CONNECTION_PLATFORMS: Array<{ platform: ConnectionPlatform; label: string }> = [
   { platform: 'shopify', label: 'Shopify' },
@@ -300,6 +304,15 @@ function getServerEnv(name: string) {
   return process.env[name]
 }
 
+function getAllowedEmails() {
+  const configured = getServerEnv('PERFORMANCE_ALLOWED_EMAILS') || getServerEnv('FINANCE_ALLOWED_EMAILS')
+  const values = configured
+    ? configured.split(',').map((email) => email.trim().toLowerCase()).filter(Boolean)
+    : DEFAULT_ALLOWED_EMAILS
+
+  return new Set(values)
+}
+
 async function requireAllowedUser(req: HandlerRequest) {
   const supabaseUrl = getSupabaseUrl()
   const anonKey = getSupabaseAnonKey()
@@ -321,13 +334,13 @@ async function requireAllowedUser(req: HandlerRequest) {
   }
 
   const user = (await response.json()) as { email?: string }
-  const localPart = user.email?.trim().toLowerCase().split('@')[0] ?? ''
+  const email = user.email?.trim().toLowerCase() ?? ''
 
-  if (!ALLOWED_EMAIL_KEYS.has(localPart)) {
+  if (!email || !getAllowedEmails().has(email)) {
     return { ok: false as const, status: 403, error: 'performance_access_denied' }
   }
 
-  return { ok: true as const, email: user.email ?? '', auth }
+  return { ok: true as const, email, auth }
 }
 
 function getRequestRange(req: HandlerRequest) {

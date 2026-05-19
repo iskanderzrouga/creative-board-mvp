@@ -1,12 +1,10 @@
+import { getSupabaseClient } from './supabase'
+
 const BOARD_LINK = '<https://creative-board-lake.vercel.app/board|View on board>'
 const SCRIPTS_PAGE_URL = 'https://creative-board-lake.vercel.app/scripts'
 
-const VIDEO_WEBHOOK_URL = import.meta.env.VITE_SLACK_WEBHOOK_VIDEO
-const DEV_WEBHOOK_URL = import.meta.env.VITE_SLACK_WEBHOOK_DEV
-const DM_WEBHOOK_URL = import.meta.env.VITE_SLACK_DM_WEBHOOK
-
 interface ChannelNotificationInput {
-  webhookUrl: string | undefined
+  channel: 'video' | 'dev'
   text: string
 }
 
@@ -15,47 +13,56 @@ interface ScriptReviewDmInput {
   brand: string
 }
 
-function postChannelNotification({ webhookUrl, text }: ChannelNotificationInput) {
-  if (!webhookUrl) {
+async function getAuthToken() {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase.auth.getSession()
+  if (error) {
+    throw error
+  }
+
+  return data.session?.access_token ?? null
+}
+
+async function postSlackNotification(body: Record<string, unknown>) {
+  const token = await getAuthToken()
+  if (!token) {
     return
   }
 
-  try {
-    void fetch(webhookUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text }),
-    })
-  } catch (error) {
-    console.error('Slack channel notification failed.', error)
+  const response = await fetch('/api/slack/notify', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error('Slack notification endpoint rejected the request.')
   }
 }
 
-function postScriptReviewDm(input: ScriptReviewDmInput) {
-  if (!DM_WEBHOOK_URL) {
-    return
-  }
+function postChannelNotification({ channel, text }: ChannelNotificationInput) {
+  void postSlackNotification({ channel, text }).catch((error) => {
+    console.error('Slack channel notification failed.', error)
+  })
+}
 
-  try {
-    void fetch(DM_WEBHOOK_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        type: 'script-review',
-        scriptTitle: input.scriptTitle,
-        brand: input.brand,
-        boardUrl: SCRIPTS_PAGE_URL,
-      }),
-    })
-  } catch (error) {
+function postScriptReviewDm(input: ScriptReviewDmInput) {
+  void postSlackNotification({
+    channel: 'dm',
+    scriptTitle: input.scriptTitle,
+    brand: input.brand,
+    boardUrl: SCRIPTS_PAGE_URL,
+  }).catch((error) => {
     console.error('Slack script review DM notification failed.', error)
-  }
+  })
 }
 
 export function notifyCreativeTaskAssigned(input: {
@@ -64,7 +71,7 @@ export function notifyCreativeTaskAssigned(input: {
   editorName: string
 }) {
   postChannelNotification({
-    webhookUrl: VIDEO_WEBHOOK_URL,
+    channel: 'video',
     text: `📋 New task assigned: ${input.cardTitle} (${input.brand}) → ${input.editorName}. ${BOARD_LINK}`,
   })
 }
@@ -76,7 +83,7 @@ export function notifyCreativeBlockerAdded(input: {
   editorName: string
 }) {
   postChannelNotification({
-    webhookUrl: VIDEO_WEBHOOK_URL,
+    channel: 'video',
     text: `🚫 Blocker added on ${input.cardTitle} (${input.brand}): ${input.blockerText}. Assigned to ${input.editorName}. ${BOARD_LINK}`,
   })
 }
@@ -87,7 +94,7 @@ export function notifyCreativeBlockerRemoved(input: {
   editorName: string
 }) {
   postChannelNotification({
-    webhookUrl: VIDEO_WEBHOOK_URL,
+    channel: 'video',
     text: `✅ Blocker removed on ${input.cardTitle} (${input.brand}). ${input.editorName} can proceed. ${BOARD_LINK}`,
   })
 }
@@ -98,7 +105,7 @@ export function notifyCreativeReadyForReview(input: {
   editorName: string
 }) {
   postChannelNotification({
-    webhookUrl: VIDEO_WEBHOOK_URL,
+    channel: 'video',
     text: `👀 Ready for review: ${input.cardTitle} (${input.brand}) by ${input.editorName}. ${BOARD_LINK}`,
   })
 }
@@ -108,7 +115,7 @@ export function notifyDevTaskAssigned(input: {
   assigneeName: string
 }) {
   postChannelNotification({
-    webhookUrl: DEV_WEBHOOK_URL,
+    channel: 'dev',
     text: `📋 New dev task assigned: ${input.cardTitle} → ${input.assigneeName}. ${BOARD_LINK}`,
   })
 }
@@ -119,7 +126,7 @@ export function notifyDevBlockerAdded(input: {
   assigneeName: string
 }) {
   postChannelNotification({
-    webhookUrl: DEV_WEBHOOK_URL,
+    channel: 'dev',
     text: `🚫 Blocker on ${input.cardTitle}: ${input.blockerText}. Assigned to ${input.assigneeName}. ${BOARD_LINK}`,
   })
 }
@@ -129,7 +136,7 @@ export function notifyDevBlockerRemoved(input: {
   assigneeName: string
 }) {
   postChannelNotification({
-    webhookUrl: DEV_WEBHOOK_URL,
+    channel: 'dev',
     text: `✅ Blocker cleared on ${input.cardTitle}. ${input.assigneeName} can proceed. ${BOARD_LINK}`,
   })
 }
@@ -139,7 +146,7 @@ export function notifyDevReadyForReview(input: {
   assigneeName: string
 }) {
   postChannelNotification({
-    webhookUrl: DEV_WEBHOOK_URL,
+    channel: 'dev',
     text: `👀 Ready for review: ${input.cardTitle} by ${input.assigneeName}. ${BOARD_LINK}`,
   })
 }
