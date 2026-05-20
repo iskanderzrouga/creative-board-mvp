@@ -35,6 +35,7 @@ import {
   removeTeamMemberFromPortfolio,
   renameBrandInPortfolio,
   renameTeamMemberInPortfolio,
+  shouldSendBoardSlackNotifications,
   shouldAutoCreateCreativeDriveFolder,
   startEditorTimerForCard,
   type ViewerContext,
@@ -262,6 +263,16 @@ describe('board integrity helpers', () => {
     expect(isThaiEditingPortfolio({ ...createEmptyPortfolio('Brandlab Thai', 0), name: 'Brandlab Thai' })).toBe(true)
     expect(isThaiEditingPortfolio({ ...createEmptyPortfolio('BrandLab Thailand', 0), name: 'BrandLab Thailand' })).toBe(true)
     expect(isThaiEditingPortfolio(createEmptyPortfolio('BrandLab', 0))).toBe(false)
+  })
+
+  it('sends board Slack notifications only for the main BrandLab portfolio', () => {
+    const state = createSeedState()
+    const mainPortfolio = state.portfolios[0]
+    const thaiPortfolio = createEmptyPortfolio('Brandlab Thai', state.portfolios.length)
+
+    expect(shouldSendBoardSlackNotifications(mainPortfolio)).toBe(true)
+    expect(shouldSendBoardSlackNotifications(thaiPortfolio)).toBe(false)
+    expect(shouldSendBoardSlackNotifications(null)).toBe(false)
   })
 
   it('pins legacy workshop scripts and strategy cycles to the default portfolio', () => {

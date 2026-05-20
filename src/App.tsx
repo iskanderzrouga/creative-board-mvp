@@ -126,6 +126,7 @@ import {
   persistSyncMetadata,
   moveCardInPortfolio,
   removeCardFromPortfolio,
+  shouldSendBoardSlackNotifications,
   shouldAutoCreateCreativeDriveFolder,
   startEditorTimerForCard,
   setInProductionCardPriority,
@@ -2701,8 +2702,10 @@ function App() {
     }
     const isDevCard = isProductionDevHandoffCard(state.settings, nextCard)
     const assigneeName = resolveCreativeMemberName(nextCard.owner ?? previousCard.owner)
+    const shouldNotifySlack = shouldSendBoardSlackNotifications(activeSelectedPortfolio)
 
     if (
+      shouldNotifySlack &&
       Object.prototype.hasOwnProperty.call(updates, 'owner') &&
       previousCard.owner !== nextCard.owner &&
       nextCard.owner
@@ -2728,7 +2731,7 @@ function App() {
     const previousBlockerText = previousCard.blocked?.reason?.trim() ?? ''
     const nextBlockerText = nextCard.blocked?.reason?.trim() ?? ''
 
-    if (!previousBlockerText && nextBlockerText) {
+    if (shouldNotifySlack && !previousBlockerText && nextBlockerText) {
       try {
         if (isDevCard) {
           notifyDevBlockerAdded({
@@ -2749,7 +2752,7 @@ function App() {
       }
     }
 
-    if (previousBlockerText && !nextBlockerText) {
+    if (shouldNotifySlack && previousBlockerText && !nextBlockerText) {
       try {
         if (isDevCard) {
           notifyDevBlockerRemoved({
@@ -2768,7 +2771,7 @@ function App() {
       }
     }
 
-    if (previousCard.stage !== 'Review' && nextCard.stage === 'Review') {
+    if (shouldNotifySlack && previousCard.stage !== 'Review' && nextCard.stage === 'Review') {
       try {
         if (isDevCard) {
           notifyDevReadyForReview({
@@ -3283,7 +3286,9 @@ function App() {
     }
 
     const finishMove = () => {
-      if (destinationOwner && card.owner !== destinationOwner) {
+      const shouldNotifySlack = shouldSendBoardSlackNotifications(portfolio)
+
+      if (shouldNotifySlack && destinationOwner && card.owner !== destinationOwner) {
         const destinationOwnerName =
           getTeamMemberByName(portfolio, destinationOwner)?.name ??
           getTeamMemberById(portfolio, destinationOwner)?.name ??
@@ -3306,7 +3311,7 @@ function App() {
         }
       }
 
-      if (card.stage !== 'Review' && destinationStage === 'Review') {
+      if (shouldNotifySlack && card.stage !== 'Review' && destinationStage === 'Review') {
         const reviewOwnerName =
           getTeamMemberByName(portfolio, destinationOwner ?? card.owner)?.name ??
           getTeamMemberById(portfolio, destinationOwner ?? card.owner)?.name ??

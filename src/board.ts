@@ -946,6 +946,12 @@ export function isThaiEditingPortfolio(portfolio: Portfolio | null | undefined) 
   return Boolean(portfolio?.name && /\bthai(?:land)?\b/i.test(portfolio.name))
 }
 
+const BOARD_SLACK_NOTIFICATIONS_PORTFOLIO_ID = 'portfolio-brandlab'
+
+export function shouldSendBoardSlackNotifications(portfolio: Portfolio | null | undefined) {
+  return portfolio?.id === BOARD_SLACK_NOTIFICATIONS_PORTFOLIO_ID
+}
+
 function getLaneOwner(stage: BoardColumnId, owner: string | null) {
   if (stage === 'Archived') {
     return null
