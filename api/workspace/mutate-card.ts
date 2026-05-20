@@ -14,7 +14,7 @@ import {
   type StageId,
   type TeamMember,
   type ViewerContext,
-} from '../../src/board'
+} from '../../src/board.js'
 
 type HandlerRequest = Request | {
   method?: string
@@ -82,6 +82,14 @@ type CardMutationBody =
       cardId?: unknown
       startedAt?: unknown
     }
+
+type CardMutationFailure = { ok: false; status: number; error: string }
+type AppliedCardMutation = { ok: true; state: AppState }
+type PersistedCardMutation = AppliedCardMutation & {
+  updatedAt: string
+  retried: boolean
+}
+type CardMutationResult = PersistedCardMutation | CardMutationFailure
 
 const ALLOWED_UPDATE_KEYS = new Set<keyof Card>([
   'title',
@@ -538,7 +546,7 @@ function applyCardMutation(
   state: AppState,
   body: CardMutationBody,
   access: WorkspaceAccessRow,
-): { ok: true; state: AppState } | { ok: false; status: number; error: string } {
+): AppliedCardMutation | CardMutationFailure {
   const portfolioId = typeof body.portfolioId === 'string' ? body.portfolioId.trim() : ''
   const cardId = typeof body.cardId === 'string' ? body.cardId.trim() : ''
   if (!portfolioId || !cardId) {
@@ -562,8 +570,11 @@ function applyCardMutation(
 
   const viewer = getViewerContext(access, portfolio)
 
-  if (!body.action || body.action === 'update') {
-    const updates = normalizeUpdates(body.updates)
+  const action = body.action ?? 'update'
+
+  if (action === 'update') {
+    const updateBody = body as Extract<CardMutationBody, { action?: 'update' }>
+    const updates = normalizeUpdates(updateBody.updates)
     if (!updates || Object.keys(updates).length === 0) {
       return { ok: false, status: 400, error: 'missing_card_updates' }
     }
@@ -573,8 +584,8 @@ function applyCardMutation(
       state.settings,
       cardId,
       updates,
-      normalizeActor(body.actor, access, portfolio),
-      normalizeTimestamp(body.timestamp),
+      normalizeActor(updateBody.actor, access, portfolio),
+      normalizeTimestamp(updateBody.timestamp),
       viewer,
     )
     if (nextPortfolio === portfolio) {
@@ -584,18 +595,19 @@ function applyCardMutation(
     return { ok: true, state: replacePortfolio(state, nextPortfolio) }
   }
 
-  if (body.action === 'move') {
+  if (action === 'move') {
+    const moveBody = body as Extract<CardMutationBody, { action: 'move' }>
     const destinationStage =
-      typeof body.destinationStage === 'string' && (STAGES as readonly string[]).includes(body.destinationStage)
-        ? (body.destinationStage as StageId)
+      typeof moveBody.destinationStage === 'string' && (STAGES as readonly string[]).includes(moveBody.destinationStage)
+        ? (moveBody.destinationStage as StageId)
         : null
     const destinationOwner =
-      typeof body.destinationOwner === 'string'
-        ? body.destinationOwner.trim() || null
-        : body.destinationOwner === null
+      typeof moveBody.destinationOwner === 'string'
+        ? moveBody.destinationOwner.trim() || null
+        : moveBody.destinationOwner === null
           ? null
           : undefined
-    const destinationIndex = Number(body.destinationIndex)
+    const destinationIndex = Number(moveBody.destinationIndex)
     if (!destinationStage || destinationOwner === undefined || !Number.isFinite(destinationIndex)) {
       return { ok: false, status: 400, error: 'invalid_move_target' }
     }
@@ -612,9 +624,9 @@ function applyCardMutation(
     }
 
     const revisionEstimatedHours =
-      typeof body.revisionEstimatedHours === 'number' && Number.isFinite(body.revisionEstimatedHours)
-        ? body.revisionEstimatedHours
-        : body.revisionEstimatedHours === null
+      typeof moveBody.revisionEstimatedHours === 'number' && Number.isFinite(moveBody.revisionEstimatedHours)
+        ? moveBody.revisionEstimatedHours
+        : moveBody.revisionEstimatedHours === null
           ? null
           : undefined
     const nextPortfolio = moveCardInPortfolio(
@@ -623,12 +635,12 @@ function applyCardMutation(
       destinationStage,
       destinationOwner,
       Math.max(0, Math.floor(destinationIndex)),
-      normalizeTimestamp(body.movedAt),
-      normalizeActor(body.actor, access, portfolio),
+      normalizeTimestamp(moveBody.movedAt),
+      normalizeActor(moveBody.actor, access, portfolio),
       viewer,
-      typeof body.revisionReason === 'string' ? body.revisionReason : undefined,
+      typeof moveBody.revisionReason === 'string' ? moveBody.revisionReason : undefined,
       revisionEstimatedHours,
-      typeof body.revisionFeedback === 'string' ? body.revisionFeedback : undefined,
+      typeof moveBody.revisionFeedback === 'string' ? moveBody.revisionFeedback : undefined,
       state.settings,
     )
     if (nextPortfolio === portfolio) {
@@ -638,8 +650,9 @@ function applyCardMutation(
     return { ok: true, state: replacePortfolio(state, nextPortfolio) }
   }
 
-  if (body.action === 'set-priority') {
-    const priority = Number(body.priority)
+  if (action === 'set-priority') {
+    const priorityBody = body as Extract<CardMutationBody, { action: 'set-priority' }>
+    const priority = Number(priorityBody.priority)
     if (priority !== 1 && priority !== 2 && priority !== 3) {
       return { ok: false, status: 400, error: 'invalid_priority' }
     }
@@ -655,7 +668,8 @@ function applyCardMutation(
     return { ok: true, state: replacePortfolio(state, nextPortfolio) }
   }
 
-  if (body.action === 'start-timer') {
+  if (action === 'start-timer') {
+    const timerBody = body as Extract<CardMutationBody, { action: 'start-timer' }>
     if (
       access.role_mode === 'contributor' &&
       (!viewer.editorName ||
@@ -667,7 +681,7 @@ function applyCardMutation(
       return { ok: false, status: 403, error: 'timer_start_not_allowed' }
     }
 
-    const nextPortfolio = startEditorTimerForCard(portfolio, cardId, normalizeTimestamp(body.startedAt))
+    const nextPortfolio = startEditorTimerForCard(portfolio, cardId, normalizeTimestamp(timerBody.startedAt))
     if (nextPortfolio === portfolio) {
       return { ok: false, status: 403, error: 'timer_start_not_allowed' }
     }
@@ -678,7 +692,7 @@ function applyCardMutation(
   return { ok: false, status: 400, error: 'unknown_card_action' }
 }
 
-async function mutateCardWithRetry(body: CardMutationBody, access: WorkspaceAccessRow) {
+async function mutateCardWithRetry(body: CardMutationBody, access: WorkspaceAccessRow): Promise<CardMutationResult> {
   let latestConflict = false
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -689,8 +703,12 @@ async function mutateCardWithRetry(body: CardMutationBody, access: WorkspaceAcce
 
     const currentState = coerceAppState(row.state)
     const mutation = applyCardMutation(currentState, body, access)
-    if (!mutation.ok) {
-      return mutation
+    if (mutation.ok === false) {
+      return {
+        ok: false,
+        status: mutation.status,
+        error: mutation.error,
+      }
     }
 
     const patched = await patchWorkspaceState(row.updated_at, mutation.state)
@@ -731,7 +749,7 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
     }
 
     const result = await mutateCardWithRetry(body, access)
-    if (!result.ok) {
+    if (result.ok === false) {
       return sendJson(res, { success: false, error: result.error }, result.status)
     }
 

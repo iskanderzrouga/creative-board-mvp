@@ -1,4 +1,4 @@
-import importedCardsSeed from './imported-cards-seed.json'
+import importedCardsSeed from './imported-cards-seed.json' with { type: 'json' }
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const HOUR_MS = 60 * 60 * 1000
@@ -2356,7 +2356,7 @@ function coerceCardLinksField(value: unknown): CardLink[] {
   }
 
   return value
-    .map((entry) => {
+    .map((entry): CardLink | null => {
       if (!entry || typeof entry !== 'object') {
         return null
       }
