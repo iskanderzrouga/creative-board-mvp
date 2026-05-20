@@ -561,9 +561,8 @@ function applyCardMutation(
   }
 
   const viewer = getViewerContext(access, portfolio)
-  const action = body.action ?? 'update'
 
-  if (action === 'update') {
+  if (!body.action || body.action === 'update') {
     const updates = normalizeUpdates(body.updates)
     if (!updates || Object.keys(updates).length === 0) {
       return { ok: false, status: 400, error: 'missing_card_updates' }
@@ -585,7 +584,7 @@ function applyCardMutation(
     return { ok: true, state: replacePortfolio(state, nextPortfolio) }
   }
 
-  if (action === 'move') {
+  if (body.action === 'move') {
     const destinationStage =
       typeof body.destinationStage === 'string' && (STAGES as readonly string[]).includes(body.destinationStage)
         ? (body.destinationStage as StageId)
@@ -639,7 +638,7 @@ function applyCardMutation(
     return { ok: true, state: replacePortfolio(state, nextPortfolio) }
   }
 
-  if (action === 'set-priority') {
+  if (body.action === 'set-priority') {
     const priority = Number(body.priority)
     if (priority !== 1 && priority !== 2 && priority !== 3) {
       return { ok: false, status: 400, error: 'invalid_priority' }
@@ -656,7 +655,7 @@ function applyCardMutation(
     return { ok: true, state: replacePortfolio(state, nextPortfolio) }
   }
 
-  if (action === 'start-timer') {
+  if (body.action === 'start-timer') {
     if (
       access.role_mode === 'contributor' &&
       (!viewer.editorName ||
