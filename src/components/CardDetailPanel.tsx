@@ -179,6 +179,7 @@ export function CardDetailPanel({
   const canEditFrameio = canManage || isOwnedEditor
   const canEditLinks = canManage || isOwnedEditor
   const canEditAttachments = canManage || isOwnedEditor
+  const canCreateDriveFolder = canManage || isOwnedEditor
   const canSetBlocked = canManage || isLaunchOpsViewer || isOwnedEditor
   const canClearBlocked = canManage || isOwnedEditor
   const canClearOwner = card.stage === 'Backlog'
@@ -1076,7 +1077,7 @@ export function CardDetailPanel({
               <span className="button-spinner" aria-hidden="true" />
               <span>Creating Drive folder...</span>
             </div>
-          ) : canManage ? (
+          ) : canCreateDriveFolder ? (
             <div className="drive-actions">
               <button
                 type="button"

@@ -1900,22 +1900,19 @@ function App() {
       throw new Error(result?.message || `Drive webhook failed with status ${response.status}.`)
     }
 
-    updatePortfolio(portfolio.id, (currentPortfolio) => ({
-      ...currentPortfolio,
-      cards: currentPortfolio.cards.map((existingCard) =>
-        existingCard.id === card.id
-          ? {
-              ...existingCard,
-              driveFolderUrl:
-                result?.folderUrl ??
-                (existingCard.driveFolderUrl || getDriveFolderSearchUrl(payload.folderName, card.title)),
-              driveFolderCreated: true,
-            }
-          : existingCard,
-      ),
-    }))
+    const savedState = await saveCardUpdates(
+      portfolio.id,
+      card.id,
+      {
+        driveFolderUrl:
+          result?.folderUrl ??
+          (card.driveFolderUrl || getDriveFolderSearchUrl(payload.folderName, card.title)),
+        driveFolderCreated: true,
+      },
+      'create Drive folder',
+    )
 
-    return true
+    return savedState !== null
   }
 
   function autoCreateDriveFolderForNewCreativeCard(portfolio: Portfolio, card: Card) {

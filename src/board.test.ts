@@ -798,7 +798,7 @@ describe('board integrity helpers', () => {
     ).toBe(portfolio)
   })
 
-  it('allows contributors to update their own content fields but not manager-only metadata', () => {
+  it('allows contributors to update their own content and Drive folder fields but not manager-only metadata', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]
     const sourceCard = portfolio.cards.find((card) => card.owner)
@@ -840,6 +840,23 @@ describe('board integrity helpers', () => {
     expect(titleUpdated.cards.find((card) => card.id === sourceCard!.id)?.updatedAt).toBe(
       '2026-03-12T14:10:00Z',
     )
+
+    const driveUpdated = applyCardUpdates(
+      portfolio,
+      state.settings,
+      sourceCard!.id,
+      {
+        driveFolderUrl: 'https://drive.google.com/drive/folders/test-card',
+        driveFolderCreated: true,
+      },
+      'Naomi',
+      '2026-03-12T14:12:00Z',
+      editorViewer,
+    )
+
+    const driveUpdatedCard = driveUpdated.cards.find((card) => card.id === sourceCard!.id)
+    expect(driveUpdatedCard?.driveFolderUrl).toBe('https://drive.google.com/drive/folders/test-card')
+    expect(driveUpdatedCard?.driveFolderCreated).toBe(true)
 
     const ownerUpdated = applyCardUpdates(
       portfolio,

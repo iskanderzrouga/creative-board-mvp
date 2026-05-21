@@ -4444,6 +4444,8 @@ function canUpdateCard(viewer: ViewerContext, card: Card, updates: Partial<Card>
     allowedKeys.add('launchLearning')
     allowedKeys.add('attachments')
     allowedKeys.add('links')
+    allowedKeys.add('driveFolderUrl')
+    allowedKeys.add('driveFolderCreated')
     allowedKeys.add('frameioLink')
     allowedKeys.add('landingPage')
     allowedKeys.add('actualHoursLogged')
