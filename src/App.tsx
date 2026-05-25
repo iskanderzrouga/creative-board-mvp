@@ -426,6 +426,7 @@ function App() {
   const [copyState, setCopyState] = useState<CopyState | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [quickCreateOpen, setQuickCreateOpen] = useState(false)
+  const [quickCreatePending, setQuickCreatePending] = useState(false)
   const [quickCreateValue, setQuickCreateValue] = useState<QuickCreateInput>(() => {
     const initialState = loadAppState()
     return getQuickCreateDefaults(getActivePortfolio(initialState) ?? initialState.portfolios[0], initialState.settings)
@@ -1748,6 +1749,7 @@ function App() {
       success?: boolean
       updatedAt?: unknown
       state?: unknown
+      card?: unknown
       error?: unknown
     }
 
@@ -1759,6 +1761,7 @@ function App() {
     return {
       updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
       state: mergeRemoteMutationState(payload.state, fallbackState),
+      card: payload.card && typeof payload.card === 'object' ? (payload.card as Card) : null,
     }
   }
 
@@ -2336,8 +2339,11 @@ function App() {
     void copyToClipboard(value).then(() => setCopyState({ key }))
   }
 
-  function handleQuickCreate() {
+  async function handleQuickCreate() {
     if (!activePortfolioView) {
+      return
+    }
+    if (quickCreatePending) {
       return
     }
 
@@ -2348,6 +2354,49 @@ function App() {
       card = createCardFromQuickInput(activePortfolioView, state.settings, quickCreateValue, actor)
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'That card could not be created.', 'red')
+      return
+    }
+
+    if (shouldUseScopedCardMutation()) {
+      setQuickCreatePending(true)
+      const createdAt = card.updatedAt || new Date().toISOString()
+      try {
+        const remote = await persistRemoteCardMutation(
+          {
+            action: 'create',
+            portfolioId: activePortfolioView.id,
+            input: quickCreateValue,
+            actor,
+            createdAt,
+          },
+          localFallbackStateRef.current,
+        )
+        const createdCard = remote.card
+
+        if (!createdCard) {
+          throw new Error('Created card was not returned by the shared board.')
+        }
+
+        commitLocalRemoteMutation(remote.state, remote.updatedAt)
+        setQuickCreateOpen(false)
+        setQuickCreateValue(getQuickCreateDefaults(activePortfolioView, state.settings))
+        showToast(`${createdCard.id} created`, 'green')
+        setSelectedCard({
+          portfolioId: activePortfolioView.id,
+          cardId: createdCard.id,
+        })
+
+        const persistedPortfolio =
+          remote.state.portfolios.find((portfolio) => portfolio.id === activePortfolioView.id) ??
+          activePortfolioSource ??
+          activePortfolioView
+        autoCreateDriveFolderForNewCreativeCard(persistedPortfolio, createdCard)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Card create did not reach the shared board.'
+        showToast(`Create failed: ${message}`, 'red')
+      } finally {
+        setQuickCreatePending(false)
+      }
       return
     }
 
@@ -4162,6 +4211,7 @@ function App() {
           onChange={(updates) => setQuickCreateValue((current) => ({ ...current, ...updates }))}
           onClose={() => setQuickCreateOpen(false)}
           onCreate={handleQuickCreate}
+          pending={quickCreatePending}
         />
       ) : null}
 

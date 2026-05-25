@@ -19,7 +19,8 @@ interface QuickCreateModalProps {
   value: QuickCreateInput
   onChange: (updates: Partial<QuickCreateInput>) => void
   onClose: () => void
-  onCreate: () => void
+  onCreate: () => void | Promise<void>
+  pending?: boolean
 }
 
 export function QuickCreateModal({
@@ -29,6 +30,7 @@ export function QuickCreateModal({
   onChange,
   onClose,
   onCreate,
+  pending = false,
 }: QuickCreateModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null)
   const titleId = useId()
@@ -84,6 +86,7 @@ export function QuickCreateModal({
           <span>Source card</span>
           <select
             autoFocus
+            disabled={pending}
             value={value.sourceCardId ?? ''}
             onChange={(event) => onChange({ sourceCardId: event.target.value || null })}
           >
@@ -104,10 +107,11 @@ export function QuickCreateModal({
           <span>{getCardTitleLabel(taskType.id)}</span>
           <input
             autoFocus
+            disabled={pending}
             value={value.title}
             onChange={(event) => onChange({ title: event.target.value })}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && canCreate) {
+              if (event.key === 'Enter' && canCreate && !pending) {
                 event.preventDefault()
                 onCreate()
               }
@@ -119,10 +123,11 @@ export function QuickCreateModal({
           <label className="quick-create-field full-width">
             <span>Angle / Theme</span>
             <input
+              disabled={pending}
               value={value.angle ?? ''}
               onChange={(event) => onChange({ angle: event.target.value })}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && canCreate) {
+                if (event.key === 'Enter' && canCreate && !pending) {
                   event.preventDefault()
                   onCreate()
                 }
@@ -136,12 +141,13 @@ export function QuickCreateModal({
 
   return (
     <>
-      <div className="modal-overlay" aria-hidden="true" onClick={onClose} />
+      <div className="modal-overlay" aria-hidden="true" onClick={pending ? undefined : onClose} />
       <div
         ref={modalRef}
         className="quick-create-modal"
         role="dialog"
         aria-modal="true"
+        aria-busy={pending}
         aria-labelledby={titleId}
         tabIndex={-1}
       >
@@ -156,6 +162,7 @@ export function QuickCreateModal({
             type="button"
             className="close-icon-button"
             aria-label="Close new card dialog"
+            disabled={pending}
             onClick={onClose}
           >
             <XIcon />
@@ -168,6 +175,7 @@ export function QuickCreateModal({
               <span>Brand</span>
               <select
                 autoFocus
+                disabled={pending}
                 value={value.brand}
                 onChange={(event) => handleBrandChange(event.target.value)}
               >
@@ -182,6 +190,7 @@ export function QuickCreateModal({
             <label className="quick-create-field full-width">
               <span>Product</span>
               <select
+                disabled={pending}
                 value={value.product ?? ''}
                 onChange={(event) => onChange({ product: event.target.value, sourceCardId: null })}
               >
@@ -200,6 +209,7 @@ export function QuickCreateModal({
             <label className="quick-create-field full-width">
               <span>Task type</span>
               <select
+                disabled={pending}
                 value={value.taskTypeId}
                 onChange={(event) => handleTaskTypeChange(event.target.value)}
               >
@@ -224,7 +234,7 @@ export function QuickCreateModal({
             <button
               type="button"
               className="primary-button"
-              disabled={!canAdvanceFromStepOne}
+              disabled={!canAdvanceFromStepOne || pending}
               onClick={() => setStep(2)}
             >
               Continue
@@ -234,6 +244,7 @@ export function QuickCreateModal({
               <button
                 type="button"
                 className="ghost-button"
+                disabled={pending}
                 onClick={() => setStep(1)}
               >
                 Back
@@ -241,10 +252,10 @@ export function QuickCreateModal({
               <button
                 type="button"
                 className="primary-button"
-                disabled={!canCreate}
+                disabled={!canCreate || pending}
                 onClick={onCreate}
               >
-                Create card
+                {pending ? 'Creating...' : 'Create card'}
               </button>
             </>
           )}

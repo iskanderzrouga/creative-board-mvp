@@ -16,6 +16,24 @@ function runCommand(command: string, value?: string) {
   document.execCommand(command, false, value)
 }
 
+function sanitizeRichTextHtml(html: string) {
+  if (typeof document !== 'undefined') {
+    const template = document.createElement('template')
+    template.innerHTML = html
+    template.content.querySelectorAll('img').forEach((image) => {
+      const source = image.getAttribute('src')?.trim().toLowerCase() ?? ''
+      if (!source || source.startsWith('data:') || source.startsWith('blob:') || source.startsWith('file:')) {
+        image.remove()
+      }
+    })
+    html = template.innerHTML
+  }
+
+  return DOMPurify.sanitize(html, {
+    FORBID_ATTR: ['style', 'class', 'id', 'srcset'],
+  })
+}
+
 export function RichTextEditor({
   value,
   onChange,
@@ -23,7 +41,6 @@ export function RichTextEditor({
   readOnly = false,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const isFocusedRef = useRef(false)
 
   useEffect(() => {
@@ -35,14 +52,25 @@ export function RichTextEditor({
       return
     }
 
-    const sanitizedValue = DOMPurify.sanitize(value)
+    const sanitizedValue = sanitizeRichTextHtml(value)
     if (editorRef.current.innerHTML !== sanitizedValue) {
       editorRef.current.innerHTML = sanitizedValue
     }
   }, [value])
 
   function handleInput() {
-    onChange(editorRef.current?.innerHTML ?? '')
+    const rawValue = editorRef.current?.innerHTML ?? ''
+    const shouldClean =
+      rawValue.includes('<img') ||
+      rawValue.includes('data:image') ||
+      rawValue.includes('style=') ||
+      rawValue.includes('class=') ||
+      rawValue.includes('id=')
+    const nextValue = shouldClean ? sanitizeRichTextHtml(rawValue) : rawValue
+    if (shouldClean && editorRef.current && editorRef.current.innerHTML !== nextValue) {
+      editorRef.current.innerHTML = nextValue
+    }
+    onChange(nextValue)
   }
 
   function focusEditor() {
@@ -64,29 +92,24 @@ export function RichTextEditor({
     handleInput()
   }
 
-  function insertImage(dataUrl: string) {
+  function insertHtml(html: string) {
     focusEditor()
-    runCommand('insertImage', dataUrl)
+    runCommand('insertHTML', html)
     handleInput()
-  }
-
-  function handleFiles(files: FileList | null) {
-    if (!files?.length) {
-      return
-    }
-
-    const file = files[0]
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        insertImage(reader.result)
-      }
-    }
-    reader.readAsDataURL(file)
   }
 
   function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
     if (readOnly) {
+      return
+    }
+
+    const html = event.clipboardData.getData('text/html')
+    if (html) {
+      event.preventDefault()
+      const sanitizedHtml = sanitizeRichTextHtml(html)
+      if (sanitizedHtml) {
+        insertHtml(sanitizedHtml)
+      }
       return
     }
 
@@ -98,18 +121,6 @@ export function RichTextEditor({
     }
 
     event.preventDefault()
-    const file = imageItem.getAsFile()
-    if (!file) {
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        insertImage(reader.result)
-      }
-    }
-    reader.readAsDataURL(file)
   }
 
   return (
@@ -159,20 +170,6 @@ export function RichTextEditor({
           >
             Link
           </button>
-          <button
-            type="button"
-            className="toolbar-button"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Image
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            hidden
-            onChange={(event) => handleFiles(event.target.files)}
-          />
         </div>
       ) : null}
 

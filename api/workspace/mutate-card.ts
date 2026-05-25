@@ -1,7 +1,10 @@
+/// <reference types="node" />
 import {
   STAGES,
+  addCardToPortfolio,
   applyCardUpdates,
   coerceAppState,
+  createCardFromQuickInput,
   getCardMoveValidationMessage,
   isThaiEditingPortfolio,
   moveCardInPortfolio,
@@ -11,6 +14,7 @@ import {
   type Card,
   type CardPriority,
   type Portfolio,
+  type QuickCreateInput,
   type StageId,
   type TeamMember,
   type ViewerContext,
@@ -50,6 +54,13 @@ interface ScopeAssignment {
 
 type CardMutationBody =
   | {
+      action: 'create'
+      portfolioId?: unknown
+      input?: unknown
+      actor?: unknown
+      createdAt?: unknown
+    }
+  | {
       action?: 'update'
       portfolioId?: unknown
       cardId?: unknown
@@ -84,7 +95,7 @@ type CardMutationBody =
     }
 
 type CardMutationFailure = { ok: false; status: number; error: string }
-type AppliedCardMutation = { ok: true; state: AppState }
+type AppliedCardMutation = { ok: true; state: AppState; card?: Card }
 type PersistedCardMutation = AppliedCardMutation & {
   updatedAt: string
   retried: boolean
@@ -482,6 +493,41 @@ function normalizeUpdates(value: unknown) {
   return updates
 }
 
+function normalizeQuickCreateInput(value: unknown): QuickCreateInput | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const raw = value as {
+    brand?: unknown
+    product?: unknown
+    taskTypeId?: unknown
+    title?: unknown
+    angle?: unknown
+    sourceCardId?: unknown
+  }
+  const brand = typeof raw.brand === 'string' ? raw.brand.trim() : ''
+  const taskTypeId = typeof raw.taskTypeId === 'string' ? raw.taskTypeId.trim() : ''
+  const title = typeof raw.title === 'string' ? raw.title : ''
+  if (!brand || !taskTypeId) {
+    return null
+  }
+
+  return {
+    brand,
+    taskTypeId,
+    title,
+    product: typeof raw.product === 'string' ? raw.product : '',
+    angle: typeof raw.angle === 'string' ? raw.angle : '',
+    sourceCardId:
+      typeof raw.sourceCardId === 'string'
+        ? raw.sourceCardId
+        : raw.sourceCardId === null
+          ? null
+          : undefined,
+  }
+}
+
 async function getAccessRow(email: string) {
   const response = await supabaseRest<WorkspaceAccessRow[]>(
     `workspace_access?select=email,role_mode,editor_name,scope_mode,scope_assignments&email=eq.${encodeFilter(email)}&limit=1`,
@@ -548,8 +594,59 @@ function applyCardMutation(
   access: WorkspaceAccessRow,
 ): AppliedCardMutation | CardMutationFailure {
   const portfolioId = typeof body.portfolioId === 'string' ? body.portfolioId.trim() : ''
-  const cardId = typeof body.cardId === 'string' ? body.cardId.trim() : ''
-  if (!portfolioId || !cardId) {
+  const action = body.action ?? 'update'
+
+  if (!portfolioId) {
+    return { ok: false, status: 400, error: 'missing_card_target' }
+  }
+
+  if (action === 'create') {
+    const portfolio = state.portfolios.find((item) => item.id === portfolioId) ?? null
+    if (!portfolio) {
+      return { ok: false, status: 404, error: 'portfolio_not_found' }
+    }
+
+    const createBody = body as Extract<CardMutationBody, { action: 'create' }>
+    const input = normalizeQuickCreateInput(createBody.input)
+    if (!input) {
+      return { ok: false, status: 400, error: 'invalid_card_create_input' }
+    }
+    if (access.role_mode === 'owner' || access.role_mode === 'manager') {
+      if (!managerCanAccessCard(access, portfolio.id, input.brand)) {
+        return { ok: false, status: 403, error: 'workspace_access_denied' }
+      }
+    } else if (access.role_mode !== 'contributor') {
+      return { ok: false, status: 403, error: 'workspace_access_denied' }
+    }
+
+    const viewer = getViewerContext(access, portfolio)
+    let createdCard: Card
+    try {
+      createdCard = createCardFromQuickInput(
+        portfolio,
+        state.settings,
+        input,
+        normalizeActor(createBody.actor, access, portfolio),
+        normalizeTimestamp(createBody.createdAt),
+      )
+    } catch (error) {
+      return {
+        ok: false,
+        status: 400,
+        error: error instanceof Error ? error.message : 'card_create_invalid',
+      }
+    }
+
+    const nextPortfolio = addCardToPortfolio(portfolio, createdCard, viewer)
+    if (nextPortfolio === portfolio) {
+      return { ok: false, status: 403, error: 'card_create_not_allowed' }
+    }
+
+    return { ok: true, state: replacePortfolio(state, nextPortfolio), card: createdCard }
+  }
+
+  const cardId = 'cardId' in body && typeof body.cardId === 'string' ? body.cardId.trim() : ''
+  if (!cardId) {
     return { ok: false, status: 400, error: 'missing_card_target' }
   }
 
@@ -569,8 +666,6 @@ function applyCardMutation(
   }
 
   const viewer = getViewerContext(access, portfolio)
-
-  const action = body.action ?? 'update'
 
   if (action === 'update') {
     const updateBody = body as Extract<CardMutationBody, { action?: 'update' }>
@@ -717,6 +812,7 @@ async function mutateCardWithRetry(body: CardMutationBody, access: WorkspaceAcce
         ok: true as const,
         updatedAt: patched.updated_at,
         state: mutation.state,
+        card: mutation.card,
         retried: latestConflict,
       }
     }
@@ -757,6 +853,7 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
       success: true,
       updatedAt: result.updatedAt,
       state: result.state,
+      card: result.card ?? null,
       retried: result.retried,
     })
   } catch (error) {
