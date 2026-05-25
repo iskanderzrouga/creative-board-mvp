@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const DATA_IMAGE_RE =
   /<img\b[^>]*\bsrc\s*=\s*(["'])(data:image\/([a-z0-9.+-]+);base64,([^"']+))\1[^>]*>/gi
+const DATA_IMAGE_URL_RE = /^data:image\/([a-z0-9.+-]+);base64,([\s\S]+)$/i
 
 const DEFAULT_BUCKET = 'editors-board-brief-images'
 const DEFAULT_BACKUP_ROOT = 'artifacts/brief-image-migration'
@@ -256,35 +257,84 @@ function buildInventory(state) {
 
   for (const portfolio of state.portfolios ?? []) {
     for (const card of portfolio.cards ?? []) {
-      if (typeof card.brief !== 'string' || !card.brief.includes('data:image')) {
-        continue
+      if (typeof card.brief === 'string' && card.brief.includes('data:image')) {
+        const matches = findDataImages(card.brief)
+        for (const match of matches) {
+          const buffer = decodeBase64(match.base64)
+          const bytes = buffer.byteLength
+          const hash = sha256Buffer(buffer)
+          const ext = extensionForMime(match.mime)
+          images.push({
+            kind: 'brief',
+            key: `${portfolio.id}/${card.id}/brief/${match.index}`,
+            portfolioId: portfolio.id,
+            cardId: card.id,
+            title: card.title,
+            brand: card.brand,
+            imageIndex: match.index,
+            mime: match.mime,
+            extension: ext,
+            bytes,
+            dataUrlBytes: Buffer.byteLength(match.dataUrl),
+            sha256: hash,
+            objectPath: buildObjectPath(portfolio.id, card.id, 'brief', hash, ext),
+          })
+        }
       }
 
-      const matches = findDataImages(card.brief)
-      for (const match of matches) {
-        const buffer = decodeBase64(match.base64)
-        const bytes = buffer.byteLength
-        const hash = sha256Buffer(buffer)
-        const ext = extensionForMime(match.mime)
+      for (const [commentIndex, comment] of (card.comments ?? []).entries()) {
+        if (!comment || typeof comment !== 'object' || typeof comment.imageDataUrl !== 'string') {
+          continue
+        }
+
+        const parsed = parseDataImageUrl(comment.imageDataUrl)
+        if (!parsed) {
+          continue
+        }
+
         images.push({
-          key: `${portfolio.id}/${card.id}/brief/${match.index}`,
+          kind: 'comment',
+          key: `${portfolio.id}/${card.id}/comment/${commentIndex}`,
           portfolioId: portfolio.id,
           cardId: card.id,
           title: card.title,
           brand: card.brand,
-          imageIndex: match.index,
-          mime: match.mime,
-          extension: ext,
-          bytes,
-          dataUrlBytes: Buffer.byteLength(match.dataUrl),
-          sha256: hash,
-          objectPath: buildObjectPath(portfolio.id, card.id, match.index, hash, ext),
+          commentIndex,
+          mime: parsed.mime,
+          extension: parsed.extension,
+          bytes: parsed.bytes,
+          dataUrlBytes: Buffer.byteLength(parsed.dataUrl),
+          sha256: parsed.sha256,
+          objectPath: buildObjectPath(portfolio.id, card.id, 'comment', parsed.sha256, parsed.extension),
         })
       }
     }
   }
 
   return images
+}
+
+function parseDataImageUrl(dataUrl) {
+  const match = dataUrl.match(DATA_IMAGE_URL_RE)
+  if (!match) {
+    return null
+  }
+
+  const mime = `image/${match[1].toLowerCase()}`
+  const base64 = match[2].replace(/\s+/g, '')
+  const buffer = decodeBase64(base64)
+  const sha256 = sha256Buffer(buffer)
+  const extension = extensionForMime(mime)
+
+  return {
+    dataUrl,
+    mime,
+    base64,
+    buffer,
+    bytes: buffer.byteLength,
+    sha256,
+    extension,
+  }
 }
 
 function findDataImages(brief) {
@@ -365,40 +415,68 @@ async function migrateTargets(state, targets) {
 
   for (const portfolio of nextState.portfolios ?? []) {
     for (const card of portfolio.cards ?? []) {
-      if (typeof card.brief !== 'string' || !card.brief.includes('data:image')) {
-        continue
+      if (typeof card.brief === 'string' && card.brief.includes('data:image')) {
+        const matches = findDataImages(card.brief)
+        const selectedMatches = matches.filter((match) =>
+          targetKeys.has(`${portfolio.id}/${card.id}/brief/${match.index}`),
+        )
+
+        let nextBrief = card.brief
+        for (const match of selectedMatches.reverse()) {
+          const buffer = decodeBase64(match.base64)
+          const hash = sha256Buffer(buffer)
+          const ext = extensionForMime(match.mime)
+          const objectPath = buildObjectPath(portfolio.id, card.id, 'brief', hash, ext)
+          const publicUrl = await uploadImage(objectPath, buffer, match.mime)
+          const nextTag = match.tag.replace(match.dataUrl, publicUrl)
+          nextBrief = `${nextBrief.slice(0, match.start)}${nextTag}${nextBrief.slice(match.end)}`
+          uploads.push({
+            key: `${portfolio.id}/${card.id}/brief/${match.index}`,
+            portfolioId: portfolio.id,
+            cardId: card.id,
+            kind: 'brief',
+            imageIndex: match.index,
+            mime: match.mime,
+            bytes: buffer.byteLength,
+            sha256: hash,
+            objectPath,
+            publicUrl,
+          })
+        }
+        card.brief = nextBrief
       }
 
-      const matches = findDataImages(card.brief)
-      const selectedMatches = matches.filter((match) =>
-        targetKeys.has(`${portfolio.id}/${card.id}/brief/${match.index}`),
-      )
-      if (selectedMatches.length === 0) {
-        continue
-      }
+      for (const [commentIndex, comment] of (card.comments ?? []).entries()) {
+        if (!comment || typeof comment !== 'object' || typeof comment.imageDataUrl !== 'string') {
+          continue
+        }
 
-      let nextBrief = card.brief
-      for (const match of selectedMatches.reverse()) {
-        const buffer = decodeBase64(match.base64)
-        const hash = sha256Buffer(buffer)
-        const ext = extensionForMime(match.mime)
-        const objectPath = buildObjectPath(portfolio.id, card.id, match.index, hash, ext)
-        const publicUrl = await uploadImage(objectPath, buffer, match.mime)
-        const nextTag = match.tag.replace(match.dataUrl, publicUrl)
-        nextBrief = `${nextBrief.slice(0, match.start)}${nextTag}${nextBrief.slice(match.end)}`
+        const key = `${portfolio.id}/${card.id}/comment/${commentIndex}`
+        if (!targetKeys.has(key)) {
+          continue
+        }
+
+        const parsed = parseDataImageUrl(comment.imageDataUrl)
+        if (!parsed) {
+          continue
+        }
+
+        const objectPath = buildObjectPath(portfolio.id, card.id, 'comment', parsed.sha256, parsed.extension)
+        const publicUrl = await uploadImage(objectPath, parsed.buffer, parsed.mime)
+        comment.imageDataUrl = publicUrl
         uploads.push({
-          key: `${portfolio.id}/${card.id}/brief/${match.index}`,
+          key,
           portfolioId: portfolio.id,
           cardId: card.id,
-          imageIndex: match.index,
-          mime: match.mime,
-          bytes: buffer.byteLength,
-          sha256: hash,
+          kind: 'comment',
+          commentIndex,
+          mime: parsed.mime,
+          bytes: parsed.bytes,
+          sha256: parsed.sha256,
           objectPath,
           publicUrl,
         })
       }
-      card.brief = nextBrief
     }
   }
 
@@ -464,14 +542,14 @@ function verifyMigrationShape(beforeState, afterState, targets) {
     }
   }
 
-  const changedBriefs = getChangedBriefs(beforeState, afterState)
-  if (mode === 'canary' && changedBriefs.length !== 1) {
-    return { ok: false, error: `canary should change exactly one card brief, changed ${changedBriefs.length}` }
+  const changedCards = getChangedCards(beforeState, afterState)
+  if (mode === 'canary' && changedCards.length !== 1) {
+    return { ok: false, error: `canary should change exactly one card, changed ${changedCards.length}` }
   }
 
   return {
     ok: true,
-    changedBriefs,
+    changedCards,
     embeddedImagesBefore: before.length,
     embeddedImagesAfter: after.length,
   }
@@ -498,11 +576,11 @@ function verifyPatchedState(beforeState, afterState, targets, uploads) {
   }
 }
 
-function getChangedBriefs(beforeState, afterState) {
-  const beforeBriefs = new Map()
+function getChangedCards(beforeState, afterState) {
+  const beforeCards = new Map()
   for (const portfolio of beforeState.portfolios ?? []) {
     for (const card of portfolio.cards ?? []) {
-      beforeBriefs.set(`${portfolio.id}/${card.id}`, card.brief ?? '')
+      beforeCards.set(`${portfolio.id}/${card.id}`, stableJson(card))
     }
   }
 
@@ -510,7 +588,7 @@ function getChangedBriefs(beforeState, afterState) {
   for (const portfolio of afterState.portfolios ?? []) {
     for (const card of portfolio.cards ?? []) {
       const key = `${portfolio.id}/${card.id}`
-      if (beforeBriefs.get(key) !== (card.brief ?? '')) {
+      if (beforeCards.get(key) !== stableJson(card)) {
         changed.push({ portfolioId: portfolio.id, cardId: card.id, title: card.title })
       }
     }
@@ -518,18 +596,19 @@ function getChangedBriefs(beforeState, afterState) {
   return changed
 }
 
-function buildObjectPath(portfolioId, cardId, imageIndex, hash, ext) {
+function buildObjectPath(portfolioId, cardId, kind, hash, ext) {
   return [
     `workspace-${workspaceId}`,
     sanitizePathPart(portfolioId),
     sanitizePathPart(cardId),
-    `brief-image-${hash.slice(0, 16)}.${ext}`,
+    `${kind}-image-${hash.slice(0, 16)}.${ext}`,
   ].join('/')
 }
 
 function summarizeImage(image) {
   return {
     key: image.key,
+    kind: image.kind,
     cardId: image.cardId,
     title: image.title,
     brand: image.brand,

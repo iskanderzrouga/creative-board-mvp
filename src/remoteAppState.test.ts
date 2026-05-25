@@ -715,6 +715,75 @@ describe('remote app state sync', () => {
     ])
   })
 
+  it('keeps normalized remote comment attachments when a stale local snapshot has the old data URL', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const portfolio = seed.portfolios[0]!
+    const card = portfolio.cards[0]!
+    const baseComment = {
+      author: 'Remote reviewer',
+      text: 'Screenshot attached',
+      timestamp: '2026-05-25T00:00:00.000Z',
+    }
+    const remoteComment = {
+      ...baseComment,
+      imageDataUrl:
+        'https://example.supabase.co/storage/v1/object/public/editors-board-brief-images/comment.png',
+    }
+    const staleLocalComment = {
+      ...baseComment,
+      imageDataUrl: 'data:image/png;base64,aaaa',
+    }
+    const remoteMigratedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      comments: [remoteComment],
+                      updatedAt: baseComment.timestamp,
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+    const staleLocalState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      comments: [staleLocalComment],
+                      updatedAt: baseComment.timestamp,
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+
+    await saveRemoteAppState(remoteMigratedState, firstLoad.lastSyncedAt)
+    bumpStoredRemoteUpdatedAt()
+    const result = await saveRemoteAppStateWithRetryMerge(staleLocalState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCard = synced.state.portfolios[0]?.cards.find((candidate) => candidate.id === card.id)
+
+    expect(result.merged).toBe(true)
+    expect(syncedCard?.comments).toHaveLength(1)
+    expect(syncedCard?.comments[0]?.imageDataUrl).toBe(remoteComment.imageDataUrl)
+  })
+
   it('does not resurrect locally deleted cards during stale save conflict merges', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)

@@ -166,17 +166,38 @@ function getCommentMergeKey(comment: CommentEntry) {
     comment.timestamp,
     comment.author,
     comment.text,
-    comment.imageDataUrl ?? '',
   ].join('\u0000')
+}
+
+function isDataImageUrl(value: string | undefined) {
+  return typeof value === 'string' && /^data:image\//i.test(value)
+}
+
+function mergeCommentEntry(current: CommentEntry | undefined, next: CommentEntry) {
+  if (!current) {
+    return next
+  }
+
+  if (isDataImageUrl(current.imageDataUrl) && next.imageDataUrl && !isDataImageUrl(next.imageDataUrl)) {
+    return next
+  }
+
+  if (isDataImageUrl(next.imageDataUrl) && current.imageDataUrl && !isDataImageUrl(current.imageDataUrl)) {
+    return current
+  }
+
+  return next.imageDataUrl && !current.imageDataUrl ? next : current
 }
 
 function mergeComments(remoteComments: CommentEntry[], localComments: CommentEntry[]) {
   const merged = new Map<string, CommentEntry>()
   for (const comment of remoteComments) {
-    merged.set(getCommentMergeKey(comment), comment)
+    const key = getCommentMergeKey(comment)
+    merged.set(key, mergeCommentEntry(merged.get(key), comment))
   }
   for (const comment of localComments) {
-    merged.set(getCommentMergeKey(comment), comment)
+    const key = getCommentMergeKey(comment)
+    merged.set(key, mergeCommentEntry(merged.get(key), comment))
   }
 
   return Array.from(merged.values()).sort(
