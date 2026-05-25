@@ -589,6 +589,65 @@ describe('remote app state sync', () => {
     expect(syncedCard?.updatedAt).toBe('2026-04-29T00:00:02.000Z')
   })
 
+  it('keeps remote card normalization when a stale local snapshot has the same card timestamp', async () => {
+    const seed = createSeedState()
+    const firstLoad = await loadOrCreateRemoteAppState(seed)
+    const portfolio = seed.portfolios[0]!
+    const card = portfolio.cards[0]!
+    const sharedUpdatedAt = '2026-05-25T00:00:00.000Z'
+    const staleDataUrlBrief = '<p>Brief</p><img src="data:image/png;base64,aaaa" />'
+    const migratedStorageBrief =
+      '<p>Brief</p><img src="https://example.supabase.co/storage/v1/object/public/editors-board-brief-images/card.png" />'
+    const remoteMigratedState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      brief: migratedStorageBrief,
+                      updatedAt: sharedUpdatedAt,
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+    const staleLocalState = {
+      ...seed,
+      portfolios: seed.portfolios.map((item) =>
+        item.id === portfolio.id
+          ? {
+              ...item,
+              cards: item.cards.map((candidate) =>
+                candidate.id === card.id
+                  ? {
+                      ...candidate,
+                      brief: staleDataUrlBrief,
+                      updatedAt: sharedUpdatedAt,
+                    }
+                  : candidate,
+              ),
+            }
+          : item,
+      ),
+    }
+
+    await saveRemoteAppState(remoteMigratedState, firstLoad.lastSyncedAt)
+    bumpStoredRemoteUpdatedAt()
+    const result = await saveRemoteAppStateWithRetryMerge(staleLocalState, firstLoad.lastSyncedAt)
+    const synced = await loadOrCreateRemoteAppState(seed)
+    const syncedCard = synced.state.portfolios[0]?.cards.find((candidate) => candidate.id === card.id)
+
+    expect(result.merged).toBe(true)
+    expect(syncedCard?.brief).toBe(migratedStorageBrief)
+    expect(syncedCard?.brief).not.toContain('data:image')
+  })
+
   it('merges card comments during stale saves instead of dropping either side', async () => {
     const seed = createSeedState()
     const firstLoad = await loadOrCreateRemoteAppState(seed)

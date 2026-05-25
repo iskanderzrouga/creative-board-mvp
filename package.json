@@ -12,6 +12,7 @@
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "migrate:brief-images": "node scripts/migrate-brief-images.mjs",
     "typecheck:api": "tsc -p tsconfig.api.json"
   },
   "dependencies": {

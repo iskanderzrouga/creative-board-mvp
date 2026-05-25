@@ -210,7 +210,7 @@ function mergeCreativeCards(remoteCards: Card[], localCards: Card[], deletedCard
 
     const remoteUpdatedAt = getCreativeCardUpdatedAt(remoteCard)
     const localUpdatedAt = getCreativeCardUpdatedAt(localCard)
-    const selectedCard = localUpdatedAt >= remoteUpdatedAt ? localCard : remoteCard
+    const selectedCard = localUpdatedAt > remoteUpdatedAt ? localCard : remoteCard
     merged.set(localCard.id, {
       ...selectedCard,
       comments: mergeComments(remoteCard.comments, localCard.comments),
