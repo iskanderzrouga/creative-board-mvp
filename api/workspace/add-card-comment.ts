@@ -1,8 +1,13 @@
+import { createHash } from 'node:crypto'
+
 type HandlerRequest = Request | {
   method?: string
   body?: unknown
   headers?: Record<string, string | string[] | undefined>
 }
+
+const COMMENT_IMAGE_BUCKET = 'editors-board-brief-images'
+const DATA_IMAGE_URL_RE = /^data:image\/([a-z0-9.+-]+);base64,([\s\S]+)$/i
 
 type HandlerResponse = {
   status?: (status: number) => HandlerResponse
@@ -176,6 +181,24 @@ function getRestUrl(path: string) {
   }
 
   return `${supabaseUrl}/rest/v1/${path}`
+}
+
+function getStoragePublicUrl(path: string) {
+  const supabaseUrl = getSupabaseUrl()
+  if (!supabaseUrl) {
+    throw new Error('supabase_url_missing')
+  }
+
+  return `${supabaseUrl}/storage/v1/object/public/${COMMENT_IMAGE_BUCKET}/${path}`
+}
+
+function getStorageUploadUrl(path: string) {
+  const supabaseUrl = getSupabaseUrl()
+  if (!supabaseUrl) {
+    throw new Error('supabase_url_missing')
+  }
+
+  return `${supabaseUrl}/storage/v1/object/${COMMENT_IMAGE_BUCKET}/${path}`
 }
 
 async function supabaseRest<T>(path: string, init: RequestInit = {}) {
@@ -372,8 +395,94 @@ function getCommentMergeKey(comment: CommentEntry) {
     comment.author.trim(),
     comment.text.trim(),
     comment.timestamp,
-    comment.imageDataUrl ?? '',
   ])
+}
+
+function extensionForMime(mime: string) {
+  switch (mime) {
+    case 'image/jpeg':
+    case 'image/jpg':
+      return 'jpg'
+    case 'image/png':
+      return 'png'
+    case 'image/gif':
+      return 'gif'
+    case 'image/webp':
+      return 'webp'
+    default:
+      return 'bin'
+  }
+}
+
+function sanitizePathPart(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+}
+
+function parseDataImageUrl(dataUrl: string) {
+  const match = dataUrl.match(DATA_IMAGE_URL_RE)
+  if (!match) {
+    return null
+  }
+
+  const mime = `image/${match[1].toLowerCase()}`
+  const base64 = match[2].replace(/\s+/g, '')
+  const buffer = Buffer.from(base64, 'base64')
+  const sha256 = createHash('sha256').update(buffer).digest('hex')
+
+  return {
+    mime,
+    buffer,
+    sha256,
+    extension: extensionForMime(mime),
+  }
+}
+
+async function uploadCommentImage(portfolioId: string, cardId: string, dataUrl: string) {
+  const parsed = parseDataImageUrl(dataUrl)
+  if (!parsed) {
+    return dataUrl
+  }
+
+  const serviceKey = getSupabaseServiceKey()
+  if (!serviceKey) {
+    throw new Error('supabase_service_role_key_missing')
+  }
+
+  const objectPath = [
+    `workspace-${sanitizePathPart(getWorkspaceId())}`,
+    sanitizePathPart(portfolioId),
+    sanitizePathPart(cardId),
+    `comment-image-${parsed.sha256.slice(0, 16)}.${parsed.extension}`,
+  ].join('/')
+
+  const response = await fetch(getStorageUploadUrl(objectPath), {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': parsed.mime,
+      'Cache-Control': 'max-age=31536000',
+      'x-upsert': 'false',
+    },
+    body: parsed.buffer,
+  })
+
+  if (!response.ok && response.status !== 409) {
+    throw new Error(`comment_image_upload_failed:${await response.text()}`)
+  }
+
+  return getStoragePublicUrl(objectPath)
+}
+
+async function normalizeCommentAttachment(portfolioId: string, cardId: string, comment: CommentEntry) {
+  if (!comment.imageDataUrl || !DATA_IMAGE_URL_RE.test(comment.imageDataUrl)) {
+    return comment
+  }
+
+  return {
+    ...comment,
+    imageDataUrl: await uploadCommentImage(portfolioId, cardId, comment.imageDataUrl),
+  }
 }
 
 function normalizeComment(value: unknown): CommentEntry | null {
@@ -492,6 +601,7 @@ async function addCommentWithRetry(
   access: WorkspaceAccessRow,
 ) {
   let latestConflict = false
+  let commentForSave = comment
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const row = await getWorkspaceStateRow()
@@ -503,17 +613,19 @@ async function addCommentWithRetry(
       return { ok: false as const, status: 404, error: 'card_deleted' }
     }
 
-    const next = addCommentToState(row.state, portfolioId, cardId, comment)
-    if (!next.portfolio) {
+    const precheck = addCommentToState(row.state, portfolioId, cardId, commentForSave)
+    if (!precheck.portfolio) {
       return { ok: false as const, status: 404, error: 'portfolio_not_found' }
     }
-    if (!next.card) {
+    if (!precheck.card) {
       return { ok: false as const, status: 404, error: 'card_not_found' }
     }
-    if (!canCommentOnCard(access, next.portfolio, next.card)) {
+    if (!canCommentOnCard(access, precheck.portfolio, precheck.card)) {
       return { ok: false as const, status: 403, error: 'workspace_access_denied' }
     }
 
+    commentForSave = await normalizeCommentAttachment(portfolioId, cardId, commentForSave)
+    const next = commentForSave === comment ? precheck : addCommentToState(row.state, portfolioId, cardId, commentForSave)
     const patched = await patchWorkspaceState(row.updated_at, next.nextState)
     if (patched?.updated_at) {
       return {
