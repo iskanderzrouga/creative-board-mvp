@@ -207,6 +207,7 @@ interface PendingDeleteCard {
 }
 
 type PendingAppConfirm = 'reset-seed' | 'fresh-start'
+type CommentMutationAction = 'add' | 'edit' | 'delete'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
@@ -1717,6 +1718,26 @@ function App() {
     return new Blob([body]).size <= 60_000
   }
 
+  function createCommentId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+
+    return `comment-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  function getCommentMutationKey(comment: CommentEntry) {
+    if (comment.id?.trim()) {
+      return JSON.stringify(['id', comment.id.trim()])
+    }
+
+    return JSON.stringify([
+      comment.author.trim(),
+      comment.text.trim(),
+      comment.timestamp,
+    ])
+  }
+
   async function persistRemoteCardMutation(body: Record<string, unknown>, fallbackState: AppState) {
     const supabase = getSupabaseClient()
     if (!supabase) {
@@ -2890,7 +2911,13 @@ function App() {
     }
   }
 
-  async function persistRemoteCardComment(portfolioId: string, cardId: string, comment: CommentEntry) {
+  async function persistRemoteCardComment(
+    portfolioId: string,
+    cardId: string,
+    action: CommentMutationAction,
+    comment?: CommentEntry,
+    commentKey?: string,
+  ) {
     const supabase = getSupabaseClient()
     if (!supabase) {
       return null
@@ -2906,7 +2933,14 @@ function App() {
       throw new Error('Sign in again before posting this comment.')
     }
 
-    const serializedBody = JSON.stringify({ portfolioId, cardId, comment })
+    const serializedBody = JSON.stringify({
+      action,
+      portfolioId,
+      cardId,
+      ...(comment ? { comment } : {}),
+      ...(comment?.id ? { commentId: comment.id } : {}),
+      ...(commentKey ? { commentKey } : {}),
+    })
     const response = await fetch('/api/workspace/add-card-comment', {
       method: 'POST',
       keepalive: shouldKeepaliveJsonBody(serializedBody),
@@ -2934,6 +2968,46 @@ function App() {
       updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
       state: payload.state,
     }
+  }
+
+  async function uploadCardImage(portfolioId: string, cardId: string, imageDataUrl: string, purpose = 'brief-image') {
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      throw new Error('Sign in again before uploading this image.')
+    }
+
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      throw error
+    }
+
+    const token = data.session?.access_token
+    if (!token) {
+      throw new Error('Sign in again before uploading this image.')
+    }
+
+    const response = await fetch('/api/workspace/upload-card-image', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ portfolioId, cardId, imageDataUrl, purpose }),
+    })
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      success?: boolean
+      imageUrl?: unknown
+      error?: unknown
+    }
+
+    if (!response.ok || !payload.success || typeof payload.imageUrl !== 'string') {
+      const message = typeof payload.error === 'string' ? payload.error : 'Image upload failed.'
+      throw new Error(message)
+    }
+
+    return payload.imageUrl
   }
 
   async function handleDeleteCard() {
@@ -3017,22 +3091,24 @@ function App() {
     }
   }
 
-  async function addCommentToCard(text: string, imageDataUrl?: string) {
+  async function addCommentToCard(text: string, imageDataUrls: string[] = []) {
     if (!selectedCard || !activeSelectedPortfolio) {
-      return
+      return false
     }
     const trimmedText = text.trim()
-    if (!trimmedText && !imageDataUrl) {
-      return
+    const nextImageUrls = imageDataUrls.map((url) => url.trim()).filter(Boolean)
+    if (!trimmedText && nextImageUrls.length === 0) {
+      return false
     }
 
     const author = getActorName(activeSelectedPortfolio)
     const timestamp = new Date().toISOString()
     const comment = {
+      id: createCommentId(),
       author,
       text: trimmedText,
       timestamp,
-      ...(imageDataUrl ? { imageDataUrl } : {}),
+      ...(nextImageUrls.length > 0 ? { imageUrls: nextImageUrls } : {}),
     } satisfies CommentEntry
     const currentState = localFallbackStateRef.current
     const portfolio =
@@ -3041,7 +3117,7 @@ function App() {
 
     if (!portfolio || !commentCard) {
       showToast('That card could not be commented on.', 'red')
-      return
+      return false
     }
 
     const shouldUseRemoteComment =
@@ -3079,23 +3155,20 @@ function App() {
 
     let remoteUpdatedAt: string | null = null
     let remoteState: unknown = null
-    if (shouldUseRemoteComment) {
-      stagePendingRemoteMutation(nextState, 'add card comment')
-    }
     try {
       if (shouldUseRemoteComment) {
-        const remote = await persistRemoteCardComment(portfolio.id, commentCard.id, comment)
+        const remote = await persistRemoteCardComment(portfolio.id, commentCard.id, 'add', comment)
         remoteUpdatedAt = remote?.updatedAt ?? null
         remoteState = remote?.state ?? null
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
       showToast(`Comment failed: ${message}`, 'red')
-      return
+      return false
     }
 
     if (remoteUpdatedAt) {
-      const remoteMergedState = mergeRemoteMutationState(remoteState, nextState)
+      const remoteMergedState = mergeRemoteMutationState(remoteState, currentState)
       const localMergedState = {
         ...remoteMergedState,
         notifications: [...remoteMergedState.notifications, notification],
@@ -3110,6 +3183,184 @@ function App() {
       })
     } else {
       markMainDirty('add card comment')
+      replaceState(nextState)
+      persistAppState(nextState)
+      persistSyncMetadata({
+        lastSyncedAt,
+        pendingRemoteBaseUpdatedAt: lastSyncedAt,
+        pendingRemoteSignature: getRemoteStateSignature(nextState),
+      })
+    }
+
+    return true
+  }
+
+  async function editCommentOnCard(comment: CommentEntry, text: string, imageUrls: string[]) {
+    if (!selectedCard || !activeSelectedPortfolio) {
+      return false
+    }
+
+    const trimmedText = text.trim()
+    const nextImageUrls = imageUrls.map((url) => url.trim()).filter(Boolean)
+    if (!trimmedText && nextImageUrls.length === 0) {
+      return false
+    }
+
+    const currentState = localFallbackStateRef.current
+    const portfolio =
+      currentState.portfolios.find((item) => item.id === selectedCard.portfolioId) ?? null
+    const commentCard = portfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
+
+    if (!portfolio || !commentCard) {
+      showToast('That comment could not be edited.', 'red')
+      return false
+    }
+
+    const editedAt = new Date().toISOString()
+    const targetKey = getCommentMutationKey(comment)
+    const nextComment = {
+      ...comment,
+      text: trimmedText,
+      editedAt,
+      imageUrls: nextImageUrls,
+    } satisfies CommentEntry
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolio.id
+          ? {
+              ...currentPortfolio,
+              cards: currentPortfolio.cards.map((card) =>
+                card.id === commentCard.id
+                  ? {
+                      ...card,
+                      comments: card.comments.map((entry) =>
+                        getCommentMutationKey(entry) === targetKey
+                          ? {
+                              ...nextComment,
+                              imageUrls: nextImageUrls,
+                              imageDataUrl: undefined,
+                            }
+                          : entry,
+                      ),
+                      updatedAt: editedAt,
+                    }
+                  : card,
+              ),
+            }
+          : currentPortfolio,
+      ),
+    }
+
+    const shouldUseRemoteComment =
+      authEnabled &&
+      authStatus === 'signed-in' &&
+      accessStatus === 'granted' &&
+      isSupabaseConfigured()
+
+    let remoteUpdatedAt: string | null = null
+    let remoteState: unknown = null
+    try {
+      if (shouldUseRemoteComment) {
+        const remote = await persistRemoteCardComment(
+          portfolio.id,
+          commentCard.id,
+          'edit',
+          nextComment,
+          targetKey,
+        )
+        remoteUpdatedAt = remote?.updatedAt ?? null
+        remoteState = remote?.state ?? null
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
+      showToast(`Comment failed: ${message}`, 'red')
+      return false
+    }
+
+    if (remoteUpdatedAt) {
+      commitLocalRemoteMutation(mergeRemoteMutationState(remoteState, currentState), remoteUpdatedAt)
+    } else {
+      markMainDirty('edit card comment')
+      replaceState(nextState)
+      persistAppState(nextState)
+      persistSyncMetadata({
+        lastSyncedAt,
+        pendingRemoteBaseUpdatedAt: lastSyncedAt,
+        pendingRemoteSignature: getRemoteStateSignature(nextState),
+      })
+    }
+
+    return true
+  }
+
+  async function deleteCommentOnCard(comment: CommentEntry) {
+    if (!selectedCard || !activeSelectedPortfolio) {
+      return
+    }
+
+    const currentState = localFallbackStateRef.current
+    const portfolio =
+      currentState.portfolios.find((item) => item.id === selectedCard.portfolioId) ?? null
+    const commentCard = portfolio?.cards.find((card) => card.id === selectedCard.cardId) ?? null
+
+    if (!portfolio || !commentCard) {
+      showToast('That comment could not be deleted.', 'red')
+      return
+    }
+
+    const targetKey = getCommentMutationKey(comment)
+    const timestamp = new Date().toISOString()
+    const nextState = {
+      ...currentState,
+      portfolios: currentState.portfolios.map((currentPortfolio) =>
+        currentPortfolio.id === portfolio.id
+          ? {
+              ...currentPortfolio,
+              cards: currentPortfolio.cards.map((card) =>
+                card.id === commentCard.id
+                  ? {
+                      ...card,
+                      comments: card.comments.filter((entry) => getCommentMutationKey(entry) !== targetKey),
+                      updatedAt: timestamp,
+                    }
+                  : card,
+              ),
+            }
+          : currentPortfolio,
+      ),
+    }
+
+    const shouldUseRemoteComment =
+      authEnabled &&
+      authStatus === 'signed-in' &&
+      accessStatus === 'granted' &&
+      isSupabaseConfigured()
+
+    let remoteUpdatedAt: string | null = null
+    let remoteState: unknown = null
+    try {
+      if (shouldUseRemoteComment) {
+        const remote = await persistRemoteCardComment(
+          portfolio.id,
+          commentCard.id,
+          'delete',
+          comment,
+          targetKey,
+        )
+        remoteUpdatedAt = remote?.updatedAt ?? null
+        remoteState = remote?.state ?? null
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Comment did not reach the shared board.'
+      showToast(`Comment failed: ${message}`, 'red')
+      return
+    }
+
+    if (remoteUpdatedAt) {
+      commitLocalRemoteMutation(mergeRemoteMutationState(remoteState, currentState), remoteUpdatedAt)
+    } else {
+      markMainDirty('delete card comment')
       replaceState(nextState)
       persistAppState(nextState)
       persistSyncMetadata({
@@ -4263,6 +4514,11 @@ function App() {
             handleSetProductionPriority(activeSelectedPortfolioView.id, selectedCardData.id, priority)
           }
           onAddComment={addCommentToCard}
+          onEditComment={editCommentOnCard}
+          onDeleteComment={deleteCommentOnCard}
+          onUploadImage={(imageDataUrl, purpose) =>
+            uploadCardImage(activeSelectedPortfolioView.id, selectedCardData.id, imageDataUrl, purpose)
+          }
           onCreateDriveFolder={createDriveFolder}
           onRequestDelete={requestDeleteOpenCard}
           showEditorStartButton={

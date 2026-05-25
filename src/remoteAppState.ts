@@ -152,7 +152,7 @@ function getCreativeCardUpdatedAt(card: Card) {
     latest = Math.max(latest, parseTimestamp(entry.enteredAt), parseTimestamp(entry.exitedAt))
   }
   for (const entry of card.comments) {
-    latest = Math.max(latest, parseTimestamp(entry.timestamp))
+    latest = Math.max(latest, parseTimestamp(entry.timestamp), parseTimestamp(entry.editedAt))
   }
   for (const entry of card.activityLog) {
     latest = Math.max(latest, parseTimestamp(entry.timestamp))
@@ -162,6 +162,10 @@ function getCreativeCardUpdatedAt(card: Card) {
 }
 
 function getCommentMergeKey(comment: CommentEntry) {
+  if (comment.id?.trim()) {
+    return ['id', comment.id.trim()].join('\u0000')
+  }
+
   return [
     comment.timestamp,
     comment.author,
@@ -173,8 +177,44 @@ function isDataImageUrl(value: string | undefined) {
   return typeof value === 'string' && /^data:image\//i.test(value)
 }
 
+function getCommentImageValues(comment: CommentEntry) {
+  return [
+    ...(Array.isArray(comment.imageUrls) ? comment.imageUrls : []),
+    ...(comment.imageDataUrl ? [comment.imageDataUrl] : []),
+  ].filter(Boolean)
+}
+
+function hasStoredCommentImage(comment: CommentEntry) {
+  return getCommentImageValues(comment).some((value) => !isDataImageUrl(value))
+}
+
+function hasDataCommentImage(comment: CommentEntry) {
+  return getCommentImageValues(comment).some((value) => isDataImageUrl(value))
+}
+
 function mergeCommentEntry(current: CommentEntry | undefined, next: CommentEntry) {
   if (!current) {
+    return next
+  }
+
+  const currentUpdatedAt = Math.max(parseTimestamp(current.timestamp), parseTimestamp(current.editedAt))
+  const nextUpdatedAt = Math.max(parseTimestamp(next.timestamp), parseTimestamp(next.editedAt))
+  if (currentUpdatedAt > nextUpdatedAt) {
+    return current
+  }
+  if (nextUpdatedAt > currentUpdatedAt) {
+    return next
+  }
+
+  if (hasDataCommentImage(current) && hasStoredCommentImage(next)) {
+    return next
+  }
+
+  if (hasDataCommentImage(next) && hasStoredCommentImage(current)) {
+    return current
+  }
+
+  if (hasStoredCommentImage(next) && !hasStoredCommentImage(current)) {
     return next
   }
 

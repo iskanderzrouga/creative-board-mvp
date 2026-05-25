@@ -36,6 +36,7 @@ import {
   type Card,
   type CardLink,
   type CardPriority,
+  type CommentEntry,
   type GlobalSettings,
   type Portfolio,
   type RoleMode,
@@ -62,7 +63,10 @@ interface CardDetailPanelProps {
   onCopy: (key: string, value: string) => void
   onSave: (updates: Partial<Card>) => void
   onSetProductionPriority: (priority: Exclude<CardPriority, null>) => void
-  onAddComment: (text: string, imageDataUrl?: string) => void
+  onAddComment: (text: string, imageDataUrls?: string[]) => boolean | Promise<boolean>
+  onEditComment: (comment: CommentEntry, text: string, imageUrls: string[]) => boolean | Promise<boolean>
+  onDeleteComment: (comment: CommentEntry) => void
+  onUploadImage: (imageDataUrl: string, purpose?: string) => Promise<string>
   onCreateDriveFolder: () => void
   onRequestDelete: () => void
   showEditorStartButton: boolean
@@ -75,6 +79,8 @@ interface CardDetailPanelProps {
 const COMMENT_PREVIEW_COUNT = 10
 const ACTIVITY_PREVIEW_COUNT = 5
 const COMMENT_MAX_LENGTH = 2000
+const COMMENT_MAX_IMAGES = 5
+const COMMENT_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 const panelOverflowStyle = {
   overflowY: 'auto' as const,
   overflowX: 'hidden' as const,
@@ -105,6 +111,36 @@ function formatDaysSinceBriefedLabel(daysSinceBriefed: number | null) {
   return `${daysSinceBriefed} ${daysSinceBriefed === 1 ? 'day' : 'days'}`
 }
 
+function readImageFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+      } else {
+        reject(new Error('Unable to read image.'))
+      }
+    }
+    reader.onerror = () => reject(new Error('Unable to read image.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function getCommentImageUrls(comment: CommentEntry) {
+  const urls = [
+    ...(Array.isArray(comment.imageUrls) ? comment.imageUrls : []),
+    ...(comment.imageDataUrl ? [comment.imageDataUrl] : []),
+  ]
+    .map((url) => url.trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(urls))
+}
+
+function getCommentUiKey(comment: CommentEntry) {
+  return comment.id || `${comment.timestamp}-${comment.author}-${comment.text}`
+}
+
 export function CardDetailPanel({
   keyId,
   portfolio,
@@ -122,6 +158,9 @@ export function CardDetailPanel({
   onSave,
   onSetProductionPriority,
   onAddComment,
+  onEditComment,
+  onDeleteComment,
+  onUploadImage,
   onCreateDriveFolder,
   onRequestDelete,
   showEditorStartButton,
@@ -161,7 +200,12 @@ export function CardDetailPanel({
   const [actualHoursDraft, setActualHoursDraft] = useState(String(card.actualHoursLogged))
   const [commentDraft, setCommentDraft] = useState('')
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
-  const [commentImageDataUrl, setCommentImageDataUrl] = useState<string | null>(null)
+  const [commentImageDataUrls, setCommentImageDataUrls] = useState<string[]>([])
+  const [commentImageError, setCommentImageError] = useState<string | null>(null)
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [editingCommentKey, setEditingCommentKey] = useState<string | null>(null)
+  const [editingCommentDraft, setEditingCommentDraft] = useState('')
+  const [editingCommentImages, setEditingCommentImages] = useState<string[]>([])
   const [showAllComments, setShowAllComments] = useState(false)
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [trackingOpen, setTrackingOpen] = useState(false)
@@ -304,6 +348,92 @@ export function CardDetailPanel({
 
     console.log(`[input] committing "${key}" to app state`)
     onSave({ [key]: value } as Pick<Card, typeof key>)
+  }
+
+  async function appendCommentImages(files: File[], target: 'new' | 'edit' = 'new') {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+    if (imageFiles.length === 0) {
+      return
+    }
+
+    const existingCount = target === 'edit' ? editingCommentImages.length : commentImageDataUrls.length
+    const availableSlots = COMMENT_MAX_IMAGES - existingCount
+    if (availableSlots <= 0) {
+      setCommentImageError(`Maximum ${COMMENT_MAX_IMAGES} images per comment.`)
+      return
+    }
+
+    setCommentImageError(null)
+    const nextImages: string[] = []
+    for (const file of imageFiles.slice(0, availableSlots)) {
+      if (file.size > COMMENT_MAX_IMAGE_BYTES) {
+        setCommentImageError('One image is too large.')
+        continue
+      }
+      try {
+        nextImages.push(await readImageFile(file))
+      } catch (error) {
+        setCommentImageError(error instanceof Error ? error.message : 'Unable to read image.')
+      }
+    }
+
+    if (nextImages.length === 0) {
+      return
+    }
+
+    if (target === 'edit') {
+      setEditingCommentImages((current) => [...current, ...nextImages].slice(0, COMMENT_MAX_IMAGES))
+    } else {
+      setCommentImageDataUrls((current) => [...current, ...nextImages].slice(0, COMMENT_MAX_IMAGES))
+    }
+  }
+
+  async function postComment() {
+    if (!commentDraft.trim() && commentImageDataUrls.length === 0) {
+      return
+    }
+
+    const didPost = await onAddComment(commentDraft.trim(), commentImageDataUrls)
+    if (!didPost) {
+      return
+    }
+
+    setCommentDraft('')
+    setCommentImageDataUrls([])
+    setCommentImageError(null)
+  }
+
+  function startEditingComment(comment: CommentEntry) {
+    setEditingCommentKey(getCommentUiKey(comment))
+    setEditingCommentDraft(comment.text)
+    setEditingCommentImages(getCommentImageUrls(comment))
+    setCommentImageError(null)
+  }
+
+  async function saveEditingComment(comment: CommentEntry) {
+    if (!editingCommentDraft.trim() && editingCommentImages.length === 0) {
+      return
+    }
+
+    const didSave = await onEditComment(comment, editingCommentDraft.trim(), editingCommentImages)
+    if (!didSave) {
+      return
+    }
+
+    setEditingCommentKey(null)
+    setEditingCommentDraft('')
+    setEditingCommentImages([])
+    setCommentImageError(null)
+  }
+
+  function canMutateComment(comment: CommentEntry) {
+    if (canManage) {
+      return true
+    }
+
+    const author = comment.author.trim().toLowerCase()
+    const viewer = viewerName?.trim().toLowerCase() ?? ''
+    return Boolean(viewer && author === viewer)
   }
 
   function commitFrameioLinks() {
@@ -1122,13 +1252,22 @@ export function CardDetailPanel({
               <RichTextEditor
                 value={briefDraft}
                 onChange={setBriefDraft}
+                onCommit={(nextValue) => {
+                  setBriefDraft(nextValue)
+                  commitTextDraft('brief', nextValue)
+                }}
                 onBlur={() => commitTextDraft('brief', briefDraft)}
                 readOnly={false}
+                onImageUpload={onUploadImage}
               />
             </div>
           ) : (
             <div className="panel-textarea" style={panelTextOverflowStyle}>
-              {renderDisplayValue(card.brief)}
+              <RichTextEditor
+                value={card.brief}
+                onChange={() => undefined}
+                readOnly
+              />
             </div>
           )}
         </section>
@@ -1380,18 +1519,129 @@ export function CardDetailPanel({
             {card.comments.length === 0 ? (
               <div className="muted-copy">No comments yet.</div>
             ) : (
-              visibleComments.map((comment) => (
-                <div key={`${comment.timestamp}-${comment.text}`} className="comment-card">
-                  <div className="comment-meta">
-                    <strong>{comment.author}</strong>
-                    <span title={formatDateTime(comment.timestamp)}>{formatRelativeTime(comment.timestamp, nowMs)}</span>
+              visibleComments.map((comment) => {
+                const commentKey = getCommentUiKey(comment)
+                const imageUrls = getCommentImageUrls(comment)
+                const isEditingComment = editingCommentKey === commentKey
+
+                return (
+                  <div key={commentKey} className="comment-card">
+                    <div className="comment-meta">
+                      <strong>{comment.author}</strong>
+                      <span title={formatDateTime(comment.timestamp)}>
+                        {formatRelativeTime(comment.timestamp, nowMs)}
+                        {comment.editedAt ? ' edited' : ''}
+                      </span>
+                    </div>
+                    {canMutateComment(comment) ? (
+                      <div className="comment-card-actions">
+                        <button
+                          type="button"
+                          className="clear-link"
+                          onClick={() => startEditingComment(comment)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="clear-link danger-link"
+                          onClick={() => onDeleteComment(comment)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                    {isEditingComment ? (
+                      <div className="comment-edit-form">
+                        <textarea
+                          style={panelTextOverflowStyle}
+                          value={editingCommentDraft}
+                          maxLength={COMMENT_MAX_LENGTH}
+                          onChange={(event) => setEditingCommentDraft(event.target.value)}
+                          rows={3}
+                        />
+                        {editingCommentImages.length > 0 ? (
+                          <div className="comment-image-grid">
+                            {editingCommentImages.map((imageUrl, index) => (
+                              <div key={`editing-comment-image-${imageUrl}-${index}`} className="comment-image-thumb">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewImageUrl(imageUrl)}
+                                  aria-label={`Open comment image ${index + 1}`}
+                                >
+                                  <img src={imageUrl} alt="" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="comment-image-remove"
+                                  onClick={() =>
+                                    setEditingCommentImages((current) => current.filter((_, imageIndex) => imageIndex !== index))
+                                  }
+                                  aria-label={`Remove comment image ${index + 1}`}
+                                >
+                                  x
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {commentImageError ? (
+                          <p className="comment-image-error" role="alert">
+                            {commentImageError}
+                          </p>
+                        ) : null}
+                        <div className="comment-actions-row">
+                          <label className="ghost-button comment-file-label">
+                            Add image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              hidden
+                              onChange={(event) => {
+                                const files = Array.from(event.target.files ?? [])
+                                event.target.value = ''
+                                void appendCommentImages(files, 'edit')
+                              }}
+                            />
+                          </label>
+                          <button type="button" className="ghost-button" onClick={() => setEditingCommentKey(null)}>
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="primary-button"
+	                            onClick={() => {
+	                              void saveEditingComment(comment)
+	                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {comment.text ? <p style={panelTextOverflowStyle}>{comment.text}</p> : null}
+                        {imageUrls.length > 0 ? (
+                          <div className="comment-image-grid">
+                            {imageUrls.map((imageUrl, index) => (
+                              <button
+                                key={`comment-image-${commentKey}-${imageUrl}-${index}`}
+                                type="button"
+                                className="comment-image-button"
+                                onClick={() => setPreviewImageUrl(imageUrl)}
+                                aria-label={`Open comment image ${index + 1}`}
+                              >
+                                <img src={imageUrl} alt="" className="comment-image" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
-                  <p style={panelTextOverflowStyle}>{comment.text}</p>
-                  {comment.imageDataUrl ? (
-                    <img src={comment.imageDataUrl} alt="Comment attachment" className="comment-image" />
-                  ) : null}
-                </div>
-              ))
+                )
+              })
             )}
           </div>
           {hiddenCommentCount > 0 ? (
@@ -1413,60 +1663,66 @@ export function CardDetailPanel({
                 placeholder="Leave feedback or an update..."
                 rows={2}
                 onKeyDown={(event) => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && commentDraft.trim()) {
-                    onAddComment(commentDraft.trim(), commentImageDataUrl ?? undefined)
-                    setCommentDraft('')
-                    setCommentImageDataUrl(null)
+                  if (
+                    (event.metaKey || event.ctrlKey) &&
+                    event.key === 'Enter' &&
+                    (commentDraft.trim() || commentImageDataUrls.length > 0)
+                  ) {
+	                    void postComment()
                   }
                 }}
                 onPaste={(event) => {
-                  const items = event.clipboardData?.items
-                  if (!items) return
-                  for (const item of items) {
-                    if (item.type.startsWith('image/')) {
-                      const file = item.getAsFile()
-                      if (!file) continue
-                      const reader = new FileReader()
-                      reader.onload = () => {
-                        if (typeof reader.result === 'string') {
-                          setCommentImageDataUrl(reader.result)
-                        }
-                      }
-                      reader.readAsDataURL(file)
-                      break
-                    }
+                  const files = Array.from(event.clipboardData?.items ?? [])
+                    .filter((item) => item.type.startsWith('image/'))
+                    .map((item) => item.getAsFile())
+                    .filter((file): file is File => Boolean(file))
+                  if (files.length > 0) {
+                    event.preventDefault()
+                    void appendCommentImages(files)
                   }
                 }}
               />
-              {commentImageDataUrl ? (
-                <div className="comment-image-preview">
-                  <img src={commentImageDataUrl} alt="Pasted attachment" />
-                  <button
-                    type="button"
-                    className="clear-link"
-                    onClick={() => setCommentImageDataUrl(null)}
-                  >
-                    Remove image
-                  </button>
+              {commentImageDataUrls.length > 0 ? (
+                <div className="comment-image-preview-grid">
+                  {commentImageDataUrls.map((imageUrl, index) => (
+                    <div key={`new-comment-image-${imageUrl}-${index}`} className="comment-image-thumb">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImageUrl(imageUrl)}
+                        aria-label={`Open comment image ${index + 1}`}
+                      >
+                        <img src={imageUrl} alt="" />
+                      </button>
+                      <button
+                        type="button"
+                        className="comment-image-remove"
+                        onClick={() =>
+                          setCommentImageDataUrls((current) => current.filter((_, imageIndex) => imageIndex !== index))
+                        }
+                        aria-label={`Remove comment image ${index + 1}`}
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              ) : null}
+              {commentImageError ? (
+                <p className="comment-image-error" role="alert">
+                  {commentImageError}
+                </p>
               ) : null}
               <div className="comment-actions-row">
                 <input
                   ref={commentImageRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   hidden
                   onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (!file) return
-                    const reader = new FileReader()
-                    reader.onload = () => {
-                      if (typeof reader.result === 'string') {
-                        setCommentImageDataUrl(reader.result)
-                      }
-                    }
-                    reader.readAsDataURL(file)
+                    const files = Array.from(event.target.files ?? [])
                     event.target.value = ''
+                    void appendCommentImages(files)
                   }}
                 />
                 <button
@@ -1480,10 +1736,7 @@ export function CardDetailPanel({
                   type="button"
                   className="primary-button"
                   onClick={() => {
-                    if (!commentDraft.trim() && !commentImageDataUrl) return
-                    onAddComment(commentDraft.trim(), commentImageDataUrl ?? undefined)
-                    setCommentDraft('')
-                    setCommentImageDataUrl(null)
+	                    void postComment()
                   }}
                 >
                   Post
@@ -1493,6 +1746,38 @@ export function CardDetailPanel({
                 <p className="comment-hint">Cmd+Enter to post · Paste images from clipboard</p>
                 <p className="comment-counter">{`${commentCharactersRemaining} characters remaining`}</p>
               </div>
+            </div>
+          ) : null}
+          {previewImageUrl ? (
+            <div
+              className="comment-image-lightbox"
+              role="button"
+              tabIndex={0}
+              aria-label="Close image preview"
+              onClick={() => setPreviewImageUrl(null)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setPreviewImageUrl(null)
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="comment-lightbox-close"
+                aria-label="Close preview"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setPreviewImageUrl(null)
+                }}
+              >
+                x
+              </button>
+              <img
+                src={previewImageUrl}
+                alt=""
+                onClick={(event) => event.stopPropagation()}
+              />
             </div>
           ) : null}
         </section>

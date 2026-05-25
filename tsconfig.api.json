@@ -18,5 +18,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["api/workspace/mutate-card.ts", "src/board.ts", "src/imported-cards-seed.json"]
+  "include": ["api/workspace/*.ts", "src/board.ts", "src/imported-cards-seed.json"]
 }

@@ -8,6 +8,16 @@ type HandlerRequest = Request | {
 
 const COMMENT_IMAGE_BUCKET = 'editors-board-brief-images'
 const DATA_IMAGE_URL_RE = /^data:image\/([a-z0-9.+-]+);base64,([\s\S]+)$/i
+const MAX_COMMENT_IMAGES = 5
+const MAX_COMMENT_IMAGE_BYTES = 8 * 1024 * 1024
+const ALLOWED_COMMENT_IMAGE_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'])
+const COMMENT_IMAGE_INPUT_ERRORS = new Set([
+  'unsupported_comment_image_type',
+  'unsupported_comment_image_url',
+  'empty_comment_image',
+  'comment_image_too_large',
+  'too_many_comment_images',
+])
 
 type HandlerResponse = {
   status?: (status: number) => HandlerResponse
@@ -59,9 +69,12 @@ interface CardState {
 }
 
 interface CommentEntry {
+  id?: string
   author: string
   text: string
   timestamp: string
+  editedAt?: string
+  imageUrls?: string[]
   imageDataUrl?: string
 }
 
@@ -391,11 +404,44 @@ function canCommentOnCard(access: WorkspaceAccessRow, portfolio: PortfolioState,
 }
 
 function getCommentMergeKey(comment: CommentEntry) {
+  const id = comment.id?.trim()
+  if (id) {
+    return JSON.stringify(['id', id])
+  }
+
   return JSON.stringify([
     comment.author.trim(),
     comment.text.trim(),
     comment.timestamp,
   ])
+}
+
+function getLegacyCommentMergeKey(comment: CommentEntry) {
+  return JSON.stringify([
+    comment.author.trim(),
+    comment.text.trim(),
+    comment.timestamp,
+  ])
+}
+
+function getCommentTargetKey(commentId: string, commentKey: string, comment: CommentEntry | null) {
+  if (commentId.trim()) {
+    return JSON.stringify(['id', commentId.trim()])
+  }
+
+  if (commentKey.trim()) {
+    return commentKey.trim()
+  }
+
+  return comment ? getCommentMergeKey(comment) : ''
+}
+
+function commentMatchesKey(comment: CommentEntry, targetKey: string) {
+  if (!targetKey) {
+    return false
+  }
+
+  return getCommentMergeKey(comment) === targetKey || getLegacyCommentMergeKey(comment) === targetKey
 }
 
 function extensionForMime(mime: string) {
@@ -425,8 +471,19 @@ function parseDataImageUrl(dataUrl: string) {
   }
 
   const mime = `image/${match[1].toLowerCase()}`
+  if (!ALLOWED_COMMENT_IMAGE_MIME.has(mime)) {
+    throw new Error('unsupported_comment_image_type')
+  }
+
   const base64 = match[2].replace(/\s+/g, '')
   const buffer = Buffer.from(base64, 'base64')
+  if (buffer.length <= 0) {
+    throw new Error('empty_comment_image')
+  }
+  if (buffer.length > MAX_COMMENT_IMAGE_BYTES) {
+    throw new Error('comment_image_too_large')
+  }
+
   const sha256 = createHash('sha256').update(buffer).digest('hex')
 
   return {
@@ -474,14 +531,48 @@ async function uploadCommentImage(portfolioId: string, cardId: string, dataUrl: 
   return getStoragePublicUrl(objectPath)
 }
 
-async function normalizeCommentAttachment(portfolioId: string, cardId: string, comment: CommentEntry) {
-  if (!comment.imageDataUrl || !DATA_IMAGE_URL_RE.test(comment.imageDataUrl)) {
-    return comment
+function isAllowedStoredImageUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+async function normalizeCommentImages(portfolioId: string, cardId: string, comment: CommentEntry) {
+  const hasImageUrls = Array.isArray(comment.imageUrls)
+  const rawImageUrls = hasImageUrls ? comment.imageUrls ?? [] : []
+  const sources = [
+    ...rawImageUrls,
+    ...(comment.imageDataUrl ? [comment.imageDataUrl] : []),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  if (sources.length > MAX_COMMENT_IMAGES) {
+    throw new Error('too_many_comment_images')
   }
 
+  const imageUrls: string[] = []
+  for (const source of sources) {
+    const nextUrl = DATA_IMAGE_URL_RE.test(source)
+      ? await uploadCommentImage(portfolioId, cardId, source)
+      : source
+    if (!DATA_IMAGE_URL_RE.test(source) && !isAllowedStoredImageUrl(nextUrl)) {
+      throw new Error('unsupported_comment_image_url')
+    }
+    if (!imageUrls.includes(nextUrl)) {
+      imageUrls.push(nextUrl)
+    }
+  }
+
+  const rest = { ...comment }
+  delete rest.imageDataUrl
+  delete rest.imageUrls
   return {
-    ...comment,
-    imageDataUrl: await uploadCommentImage(portfolioId, cardId, comment.imageDataUrl),
+    ...rest,
+    ...(hasImageUrls || imageUrls.length > 0 ? { imageUrls } : {}),
   }
 }
 
@@ -491,19 +582,34 @@ function normalizeComment(value: unknown): CommentEntry | null {
   }
 
   const comment = value as Partial<CommentEntry>
+  const id = typeof comment.id === 'string' ? comment.id.trim() : ''
   const author = typeof comment.author === 'string' ? comment.author.trim() : ''
   const text = typeof comment.text === 'string' ? comment.text.trim() : ''
   const timestamp = typeof comment.timestamp === 'string' ? comment.timestamp.trim() : ''
+  const editedAt = typeof comment.editedAt === 'string' ? comment.editedAt.trim() : ''
+  const hasImageUrls = Array.isArray(comment.imageUrls)
+  const rawImageUrls = hasImageUrls ? comment.imageUrls ?? [] : []
+  const imageUrls = rawImageUrls
+    .filter((imageUrl): imageUrl is string => typeof imageUrl === 'string')
+    .map((imageUrl) => imageUrl.trim())
+    .filter(Boolean)
   const imageDataUrl = typeof comment.imageDataUrl === 'string' ? comment.imageDataUrl : undefined
 
-  if (!author || !timestamp || (!text && !imageDataUrl)) {
+  if (imageUrls.length > MAX_COMMENT_IMAGES) {
+    return null
+  }
+
+  if (!author || !timestamp || (!text && imageUrls.length === 0 && !imageDataUrl)) {
     return null
   }
 
   return {
+    ...(id ? { id } : {}),
     author,
     text,
     timestamp,
+    ...(editedAt ? { editedAt } : {}),
+    ...(hasImageUrls ? { imageUrls } : {}),
     ...(imageDataUrl ? { imageDataUrl } : {}),
   }
 }
@@ -594,10 +700,169 @@ function addCommentToState(state: WorkspaceState, portfolioId: string, cardId: s
   }
 }
 
-async function addCommentWithRetry(
+function canMutateExistingComment(access: WorkspaceAccessRow, portfolio: PortfolioState, comment: CommentEntry) {
+  if (access.role_mode === 'owner' || access.role_mode === 'manager') {
+    return true
+  }
+
+  if (access.role_mode !== 'contributor') {
+    return false
+  }
+
+  const author = normalizeIdentity(comment.author)
+  const editorName = normalizeIdentity(access.editor_name)
+  if (editorName && author === editorName) {
+    return true
+  }
+
+  const accessEmail = normalizeIdentity(access.email)
+  if (accessEmail && author === accessEmail) {
+    return true
+  }
+
+  return getTeam(portfolio).some((member) => {
+    const memberEmail = normalizeIdentity(getString(member.accessEmail))
+    const memberName = normalizeIdentity(getString(member.name))
+    return memberEmail === accessEmail && normalizeIdentity(memberName) === author
+  })
+}
+
+function replaceCommentImages(comment: CommentEntry, imageUrls: string[] | undefined) {
+  const nextComment = { ...comment }
+  delete nextComment.imageDataUrl
+  delete nextComment.imageUrls
+  return {
+    ...nextComment,
+    ...(imageUrls ? { imageUrls } : {}),
+  }
+}
+
+function editCommentInState(
+  state: WorkspaceState,
   portfolioId: string,
   cardId: string,
-  comment: CommentEntry,
+  targetKey: string,
+  incomingComment: CommentEntry,
+  access: WorkspaceAccessRow,
+) {
+  const portfolios = getPortfolios(state)
+  const portfolio = portfolios.find((item) => getString(item.id) === portfolioId) ?? null
+
+  if (!portfolio) {
+    return { nextState: state, portfolio: null, card: null, edited: false, forbidden: false }
+  }
+
+  const cards = getCards(portfolio)
+  const card = cards.find((item) => getString(item.id) === cardId) ?? null
+
+  if (!card) {
+    return { nextState: state, portfolio, card: null, edited: false, forbidden: false }
+  }
+
+  const comments = getComments(card)
+  const commentIndex = comments.findIndex((entry) => commentMatchesKey(entry, targetKey))
+  if (commentIndex === -1) {
+    return { nextState: state, portfolio, card, edited: false, forbidden: false }
+  }
+
+  const existingComment = comments[commentIndex]!
+  if (!canMutateExistingComment(access, portfolio, existingComment)) {
+    return { nextState: state, portfolio, card, edited: false, forbidden: true }
+  }
+
+  const editedAt = incomingComment.editedAt || new Date().toISOString()
+  const baseEditedComment = {
+    ...existingComment,
+    id: existingComment.id ?? incomingComment.id,
+    text: incomingComment.text.trim(),
+    editedAt,
+  }
+  const editedComment = Array.isArray(incomingComment.imageUrls)
+    ? replaceCommentImages(baseEditedComment, incomingComment.imageUrls)
+    : baseEditedComment
+  const nextComments = comments.map((entry, index) => (index === commentIndex ? editedComment : entry))
+  const nextCard = {
+    ...card,
+    comments: nextComments,
+    updatedAt: editedAt,
+  }
+  const nextPortfolio = {
+    ...portfolio,
+    cards: cards.map((item) => (getString(item.id) === cardId ? nextCard : item)),
+  }
+
+  return {
+    nextState: {
+      ...state,
+      portfolios: portfolios.map((item) => (getString(item.id) === portfolioId ? nextPortfolio : item)),
+    },
+    portfolio,
+    card,
+    edited: true,
+    forbidden: false,
+  }
+}
+
+function deleteCommentFromState(
+  state: WorkspaceState,
+  portfolioId: string,
+  cardId: string,
+  targetKey: string,
+  access: WorkspaceAccessRow,
+) {
+  const portfolios = getPortfolios(state)
+  const portfolio = portfolios.find((item) => getString(item.id) === portfolioId) ?? null
+
+  if (!portfolio) {
+    return { nextState: state, portfolio: null, card: null, deleted: false, forbidden: false }
+  }
+
+  const cards = getCards(portfolio)
+  const card = cards.find((item) => getString(item.id) === cardId) ?? null
+
+  if (!card) {
+    return { nextState: state, portfolio, card: null, deleted: false, forbidden: false }
+  }
+
+  const comments = getComments(card)
+  const comment = comments.find((entry) => commentMatchesKey(entry, targetKey)) ?? null
+  if (!comment) {
+    return { nextState: state, portfolio, card, deleted: false, forbidden: false }
+  }
+
+  if (!canMutateExistingComment(access, portfolio, comment)) {
+    return { nextState: state, portfolio, card, deleted: false, forbidden: true }
+  }
+
+  const updatedAt = new Date().toISOString()
+  const nextCard = {
+    ...card,
+    comments: comments.filter((entry) => !commentMatchesKey(entry, targetKey)),
+    updatedAt,
+  }
+  const nextPortfolio = {
+    ...portfolio,
+    cards: cards.map((item) => (getString(item.id) === cardId ? nextCard : item)),
+  }
+
+  return {
+    nextState: {
+      ...state,
+      portfolios: portfolios.map((item) => (getString(item.id) === portfolioId ? nextPortfolio : item)),
+    },
+    portfolio,
+    card,
+    deleted: nextCard.comments.length < comments.length,
+    forbidden: false,
+  }
+}
+
+async function mutateCommentWithRetry(
+  action: 'add' | 'edit' | 'delete',
+  portfolioId: string,
+  cardId: string,
+  comment: CommentEntry | null,
+  targetKey: string,
   access: WorkspaceAccessRow,
 ) {
   let latestConflict = false
@@ -613,7 +878,13 @@ async function addCommentWithRetry(
       return { ok: false as const, status: 404, error: 'card_deleted' }
     }
 
-    const precheck = addCommentToState(row.state, portfolioId, cardId, commentForSave)
+    const precheckComment =
+      commentForSave ?? {
+        author: '',
+        text: '',
+        timestamp: new Date().toISOString(),
+      }
+    const precheck = addCommentToState(row.state, portfolioId, cardId, precheckComment)
     if (!precheck.portfolio) {
       return { ok: false as const, status: 404, error: 'portfolio_not_found' }
     }
@@ -624,15 +895,41 @@ async function addCommentWithRetry(
       return { ok: false as const, status: 403, error: 'workspace_access_denied' }
     }
 
-    commentForSave = await normalizeCommentAttachment(portfolioId, cardId, commentForSave)
-    const next = commentForSave === comment ? precheck : addCommentToState(row.state, portfolioId, cardId, commentForSave)
+    if (action === 'add' && commentForSave) {
+      commentForSave = await normalizeCommentImages(portfolioId, cardId, commentForSave)
+    }
+    if (action === 'edit' && commentForSave) {
+      commentForSave = await normalizeCommentImages(portfolioId, cardId, commentForSave)
+    }
+
+    const next =
+      action === 'add' && commentForSave
+        ? addCommentToState(row.state, portfolioId, cardId, commentForSave)
+        : action === 'edit' && commentForSave
+          ? editCommentInState(row.state, portfolioId, cardId, targetKey, commentForSave, access)
+          : deleteCommentFromState(row.state, portfolioId, cardId, targetKey, access)
+
+    if ('forbidden' in next && next.forbidden) {
+      return { ok: false as const, status: 403, error: 'comment_access_denied' }
+    }
+
+    if (action === 'edit' && 'edited' in next && !next.edited) {
+      return { ok: false as const, status: 404, error: 'comment_not_found' }
+    }
+
+    if (action === 'delete' && 'deleted' in next && !next.deleted) {
+      return { ok: false as const, status: 404, error: 'comment_not_found' }
+    }
+
     const patched = await patchWorkspaceState(row.updated_at, next.nextState)
     if (patched?.updated_at) {
       return {
         ok: true as const,
         updatedAt: patched.updated_at,
         state: next.nextState,
-        added: next.added,
+        added: 'added' in next ? next.added : false,
+        edited: 'edited' in next ? next.edited : false,
+        deleted: 'deleted' in next ? next.deleted : false,
         retried: latestConflict,
       }
     }
@@ -655,15 +952,26 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
     }
 
     const body = (await readJsonBody(req)) as {
+      action?: unknown
       portfolioId?: unknown
       cardId?: unknown
       comment?: unknown
+      commentId?: unknown
+      commentKey?: unknown
     } | null
+    const action = body?.action === 'edit' || body?.action === 'delete' ? body.action : 'add'
     const portfolioId = typeof body?.portfolioId === 'string' ? body.portfolioId.trim() : ''
     const cardId = typeof body?.cardId === 'string' ? body.cardId.trim() : ''
+    const commentId = typeof body?.commentId === 'string' ? body.commentId.trim() : ''
+    const commentKey = typeof body?.commentKey === 'string' ? body.commentKey.trim() : ''
     const comment = normalizeComment(body?.comment)
 
-    if (!portfolioId || !cardId || !comment) {
+    if (!portfolioId || !cardId || (action !== 'delete' && !comment)) {
+      return sendJson(res, { success: false, error: 'missing_comment_target' }, 400)
+    }
+
+    const targetKey = getCommentTargetKey(commentId, commentKey, comment)
+    if ((action === 'edit' || action === 'delete') && !targetKey) {
       return sendJson(res, { success: false, error: 'missing_comment_target' }, 400)
     }
 
@@ -672,7 +980,7 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
       return sendJson(res, { success: false, error: 'workspace_access_missing' }, 403)
     }
 
-    const result = await addCommentWithRetry(portfolioId, cardId, comment, access)
+    const result = await mutateCommentWithRetry(action, portfolioId, cardId, comment, targetKey, access)
     if (!result.ok) {
       return sendJson(res, { success: false, error: result.error }, result.status)
     }
@@ -684,16 +992,19 @@ export default async function handler(req: HandlerRequest, res?: HandlerResponse
       updatedAt: result.updatedAt,
       state: result.state,
       added: result.added,
+      edited: result.edited,
+      deleted: result.deleted,
       retried: result.retried,
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'workspace_comment_failed'
     return sendJson(
       res,
       {
         success: false,
-        error: error instanceof Error ? error.message : 'workspace_comment_failed',
+        error: message,
       },
-      500,
+      COMMENT_IMAGE_INPUT_ERRORS.has(message) ? 400 : 500,
     )
   }
 }

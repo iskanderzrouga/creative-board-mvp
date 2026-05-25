@@ -135,9 +135,12 @@ export interface CardLink {
 }
 
 export interface CommentEntry {
+  id?: string
   author: string
   text: string
   timestamp: string
+  editedAt?: string
+  imageUrls?: string[]
   imageDataUrl?: string
 }
 
