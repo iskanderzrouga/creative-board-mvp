@@ -202,7 +202,6 @@ export function CardDetailPanel({
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [commentImageDataUrls, setCommentImageDataUrls] = useState<string[]>([])
   const [commentImageError, setCommentImageError] = useState<string | null>(null)
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
   const [editingCommentKey, setEditingCommentKey] = useState<string | null>(null)
   const [editingCommentDraft, setEditingCommentDraft] = useState('')
   const [editingCommentImages, setEditingCommentImages] = useState<string[]>([])
@@ -1564,13 +1563,9 @@ export function CardDetailPanel({
                           <div className="comment-image-grid">
                             {editingCommentImages.map((imageUrl, index) => (
                               <div key={`editing-comment-image-${imageUrl}-${index}`} className="comment-image-thumb">
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewImageUrl(imageUrl)}
-                                  aria-label={`Open comment image ${index + 1}`}
-                                >
+                                <div className="comment-image-thumb-preview">
                                   <img src={imageUrl} alt="" />
-                                </button>
+                                </div>
                                 <button
                                   type="button"
                                   className="comment-image-remove"
@@ -1608,13 +1603,13 @@ export function CardDetailPanel({
                           <button type="button" className="ghost-button" onClick={() => setEditingCommentKey(null)}>
                             Cancel
                           </button>
-                          <button
-                            type="button"
-                            className="primary-button"
+	                          <button
+	                            type="button"
+	                            className="primary-button"
 	                            onClick={() => {
 	                              void saveEditingComment(comment)
 	                            }}
-                          >
+	                          >
                             Save
                           </button>
                         </div>
@@ -1625,15 +1620,12 @@ export function CardDetailPanel({
                         {imageUrls.length > 0 ? (
                           <div className="comment-image-grid">
                             {imageUrls.map((imageUrl, index) => (
-                              <button
+                              <div
                                 key={`comment-image-${commentKey}-${imageUrl}-${index}`}
-                                type="button"
                                 className="comment-image-button"
-                                onClick={() => setPreviewImageUrl(imageUrl)}
-                                aria-label={`Open comment image ${index + 1}`}
                               >
                                 <img src={imageUrl} alt="" className="comment-image" />
-                              </button>
+                              </div>
                             ))}
                           </div>
                         ) : null}
@@ -1665,11 +1657,11 @@ export function CardDetailPanel({
                 onKeyDown={(event) => {
                   if (
                     (event.metaKey || event.ctrlKey) &&
-                    event.key === 'Enter' &&
-                    (commentDraft.trim() || commentImageDataUrls.length > 0)
-                  ) {
+	                    event.key === 'Enter' &&
+	                    (commentDraft.trim() || commentImageDataUrls.length > 0)
+	                  ) {
 	                    void postComment()
-                  }
+	                  }
                 }}
                 onPaste={(event) => {
                   const files = Array.from(event.clipboardData?.items ?? [])
@@ -1686,13 +1678,9 @@ export function CardDetailPanel({
                 <div className="comment-image-preview-grid">
                   {commentImageDataUrls.map((imageUrl, index) => (
                     <div key={`new-comment-image-${imageUrl}-${index}`} className="comment-image-thumb">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewImageUrl(imageUrl)}
-                        aria-label={`Open comment image ${index + 1}`}
-                      >
+                      <div className="comment-image-thumb-preview">
                         <img src={imageUrl} alt="" />
-                      </button>
+                      </div>
                       <button
                         type="button"
                         className="comment-image-remove"
@@ -1734,10 +1722,10 @@ export function CardDetailPanel({
                 </button>
                 <button
                   type="button"
-                  className="primary-button"
-                  onClick={() => {
+	                  className="primary-button"
+	                  onClick={() => {
 	                    void postComment()
-                  }}
+	                  }}
                 >
                   Post
                 </button>
@@ -1746,38 +1734,6 @@ export function CardDetailPanel({
                 <p className="comment-hint">Cmd+Enter to post · Paste images from clipboard</p>
                 <p className="comment-counter">{`${commentCharactersRemaining} characters remaining`}</p>
               </div>
-            </div>
-          ) : null}
-          {previewImageUrl ? (
-            <div
-              className="comment-image-lightbox"
-              role="button"
-              tabIndex={0}
-              aria-label="Close image preview"
-              onClick={() => setPreviewImageUrl(null)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  setPreviewImageUrl(null)
-                }
-              }}
-            >
-              <button
-                type="button"
-                className="comment-lightbox-close"
-                aria-label="Close preview"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setPreviewImageUrl(null)
-                }}
-              >
-                x
-              </button>
-              <img
-                src={previewImageUrl}
-                alt=""
-                onClick={(event) => event.stopPropagation()}
-              />
             </div>
           ) : null}
         </section>
