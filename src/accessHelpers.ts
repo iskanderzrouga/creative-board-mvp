@@ -1,8 +1,10 @@
-import type {
-  AccessScopeMode,
-  Portfolio,
-  PortfolioAccessScope,
-  RoleMode,
+import {
+  isLaunchOpsRole,
+  type AccessScopeMode,
+  type Card,
+  type Portfolio,
+  type PortfolioAccessScope,
+  type RoleMode,
 } from './board'
 
 interface AccessRecordLike {
@@ -89,16 +91,31 @@ function getContributorIdentityNames(
   return names
 }
 
-function contributorCanSeeCard(
+function isLaunchOpsContributor(
   portfolio: Portfolio,
   access: AccessRecordLike | null,
-  owner: string | null,
 ) {
-  if (!owner) {
+  if (access?.roleMode !== 'contributor') {
     return false
   }
 
-  return getContributorIdentityNames(portfolio, access).has(owner)
+  const identityNames = getContributorIdentityNames(portfolio, access)
+  return portfolio.team.some(
+    (member) => identityNames.has(member.name) && isLaunchOpsRole(member.role),
+  )
+}
+
+function contributorCanSeeCard(
+  portfolio: Portfolio,
+  access: AccessRecordLike | null,
+  card: Pick<Card, 'owner' | 'stage'>,
+) {
+  const identityNames = getContributorIdentityNames(portfolio, access)
+  if (card.owner && identityNames.has(card.owner)) {
+    return true
+  }
+
+  return isLaunchOpsContributor(portfolio, access) && card.stage === 'Ready'
 }
 
 export function getAccessLevelLabel(roleMode: RoleMode) {
@@ -124,7 +141,7 @@ export function getVisiblePortfolioIds(
 
   if (access.roleMode === 'contributor') {
     return portfolios
-      .filter((portfolio) => portfolio.cards.some((card) => contributorCanSeeCard(portfolio, access, card.owner)))
+      .filter((portfolio) => portfolio.cards.some((card) => contributorCanSeeCard(portfolio, access, card)))
       .map((portfolio) => portfolio.id)
   }
 
@@ -153,7 +170,7 @@ export function getVisibleBrandNamesForPortfolio(
     return Array.from(
       new Set(
         portfolio.cards
-          .filter((card) => contributorCanSeeCard(portfolio, access, card.owner))
+          .filter((card) => contributorCanSeeCard(portfolio, access, card))
           .map((card) => card.brand),
       ),
     ).sort((left, right) => left.localeCompare(right))
@@ -200,7 +217,7 @@ export function getScopedPortfolio(
       }
 
       if (access?.roleMode === 'contributor') {
-        return contributorCanSeeCard(portfolio, access, card.owner)
+        return contributorCanSeeCard(portfolio, access, card)
       }
 
       return true

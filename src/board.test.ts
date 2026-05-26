@@ -187,6 +187,69 @@ describe('board integrity helpers', () => {
     expect(scoped[0]?.cards.map((card) => card.id)).toEqual(['AA0001'])
   })
 
+  it('keeps Ready cards visible for Launch Ops contributors without widening regular contributors', () => {
+    const state = createSeedState()
+    const portfolio = state.portfolios[0]!
+    const sourceCard = portfolio.cards.find((card) => card.owner)
+
+    expect(sourceCard).toBeTruthy()
+
+    const tunedPortfolio = {
+      ...portfolio,
+      cards: [
+        {
+          ...sourceCard!,
+          id: 'READY-UNASSIGNED',
+          title: 'Unassigned ready launch card',
+          owner: null,
+          stage: 'Ready' as const,
+          archivedAt: null,
+        },
+        {
+          ...sourceCard!,
+          id: 'READY-OTHER',
+          title: 'Other editor ready launch card',
+          owner: 'Daniel T',
+          stage: 'Ready' as const,
+          archivedAt: null,
+        },
+        {
+          ...sourceCard!,
+          id: 'IVAN-OWNED',
+          title: 'Ivan owned work',
+          owner: 'Ivan',
+          stage: 'In Production' as const,
+          archivedAt: null,
+        },
+        {
+          ...sourceCard!,
+          id: 'BRIEFED-OTHER',
+          title: 'Other editor briefed card',
+          owner: 'Daniel T',
+          stage: 'Briefed' as const,
+          archivedAt: null,
+        },
+      ],
+    }
+    const launchOpsAccess = {
+      email: 'ivan@bluebrands.co',
+      roleMode: 'contributor' as const,
+      editorName: 'Ivan',
+    }
+    const regularContributorAccess = {
+      email: 'pjatoss@gmail.com',
+      roleMode: 'contributor' as const,
+      editorName: 'Daniel T',
+    }
+
+    expect(
+      getScopedPortfolios([tunedPortfolio], launchOpsAccess)[0]?.cards.map((card) => card.id),
+    ).toEqual(['READY-UNASSIGNED', 'READY-OTHER', 'IVAN-OWNED'])
+    expect(
+      getScopedPortfolios([tunedPortfolio], regularContributorAccess)[0]?.cards.map((card) => card.id),
+    ).toEqual(['READY-OTHER', 'BRIEFED-OTHER'])
+  })
+
   it('uses a flat Review lane for contributors while managers keep editor review lanes', () => {
     const state = createSeedState()
     const portfolio = state.portfolios[0]!
