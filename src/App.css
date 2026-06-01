@@ -1873,6 +1873,13 @@ button {
   background: var(--surface-subtle);
 }
 
+.rich-text-surface mark {
+  background: #fff3a3;
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
 .rich-text-upload-status,
 .rich-text-error {
   align-self: center;

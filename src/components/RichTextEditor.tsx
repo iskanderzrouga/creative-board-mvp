@@ -19,6 +19,8 @@ const DEFAULT_IMAGE_WIDTH = 520
 const MIN_IMAGE_WIDTH = 160
 const MAX_IMAGE_WIDTH = 960
 const MAX_BRIEF_IMAGES_PER_PASTE = 12
+const TRANSPARENT_BACKGROUND_VALUES = new Set(['', 'transparent', 'initial', 'inherit', 'unset', 'none'])
+const PLAIN_BACKGROUND_VALUES = new Set(['white', '#fff', '#ffffff', 'rgb(255, 255, 255)', 'rgba(255, 255, 255, 1)'])
 
 function runCommand(command: string, value?: string) {
   if (typeof document === 'undefined') {
@@ -28,10 +30,61 @@ function runCommand(command: string, value?: string) {
   document.execCommand(command, false, value)
 }
 
+function isBoldWeight(value: string) {
+  const normalizedValue = value.trim().toLowerCase()
+  if (normalizedValue === 'bold' || normalizedValue === 'bolder') {
+    return true
+  }
+
+  const numericWeight = Number.parseInt(normalizedValue, 10)
+  return Number.isFinite(numericWeight) && numericWeight >= 600
+}
+
+function isHighlightedBackground(value: string) {
+  const normalizedValue = value.trim().toLowerCase()
+  if (TRANSPARENT_BACKGROUND_VALUES.has(normalizedValue) || PLAIN_BACKGROUND_VALUES.has(normalizedValue)) {
+    return false
+  }
+
+  const rgbaMatch = normalizedValue.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*(0(?:\.0+)?)\)$/)
+  return !rgbaMatch
+}
+
+function wrapElementContents(element: Element, tagName: string) {
+  if (element.childNodes.length === 0 || element.tagName.toLowerCase() === tagName) {
+    return
+  }
+
+  const wrapper = document.createElement(tagName)
+  while (element.firstChild) {
+    wrapper.appendChild(element.firstChild)
+  }
+  element.appendChild(wrapper)
+}
+
+function preservePastedFormatting(root: DocumentFragment) {
+  Array.from(root.querySelectorAll<HTMLElement>('[style]')).forEach((element) => {
+    const { backgroundColor, fontStyle, fontWeight } = element.style
+
+    if (isHighlightedBackground(backgroundColor)) {
+      wrapElementContents(element, 'mark')
+    }
+
+    if (fontStyle.trim().toLowerCase() === 'italic' || fontStyle.trim().toLowerCase() === 'oblique') {
+      wrapElementContents(element, 'em')
+    }
+
+    if (isBoldWeight(fontWeight)) {
+      wrapElementContents(element, 'strong')
+    }
+  })
+}
+
 function sanitizeRichTextHtml(html: string) {
   if (typeof document !== 'undefined') {
     const template = document.createElement('template')
     template.innerHTML = html
+    preservePastedFormatting(template.content)
     template.content.querySelectorAll('img').forEach((image) => {
       const source = image.getAttribute('src')?.trim().toLowerCase() ?? ''
       if (!source || source.startsWith('data:') || source.startsWith('blob:') || source.startsWith('file:')) {
