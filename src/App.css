@@ -737,43 +737,57 @@ button {
 }
 
 .stage-column.stage-backlog,
-.board-card.stage-backlog {
+.board-card.stage-backlog,
+.board-list-section.stage-backlog,
+.board-list-row.stage-backlog {
   --stage-accent: #e05263;
   --stage-card-surface: var(--card-backlog);
 }
 
 .stage-column.stage-briefed,
-.board-card.stage-briefed {
+.board-card.stage-briefed,
+.board-list-section.stage-briefed,
+.board-list-row.stage-briefed {
   --stage-accent: #2563eb;
   --stage-card-surface: var(--card-briefed);
 }
 
 .stage-column.stage-in-production,
-.board-card.stage-in-production {
+.board-card.stage-in-production,
+.board-list-section.stage-in-production,
+.board-list-row.stage-in-production {
   --stage-accent: #2f6ee5;
   --stage-card-surface: var(--card-production);
 }
 
 .stage-column.stage-review,
-.board-card.stage-review {
+.board-card.stage-review,
+.board-list-section.stage-review,
+.board-list-row.stage-review {
   --stage-accent: #c27a12;
   --stage-card-surface: var(--card-review);
 }
 
 .stage-column.stage-ready,
-.board-card.stage-ready {
+.board-card.stage-ready,
+.board-list-section.stage-ready,
+.board-list-row.stage-ready {
   --stage-accent: #7c5ce8;
   --stage-card-surface: var(--card-ready);
 }
 
 .stage-column.stage-live,
-.board-card.stage-live {
+.board-card.stage-live,
+.board-list-section.stage-live,
+.board-list-row.stage-live {
   --stage-accent: #12946f;
   --stage-card-surface: var(--card-live);
 }
 
 .stage-column.stage-archived,
-.board-card.stage-archived {
+.board-card.stage-archived,
+.board-list-section.stage-archived,
+.board-list-row.stage-archived {
   --stage-accent: #647386;
   --stage-card-surface: #f1f5f9;
 }
@@ -9441,5 +9455,255 @@ button {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+}
+
+/* Board view-mode toggle (Board / List) */
+.view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-shell);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.view-mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.view-mode-button svg {
+  font-size: 16px;
+}
+
+.view-mode-button:hover:not(.is-active) {
+  color: var(--text-strong);
+}
+
+.view-mode-button.is-active {
+  background: var(--surface);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Board list view */
+.board-list-scroll {
+  padding: 2px 0 24px;
+}
+
+.board-list {
+  display: grid;
+  gap: 18px;
+}
+
+.board-list-section {
+  display: grid;
+  gap: 8px;
+}
+
+.board-list-section-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.board-list-section-header h2::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--stage-accent, var(--line-weak));
+}
+
+.board-list-section-header h2 span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.board-list-rows {
+  display: grid;
+  gap: 4px;
+}
+
+.board-list-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) minmax(0, auto) 132px 116px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line-shell-soft);
+  border-left: 3px solid var(--stage-accent, var(--line-weak));
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.board-list-row:hover {
+  border-color: color-mix(in srgb, var(--stage-accent, var(--line-strong)) 32%, var(--line-strong));
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.board-list-row.tone-aging {
+  border-left-color: #d9971f;
+}
+
+.board-list-row.tone-stuck {
+  border-left-color: #e05263;
+}
+
+.board-list-row.is-flagged {
+  border-left-color: var(--red);
+}
+
+.board-list-row-head {
+  padding: 0 12px 2px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.board-list-row-head:hover {
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.board-list-cell {
+  min-width: 0;
+}
+
+.board-list-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-list-flag {
+  display: inline-flex;
+  color: var(--red);
+  font-size: 13px;
+}
+
+.board-list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.board-list-title-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.board-list-title .revision-badge {
+  flex: none;
+}
+
+.board-list-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.board-list-owner {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.board-list-owner.is-unassigned {
+  font-style: italic;
+  color: var(--line-weak);
+}
+
+.board-list-age {
+  justify-self: end;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .view-mode-button span {
+    display: none;
+  }
+
+  .view-mode-button {
+    padding: 6px 10px;
+  }
+
+  .board-list-row,
+  .board-list-row-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+
+  .board-list-row-head {
+    display: none;
+  }
+
+  .board-list-id {
+    grid-column: 1;
+  }
+
+  .board-list-age {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .board-list-title {
+    grid-column: 1 / -1;
+  }
+
+  .board-list-tags {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .board-list-owner {
+    grid-column: 1 / -1;
   }
 }

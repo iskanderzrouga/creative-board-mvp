@@ -36,6 +36,29 @@ export function BoardIcon(props: IconProps) {
   )
 }
 
+export function ColumnsIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M9 4.5v15" />
+      <path d="M15 4.5v15" />
+    </SvgIcon>
+  )
+}
+
+export function ListIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M8 6.5h12" />
+      <path d="M8 12h12" />
+      <path d="M8 17.5h12" />
+      <path d="M4 6.5h.01" />
+      <path d="M4 12h.01" />
+      <path d="M4 17.5h.01" />
+    </SvgIcon>
+  )
+}
+
 export function AnalyticsIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

@@ -121,6 +121,7 @@ export type DesignType = (typeof DESIGN_TYPES)[number]
 export type CardFieldKey = (typeof CARD_FIELDS)[number]
 export type TaskTypeCategory = (typeof TASK_TYPE_CATEGORIES)[number]
 export type SettingTab = (typeof SETTING_TABS)[number]
+export type BoardViewMode = 'board' | 'list'
 export type AgeTone = 'fresh' | 'aging' | 'stuck'
 export type UtilizationTone = 'green' | 'yellow' | 'red'
 

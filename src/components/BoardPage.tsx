@@ -24,6 +24,7 @@ import {
   getStageLabel,
   type BoardFilters,
   type BoardStats,
+  type BoardViewMode,
   type Card,
   type ColumnModel,
   type EditorSummary,
@@ -32,9 +33,11 @@ import {
   type StageId,
 } from '../board'
 import { BoardCardSurface } from './BoardCardSurface'
+import { BoardListView } from './BoardListView'
 import { LaneDropZone } from './LaneDropZone'
 import { PageHeader } from './PageHeader'
 import { SortableBoardCard } from './SortableBoardCard'
+import { ColumnsIcon, ListIcon } from './icons/AppIcons'
 
 type BoardSensors = ComponentProps<typeof DndContext>['sensors']
 
@@ -45,6 +48,8 @@ interface BoardPageProps {
   boardFilters: BoardFilters
   setBoardFilters: Dispatch<SetStateAction<BoardFilters>>
   hasActiveFilters: boolean
+  viewMode: BoardViewMode
+  onViewModeChange: (mode: BoardViewMode) => void
   stats: BoardStats | null
   summary: EditorSummary | null
   columns: ColumnModel[]
@@ -89,6 +94,8 @@ export function BoardPage({
   boardFilters,
   setBoardFilters,
   hasActiveFilters,
+  viewMode,
+  onViewModeChange,
   stats,
   summary,
   columns,
@@ -125,6 +132,44 @@ export function BoardPage({
   const hasVisibleCards = columns.some((column) => column.count > 0)
   const hasBoardCards = portfolio.cards.some((card) => !card.archivedAt)
 
+  const emptyState = (
+    <div className="board-empty-centered">
+      <section className="board-empty-state" aria-live="polite">
+        <strong>
+          {hasActiveFilters
+            ? 'No cards match the current filters'
+            : activeRoleMode === 'contributor' && !hasBoardCards
+              ? 'Welcome! You\'re all set up'
+              : hasBoardCards
+                ? 'Nothing is visible in this board view yet'
+                : 'This board is ready for its first card'}
+        </strong>
+        <p>
+          {hasActiveFilters
+            ? 'Clear the current filters or search to bring cards back into view.'
+            : activeRoleMode === 'contributor' && !hasBoardCards
+              ? 'Once cards are assigned to you or you create new ones, they\'ll appear here. You can also create cards yourself using the + Add card button.'
+              : hasBoardCards
+                ? 'Adjust the current role or filters, or open an existing card from another view.'
+                : activeRoleMode === 'owner' || activeRoleMode === 'manager'
+                  ? 'Add a first card to the backlog so the shared workflow has something to track.'
+                  : 'An owner or manager can add the first backlog card to start the shared workflow.'}
+        </p>
+        <div className="board-empty-actions">
+          {hasActiveFilters ? (
+            <button type="button" className="primary-button" onClick={onResetFilters}>
+              Reset filters
+            </button>
+          ) : activeRoleMode !== 'viewer' ? (
+            <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
+              {activeRoleMode === 'contributor' ? '+ Add card' : 'Add first card'}
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  )
+
   return (
     <div className="page-shell">
       <PageHeader
@@ -146,6 +191,26 @@ export function BoardPage({
         searchRef={searchRef}
         rightContent={
           <>
+            <div className="view-mode-toggle" role="group" aria-label="Board layout">
+              <button
+                type="button"
+                className={`view-mode-button ${viewMode === 'board' ? 'is-active' : ''}`}
+                aria-pressed={viewMode === 'board'}
+                onClick={() => onViewModeChange('board')}
+              >
+                <ColumnsIcon aria-hidden="true" />
+                <span>Board</span>
+              </button>
+              <button
+                type="button"
+                className={`view-mode-button ${viewMode === 'list' ? 'is-active' : ''}`}
+                aria-pressed={viewMode === 'list'}
+                onClick={() => onViewModeChange('list')}
+              >
+                <ListIcon aria-hidden="true" />
+                <span>List</span>
+              </button>
+            </div>
             {activeRoleMode !== 'viewer' ? (
               <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
                 + Add card
@@ -358,53 +423,34 @@ export function BoardPage({
         </section>
       ) : null}
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDragCancel={onDragCancel}
-        onDragEnd={onDragEnd}
-      >
-        <main className="board-scroll">
+      {viewMode === 'list' ? (
+        <main className="board-list-scroll">
           {!hasVisibleCards ? (
-            <div className="board-empty-centered">
-              <section className="board-empty-state" aria-live="polite">
-                <strong>
-                  {hasActiveFilters
-                    ? 'No cards match the current filters'
-                    : activeRoleMode === 'contributor' && !hasBoardCards
-                      ? 'Welcome! You\'re all set up'
-                      : hasBoardCards
-                        ? 'Nothing is visible in this board view yet'
-                        : 'This board is ready for its first card'}
-                </strong>
-                <p>
-                  {hasActiveFilters
-                    ? 'Clear the current filters or search to bring cards back into view.'
-                    : activeRoleMode === 'contributor' && !hasBoardCards
-                      ? 'Once cards are assigned to you or you create new ones, they\'ll appear here. You can also create cards yourself using the + Add card button.'
-                      : hasBoardCards
-                        ? 'Adjust the current role or filters, or open an existing card from another view.'
-                        : activeRoleMode === 'owner' || activeRoleMode === 'manager'
-                          ? 'Add a first card to the backlog so the shared workflow has something to track.'
-                          : 'An owner or manager can add the first backlog card to start the shared workflow.'}
-                </p>
-                <div className="board-empty-actions">
-                  {hasActiveFilters ? (
-                    <button type="button" className="primary-button" onClick={onResetFilters}>
-                      Reset filters
-                    </button>
-                  ) : activeRoleMode !== 'viewer' ? (
-                    <button type="button" className="primary-button" onClick={onQuickCreateOpen}>
-                      {activeRoleMode === 'contributor' ? '+ Add card' : 'Add first card'}
-                    </button>
-                  ) : null}
-                </div>
-              </section>
-            </div>
+            emptyState
           ) : (
-            <div className="board-grid">
+            <BoardListView
+              columns={columns}
+              portfolio={portfolio}
+              settings={settings}
+              nowMs={nowMs}
+              onOpenCard={onOpenCard}
+            />
+          )}
+        </main>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragCancel={onDragCancel}
+          onDragEnd={onDragEnd}
+        >
+          <main className="board-scroll">
+            {!hasVisibleCards ? (
+              emptyState
+            ) : (
+              <div className="board-grid">
               {columns.map((column) => (
                 <section
                   key={column.id}
@@ -551,7 +597,8 @@ export function BoardPage({
             />
           ) : null}
         </DragOverlay>
-      </DndContext>
+        </DndContext>
+      )}
     </div>
   )
 }

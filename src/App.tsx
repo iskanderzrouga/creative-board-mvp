@@ -135,6 +135,7 @@ import {
   type AppPage,
   type AppState,
   type BoardFilters,
+  type BoardViewMode,
   type Card,
   type CommentEntry,
   type DailyCheckinFormValues,
@@ -210,6 +211,7 @@ type PendingAppConfirm = 'reset-seed' | 'fresh-start'
 type CommentMutationAction = 'add' | 'edit' | 'delete'
 
 const ONBOARDING_DISMISSED_KEY = 'editors-board:onboarding-dismissed:v1'
+const BOARD_VIEW_MODE_KEY = 'editors-board:board-view-mode:v1'
 const CARD_PANEL_CLOSE_DELAY_MS = 240
 const BACKLOG_ALLOWED_EMAILS = new Set([
   'iskander@bluebrands.co',
@@ -454,6 +456,13 @@ function App() {
   const [dragOverLaneId, setDragOverLaneId] = useState<string | null>(null)
   const [blockedLaneId, setBlockedLaneId] = useState<string | null>(null)
   const [expandedStages, setExpandedStages] = useState<StageId[]>([])
+  const [boardViewMode, setBoardViewMode] = useState<BoardViewMode>(() => {
+    if (typeof window === 'undefined') {
+      return 'board'
+    }
+
+    return window.localStorage.getItem(BOARD_VIEW_MODE_KEY) === 'list' ? 'list' : 'board'
+  })
   const [pendingBackwardMove, setPendingBackwardMove] = useState<PendingBackwardMove | null>(null)
   const [pendingDeleteCard, setPendingDeleteCard] = useState<PendingDeleteCard | null>(null)
   const [deleteCardPending, setDeleteCardPending] = useState(false)
@@ -4063,6 +4072,17 @@ function App() {
     }
   }
 
+  function handleBoardViewModeChange(mode: BoardViewMode) {
+    setBoardViewMode(mode)
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(BOARD_VIEW_MODE_KEY, mode)
+      } catch {
+        console.warn('[storage] Write failed, continuing:', BOARD_VIEW_MODE_KEY)
+      }
+    }
+  }
+
   if (authEnabled && passwordRecoveryActive) {
     return (
       <>
@@ -4239,6 +4259,8 @@ function App() {
             boardFilters={boardFilters}
             setBoardFilters={setBoardFilters}
             hasActiveFilters={hasActiveBoardFilters}
+            viewMode={boardViewMode}
+            onViewModeChange={handleBoardViewModeChange}
             stats={stats}
             summary={summary}
             columns={columns}
