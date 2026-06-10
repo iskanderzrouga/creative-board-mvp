@@ -460,7 +460,7 @@ export function BoardPage({
                 >
                   <div className="stage-column-header">
                     <h2>
-                      {column.label} <span>· {column.count}</span>
+                      {column.label} <span>{column.count}</span>
                     </h2>
                   </div>
 

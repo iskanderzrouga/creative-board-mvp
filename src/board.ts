@@ -1371,6 +1371,36 @@ export function getRevisionCount(card: Card) {
   return card.stageHistory.filter((entry) => entry.movedBack).length
 }
 
+const AVATAR_PALETTE = [
+  { background: '#ede9fe', text: '#6d28d9' },
+  { background: '#dbeafe', text: '#1d4ed8' },
+  { background: '#dcfce7', text: '#15803d' },
+  { background: '#ffedd5', text: '#c2410c' },
+  { background: '#fce7f3', text: '#be185d' },
+  { background: '#e0f2fe', text: '#0369a1' },
+  { background: '#fef9c3', text: '#a16207' },
+  { background: '#f1f5f9', text: '#475569' },
+]
+
+export function getAvatarColor(name: string) {
+  let hash = 0
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) | 0
+  }
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]
+}
+
+export function getInitials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) {
+    return '?'
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase()
+  }
+  return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase()
+}
+
 export function getChecklistProgress(card: Card): { done: number; total: number } | null {
   const items = Array.isArray(card.checklist) ? card.checklist : []
   if (items.length === 0) {

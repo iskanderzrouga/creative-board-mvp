@@ -712,9 +712,9 @@ button {
 }
 
 .stage-column-header {
-  padding: 10px 10px 8px;
+  padding: 11px 12px 9px;
   border-bottom: 1px solid var(--line-shell-soft);
-  background: rgba(252, 253, 255, 0.54);
+  background: color-mix(in srgb, var(--stage-accent, #647386) 5%, #fdfeff);
 }
 
 .stage-column-header h2 {
@@ -723,7 +723,8 @@ button {
   gap: 8px;
   margin: 0;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   color: var(--text-strong);
 }
 
@@ -836,7 +837,7 @@ button {
 }
 
 .stage-column .stage-column-header {
-  border-top: 2px solid color-mix(in srgb, var(--stage-accent, var(--line-weak)) 70%, transparent);
+  border-top: 3px solid color-mix(in srgb, var(--stage-accent, var(--line-weak)) 78%, transparent);
 }
 
 .stage-column-header h2::before {
@@ -844,10 +845,13 @@ button {
 }
 
 .stage-column-header h2 span {
-  padding-left: 2px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
+  margin-left: auto;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--stage-accent, #647386) 12%, white);
+  color: color-mix(in srgb, var(--stage-accent, #647386) 78%, black);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .stage-column-content {
@@ -1040,11 +1044,11 @@ button {
   padding: 12px;
   border: 1px solid var(--line-shell-soft);
   border-left: 3px solid var(--stage-accent, var(--green));
-  border-radius: 8px;
+  border-radius: 10px;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--stage-card-surface, var(--surface)) 78%, white) 0%,
-    var(--stage-card-surface, var(--surface)) 100%
+    color-mix(in srgb, var(--stage-card-surface, var(--surface)) 55%, white) 0%,
+    color-mix(in srgb, var(--stage-card-surface, var(--surface)) 88%, white) 100%
   );
   box-shadow: var(--shadow-card);
   color: var(--text);
@@ -1053,9 +1057,9 @@ button {
 }
 
 .board-card:hover {
-  border-color: color-mix(in srgb, var(--stage-accent, var(--line-strong)) 32%, var(--line-strong));
+  border-color: color-mix(in srgb, var(--stage-accent, var(--line-strong)) 38%, var(--line-strong));
   box-shadow: var(--shadow-card-hover);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .app-sidebar {
@@ -10181,4 +10185,44 @@ button {
 
 .subtask-composer .panel-input {
   flex: 1;
+}
+
+/* Owner avatars */
+.card-owner-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.board-list-owner .card-avatar {
+  margin-right: 6px;
+}
+
+/* Detail panel section nav polish */
+.panel-section-nav-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-strong);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.panel-section-nav-button:hover {
+  border-color: transparent;
+  background: var(--info-surface);
+  color: var(--blue);
 }

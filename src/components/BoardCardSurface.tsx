@@ -5,9 +5,11 @@ import {
   getAgeToneFromMs,
   getBrandSurface,
   getBrandTextColor,
+  getAvatarColor,
   getCardAgeMs,
   getChecklistProgress,
   getDueDateStatus,
+  getInitials,
   getTaskTypeById,
   getP1DeadlineStatus,
   getTypePillLabel,
@@ -342,8 +344,22 @@ function BoardCardSurfaceComponent({
       ) : null}
 
       <div className="board-card-footer">
-        <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
-          {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
+        <span className="card-owner-wrap">
+          {card.stage !== 'Backlog' && card.owner ? (
+            <span
+              className="card-avatar"
+              aria-hidden="true"
+              style={{
+                background: getAvatarColor(card.owner).background,
+                color: getAvatarColor(card.owner).text,
+              }}
+            >
+              {getInitials(card.owner)}
+            </span>
+          ) : null}
+          <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>
+            {card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'}
+          </span>
         </span>
         {p1DeadlineStatus ? (
           <span className={`p1-deadline-chip tone-${p1DeadlineStatus.tone}`}>{p1DeadlineStatus.label}</span>

@@ -4,9 +4,11 @@ import {
   getAgeToneFromMs,
   getBrandSurface,
   getBrandTextColor,
+  getAvatarColor,
   getCardAgeMs,
   getChecklistProgress,
   getDueDateStatus,
+  getInitials,
   getP1DeadlineStatus,
   getRevisionCount,
   getTaskTypeById,
@@ -119,6 +121,18 @@ function BoardListRowComponent({ card, portfolio, settings, nowMs, onOpen }: Boa
           card.stage === 'Backlog' ? 'is-unassigned' : ''
         }`}
       >
+        {card.stage !== 'Backlog' && card.owner ? (
+          <span
+            className="card-avatar"
+            aria-hidden="true"
+            style={{
+              background: getAvatarColor(card.owner).background,
+              color: getAvatarColor(card.owner).text,
+            }}
+          >
+            {getInitials(card.owner)}
+          </span>
+        ) : null}
         {owner}
       </span>
       <span className="board-list-cell board-list-age">
