@@ -145,6 +145,15 @@ export interface CommentEntry {
   imageDataUrl?: string
 }
 
+export interface ChecklistItem {
+  id: string
+  text: string
+  done: boolean
+  assignee: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
 export interface ActivityEntry {
   id: string
   actor: string
@@ -230,6 +239,7 @@ export interface Card {
   comments: CommentEntry[]
   attachments?: string[]
   links?: CardLink[]
+  checklist?: ChecklistItem[]
   driveFolderUrl: string
   driveFolderCreated: boolean
   frameioLink: string[] | string
@@ -1361,6 +1371,38 @@ export function getRevisionCount(card: Card) {
   return card.stageHistory.filter((entry) => entry.movedBack).length
 }
 
+export function getChecklistProgress(card: Card): { done: number; total: number } | null {
+  const items = Array.isArray(card.checklist) ? card.checklist : []
+  if (items.length === 0) {
+    return null
+  }
+  return {
+    done: items.filter((item) => item.done).length,
+    total: items.length,
+  }
+}
+
+export interface DueDateStatus {
+  label: string
+  tone: 'overdue' | 'soon' | 'later'
+}
+
+export function getDueDateStatus(card: Card, nowMs = Date.now()): DueDateStatus | null {
+  if (!card.dueDate) {
+    return null
+  }
+
+  const dueMs = new Date(card.dueDate).getTime()
+  if (!Number.isFinite(dueMs)) {
+    return null
+  }
+
+  const diff = startOfDayMs(dueMs) - startOfDayMs(nowMs)
+  const tone: DueDateStatus['tone'] = diff < 0 ? 'overdue' : diff <= 2 * DAY_MS ? 'soon' : 'later'
+  const label = diff === 0 ? 'Today' : diff === DAY_MS ? 'Tomorrow' : formatDateShort(card.dueDate)
+  return { label, tone }
+}
+
 export function getBrandByName(portfolio: Portfolio, brandName: string) {
   return portfolio.brands.find((brand) => brand.name === brandName) ?? null
 }
@@ -2375,6 +2417,35 @@ function coerceCardLinksField(value: unknown): CardLink[] {
     .filter((entry): entry is CardLink => entry !== null)
 }
 
+export function coerceChecklistField(value: unknown): ChecklistItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((entry): ChecklistItem | null => {
+      if (!entry || typeof entry !== 'object') {
+        return null
+      }
+      const candidate = entry as Partial<ChecklistItem>
+      if (typeof candidate.text !== 'string' || !candidate.text.trim()) {
+        return null
+      }
+      return {
+        id:
+          typeof candidate.id === 'string' && candidate.id
+            ? candidate.id
+            : `chk-${Math.random().toString(36).slice(2, 10)}`,
+        text: candidate.text,
+        done: candidate.done === true,
+        assignee: typeof candidate.assignee === 'string' && candidate.assignee ? candidate.assignee : null,
+        createdAt: typeof candidate.createdAt === 'string' ? candidate.createdAt : '',
+        completedAt: typeof candidate.completedAt === 'string' ? candidate.completedAt : null,
+      } satisfies ChecklistItem
+    })
+    .filter((entry): entry is ChecklistItem => entry !== null)
+}
+
 function getLatestTimestampString(candidates: unknown[], fallback: string) {
   let latestValue = fallback
   let latestMs = Date.parse(fallback)
@@ -2632,6 +2703,7 @@ function normalizePortfolio(
           notes: typeof raw.notes === 'string' ? raw.notes : '',
           launchLearning: typeof raw.launchLearning === 'string' ? raw.launchLearning : '',
           links: coerceCardLinksField(raw.links),
+          ...(Array.isArray(raw.checklist) ? { checklist: coerceChecklistField(raw.checklist) } : {}),
           blocked: rawCard.blocked ?? null,
           archivedAt: rawCard.archivedAt ?? null,
           activityLog,
@@ -2751,6 +2823,7 @@ function normalizePortfolio(
           comments: Array.isArray(raw?.comments) ? raw.comments : [],
           attachments: Array.isArray(raw?.attachments) ? raw.attachments : [],
           links: coerceCardLinksField(raw?.links),
+          ...(Array.isArray(raw?.checklist) ? { checklist: coerceChecklistField(raw?.checklist) } : {}),
           driveFolderUrl: typeof raw?.driveFolderUrl === 'string' ? raw.driveFolderUrl : '',
           driveFolderCreated: raw?.driveFolderCreated === true,
           frameioLink: coerceStringArrayField(raw?.frameioLink),

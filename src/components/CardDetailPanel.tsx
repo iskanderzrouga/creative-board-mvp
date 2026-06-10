@@ -18,7 +18,9 @@ import {
   getBrandTextColor,
   getCardFolderName,
   getCardTitleLabel,
+  getChecklistProgress,
   getDaysSinceBriefed,
+  getDueDateStatus,
   getEditorOptions,
   getIterationSourceCards,
   getRelatedLpDesignCards,
@@ -36,6 +38,7 @@ import {
   type Card,
   type CardLink,
   type CardPriority,
+  type ChecklistItem,
   type CommentEntry,
   type GlobalSettings,
   type Portfolio,
@@ -199,6 +202,9 @@ export function CardDetailPanel({
   const [estimatedHoursDraft, setEstimatedHoursDraft] = useState(String(card.estimatedHours))
   const [actualHoursDraft, setActualHoursDraft] = useState(String(card.actualHoursLogged))
   const [commentDraft, setCommentDraft] = useState('')
+  const [subtaskDraft, setSubtaskDraft] = useState('')
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null)
+  const [editingSubtaskText, setEditingSubtaskText] = useState('')
   const [blockedDraft, setBlockedDraft] = useState(card.blocked?.reason ?? '')
   const [commentImageDataUrls, setCommentImageDataUrls] = useState<string[]>([])
   const [commentImageError, setCommentImageError] = useState<string | null>(null)
@@ -253,11 +259,15 @@ export function CardDetailPanel({
     () => getRelatedLpDesignCards(portfolio, settings, card.brand, card.product, card.id),
     [card.brand, card.id, card.product, portfolio, settings],
   )
+  const checklistItems = Array.isArray(card.checklist) ? card.checklist : []
+  const checklistProgress = getChecklistProgress(card)
+  const dueDateStatus = getDueDateStatus(card, nowMs)
   const dynamicSections = [
     { id: 'details', label: 'Details' },
     ...(creativeTask ? [{ id: 'naming', label: 'Naming' }] : []),
     { id: 'drive', label: 'Drive' },
     { id: 'brief', label: 'Brief' },
+    { id: 'subtasks', label: 'Subtasks' },
     ...(creativeTask ? [{ id: 'creative-direction', label: 'Creative Direction' }] : []),
     { id: 'links', label: 'Links' },
     { id: 'comments', label: 'Comments' },
@@ -347,6 +357,65 @@ export function CardDetailPanel({
 
     console.log(`[input] committing "${key}" to app state`)
     onSave({ [key]: value } as Pick<Card, typeof key>)
+  }
+
+  function saveChecklist(next: ChecklistItem[]) {
+    console.log('[input] committing "checklist" to app state')
+    onSave({ checklist: next })
+  }
+
+  function addSubtask() {
+    const text = subtaskDraft.trim()
+    if (!text) {
+      return
+    }
+
+    saveChecklist([
+      ...checklistItems,
+      {
+        id: `chk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        text,
+        done: false,
+        assignee: null,
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+      },
+    ])
+    setSubtaskDraft('')
+  }
+
+  function toggleSubtask(id: string) {
+    saveChecklist(
+      checklistItems.map((item) =>
+        item.id === id
+          ? { ...item, done: !item.done, completedAt: !item.done ? new Date().toISOString() : null }
+          : item,
+      ),
+    )
+  }
+
+  function assignSubtask(id: string, assignee: string) {
+    saveChecklist(
+      checklistItems.map((item) => (item.id === id ? { ...item, assignee: assignee || null } : item)),
+    )
+  }
+
+  function removeSubtask(id: string) {
+    saveChecklist(checklistItems.filter((item) => item.id !== id))
+  }
+
+  function commitSubtaskText(id: string) {
+    const text = editingSubtaskText.trim()
+    setEditingSubtaskId(null)
+    setEditingSubtaskText('')
+    if (!text) {
+      return
+    }
+    const current = checklistItems.find((item) => item.id === id)
+    if (!current || current.text === text) {
+      return
+    }
+    saveChecklist(checklistItems.map((item) => (item.id === id ? { ...item, text } : item)))
   }
 
   async function appendCommentImages(files: File[], target: 'new' | 'edit' = 'new') {
@@ -684,6 +753,9 @@ export function CardDetailPanel({
                   {card.funnelStage}
                 </span>
               ) : null}
+              {dueDateStatus ? (
+                <span className={`due-chip tone-${dueDateStatus.tone}`}>{`Due ${dueDateStatus.label}`}</span>
+              ) : null}
               {card.blocked ? (
                 <span className="blocked-badge">
                   <BlockedIcon />
@@ -853,6 +925,23 @@ export function CardDetailPanel({
                     />
                   ) : (
                     <strong>{formatHours(card.estimatedHours)}</strong>
+                  )}
+                </label>
+                <label>
+                  <span>Due Date</span>
+                  {canEditOwnedContent ? (
+                    <input
+                      type="date"
+                      value={card.dueDate ? card.dueDate.slice(0, 10) : ''}
+                      onChange={(event) => {
+                        console.log('[input] committing "dueDate" to app state')
+                        onSave({ dueDate: event.target.value || null })
+                      }}
+                    />
+                  ) : (
+                    <strong className={dueDateStatus ? `due-date-text tone-${dueDateStatus.tone}` : undefined}>
+                      {card.dueDate ? formatDateLong(card.dueDate) : '—'}
+                    </strong>
                   )}
                 </label>
               </div>
@@ -1258,6 +1347,7 @@ export function CardDetailPanel({
                 onBlur={() => commitTextDraft('brief', briefDraft)}
                 readOnly={false}
                 onImageUpload={onUploadImage}
+                placeholder={'Write the brief... Type "/" for headings, lists and to-dos'}
               />
             </div>
           ) : (
@@ -1269,6 +1359,130 @@ export function CardDetailPanel({
               />
             </div>
           )}
+        </section>
+
+        <section
+          ref={(node) => {
+            sectionRefs.current.subtasks = node
+          }}
+          className="panel-section panel-section-subtasks"
+        >
+          <div className="section-rule-title">Subtasks</div>
+          {checklistProgress ? (
+            <div className="subtask-progress">
+              <span className="subtask-progress-count">
+                {`${checklistProgress.done}/${checklistProgress.total} done`}
+              </span>
+              <span className="subtask-progress-track" aria-hidden="true">
+                <span
+                  className={`subtask-progress-fill ${
+                    checklistProgress.done === checklistProgress.total ? 'is-complete' : ''
+                  }`}
+                  style={{ width: `${Math.round((checklistProgress.done / checklistProgress.total) * 100)}%` }}
+                />
+              </span>
+            </div>
+          ) : null}
+          {checklistItems.length > 0 ? (
+            <ul className="subtask-list">
+              {checklistItems.map((item) => (
+                <li key={item.id} className={`subtask-row ${item.done ? 'is-done' : ''}`}>
+                  <button
+                    type="button"
+                    className={`subtask-checkbox ${item.done ? 'is-checked' : ''}`}
+                    aria-pressed={item.done}
+                    aria-label={`Mark "${item.text}" as ${item.done ? 'not done' : 'done'}`}
+                    onClick={() => toggleSubtask(item.id)}
+                    disabled={!canEditOwnedContent}
+                  >
+                    {item.done ? '✓' : ''}
+                  </button>
+                  {editingSubtaskId === item.id ? (
+                    <input
+                      className="subtask-input"
+                      value={editingSubtaskText}
+                      autoFocus
+                      aria-label="Edit subtask"
+                      onChange={(event) => setEditingSubtaskText(event.target.value)}
+                      onBlur={() => commitSubtaskText(item.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          commitSubtaskText(item.id)
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault()
+                          setEditingSubtaskId(null)
+                          setEditingSubtaskText('')
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className={`subtask-text ${canEditOwnedContent ? 'is-editable' : ''}`}
+                      onClick={() => {
+                        if (!canEditOwnedContent) {
+                          return
+                        }
+                        setEditingSubtaskId(item.id)
+                        setEditingSubtaskText(item.text)
+                      }}
+                    >
+                      {item.text}
+                    </span>
+                  )}
+                  {canEditOwnedContent ? (
+                    <select
+                      className="subtask-assignee"
+                      value={item.assignee ?? ''}
+                      aria-label={`Assignee for "${item.text}"`}
+                      onChange={(event) => assignSubtask(item.id, event.target.value)}
+                    >
+                      <option value="">Unassigned</option>
+                      {getEditorOptions(portfolio).map((member) => (
+                        <option key={member.id} value={member.name}>
+                          {member.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : item.assignee ? (
+                    <span className="subtask-assignee-label">{item.assignee}</span>
+                  ) : null}
+                  {canEditOwnedContent ? (
+                    <button
+                      type="button"
+                      className="icon-button subtask-remove"
+                      aria-label={`Remove subtask "${item.text}"`}
+                      onClick={() => removeSubtask(item.id)}
+                    >
+                      <XIcon />
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted-copy">Break this card into smaller steps.</p>
+          )}
+          {canEditOwnedContent ? (
+            <div className="subtask-composer">
+              <input
+                className="panel-input"
+                value={subtaskDraft}
+                placeholder="Add a subtask..."
+                aria-label="New subtask"
+                onChange={(event) => setSubtaskDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    addSubtask()
+                  }
+                }}
+              />
+              <button type="button" className="ghost-button" onClick={addSubtask} disabled={!subtaskDraft.trim()}>
+                Add
+              </button>
+            </div>
+          ) : null}
         </section>
 
         {creativeTask ? (

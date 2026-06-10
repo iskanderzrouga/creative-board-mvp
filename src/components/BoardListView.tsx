@@ -5,6 +5,8 @@ import {
   getBrandSurface,
   getBrandTextColor,
   getCardAgeMs,
+  getChecklistProgress,
+  getDueDateStatus,
   getP1DeadlineStatus,
   getRevisionCount,
   getTaskTypeById,
@@ -44,6 +46,9 @@ function BoardListRowComponent({ card, portfolio, settings, nowMs, onOpen }: Boa
   const revisionCount = getRevisionCount(card)
   const showFunnelStage = isCreativeTaskTypeId(taskType.id)
   const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
+  const dueDateStatus = getDueDateStatus(card, nowMs)
+  const checklistProgress = getChecklistProgress(card)
+  const commentCount = card.comments.length
   const owner = card.stage === 'Backlog' ? 'Unassigned' : card.owner ?? 'Unassigned'
 
   return (
@@ -66,6 +71,26 @@ function BoardListRowComponent({ card, portfolio, settings, nowMs, onOpen }: Boa
       <span className="board-list-cell board-list-title">
         <span className="board-list-title-text">{card.title}</span>
         {revisionCount > 0 ? <span className="revision-badge">R{revisionCount}</span> : null}
+        {dueDateStatus ? (
+          <span className={`card-meta-chip is-due tone-${dueDateStatus.tone}`} title="Due date">
+            {dueDateStatus.label}
+          </span>
+        ) : null}
+        {checklistProgress ? (
+          <span
+            className={`card-meta-chip is-checklist ${
+              checklistProgress.done === checklistProgress.total ? 'is-complete' : ''
+            }`}
+            title="Subtasks"
+          >
+            {`✓ ${checklistProgress.done}/${checklistProgress.total}`}
+          </span>
+        ) : null}
+        {commentCount > 0 ? (
+          <span className="card-meta-chip is-comments" title="Comments">
+            {`💬 ${commentCount}`}
+          </span>
+        ) : null}
       </span>
       <span className="board-list-cell board-list-tags">
         <span

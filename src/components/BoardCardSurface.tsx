@@ -6,6 +6,8 @@ import {
   getBrandSurface,
   getBrandTextColor,
   getCardAgeMs,
+  getChecklistProgress,
+  getDueDateStatus,
   getTaskTypeById,
   getP1DeadlineStatus,
   getTypePillLabel,
@@ -83,6 +85,10 @@ function BoardCardSurfaceComponent({
   const priorityTone = getPriorityBadgeTone(card.priority)
   const priorityLabel = getPriorityLabel(card.priority)
   const p1DeadlineStatus = getP1DeadlineStatus(card, nowMs)
+  const dueDateStatus = getDueDateStatus(card, nowMs)
+  const checklistProgress = getChecklistProgress(card)
+  const commentCount = card.comments.length
+  const hasMetaRow = Boolean(dueDateStatus || checklistProgress || commentCount > 0)
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(card.title)
@@ -294,6 +300,46 @@ function BoardCardSurfaceComponent({
           </span>
         ) : null}
       </div>
+
+      {hasMetaRow ? (
+        <div className="board-card-meta">
+          {dueDateStatus ? (
+            <span className={`card-meta-chip is-due tone-${dueDateStatus.tone}`} title="Due date">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
+                <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              {dueDateStatus.label}
+            </span>
+          ) : null}
+          {checklistProgress ? (
+            <span
+              className={`card-meta-chip is-checklist ${
+                checklistProgress.done === checklistProgress.total ? 'is-complete' : ''
+              }`}
+              title="Subtasks"
+            >
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
+                <path d="M3 8.5l3 3 7-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {`${checklistProgress.done}/${checklistProgress.total}`}
+            </span>
+          ) : null}
+          {commentCount > 0 ? (
+            <span className="card-meta-chip is-comments" title="Comments">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
+                <path
+                  d="M2.5 3.5h11v7h-6l-3 3v-3h-2v-7z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {commentCount}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="board-card-footer">
         <span className={card.stage === 'Backlog' ? 'card-owner is-unassigned' : 'card-owner'}>

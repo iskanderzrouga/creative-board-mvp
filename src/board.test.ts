@@ -20,6 +20,9 @@ import {
   getCardMoveValidationMessage,
   getCreativeDriveFolderName,
   getDefaultBoardFilters,
+  coerceChecklistField,
+  getChecklistProgress,
+  getDueDateStatus,
   getDueStatus,
   getTeamMemberRemovalBlocker,
   getVisibleCards,
@@ -1773,5 +1776,74 @@ describe('legacy dev board migration', () => {
         card.notes.includes('Migrated from Dev board card: DV0001'),
       ),
     ).toBe(true)
+  })
+})
+
+describe('checklist and due date helpers', () => {
+  it('coerces malformed checklist data into valid items', () => {
+    const coerced = coerceChecklistField([
+      { id: 'chk-1', text: 'Cut hook variations', done: true, assignee: 'Daniel T' },
+      { text: 'Export 9:16 version' },
+      { text: '   ' },
+      { done: true },
+      'not-an-object',
+      null,
+    ])
+
+    expect(coerced).toHaveLength(2)
+    expect(coerced[0]).toMatchObject({
+      id: 'chk-1',
+      text: 'Cut hook variations',
+      done: true,
+      assignee: 'Daniel T',
+    })
+    expect(coerced[1]).toMatchObject({ text: 'Export 9:16 version', done: false, assignee: null })
+    expect(coerced[1]?.id).toBeTruthy()
+    expect(coerceChecklistField(undefined)).toEqual([])
+    expect(coerceChecklistField('nope')).toEqual([])
+  })
+
+  it('computes checklist progress and handles cards without checklists', () => {
+    const card = createSeedState().portfolios[0]!.cards[0]!
+
+    expect(getChecklistProgress(card)).toBeNull()
+    expect(
+      getChecklistProgress({
+        ...card,
+        checklist: [
+          { id: 'a', text: 'One', done: true, assignee: null, createdAt: '', completedAt: null },
+          { id: 'b', text: 'Two', done: false, assignee: null, createdAt: '', completedAt: null },
+        ],
+      }),
+    ).toEqual({ done: 1, total: 2 })
+  })
+
+  it('keeps checklist items through app state normalization', () => {
+    const state = createSeedState()
+    const card = state.portfolios[0]!.cards[0]!
+    card.checklist = [
+      { id: 'chk-keep', text: 'Color grade', done: false, assignee: 'Daniel T', createdAt: '2026-06-01T00:00:00Z', completedAt: null },
+    ]
+
+    const roundTripped = coerceAppState(JSON.parse(JSON.stringify(state)))
+    const normalizedCard = roundTripped?.portfolios[0]?.cards.find((item) => item.id === card.id)
+
+    expect(normalizedCard?.checklist).toHaveLength(1)
+    expect(normalizedCard?.checklist?.[0]).toMatchObject({
+      id: 'chk-keep',
+      text: 'Color grade',
+      done: false,
+      assignee: 'Daniel T',
+    })
+  })
+
+  it('labels due dates with overdue and soon tones', () => {
+    const card = createSeedState().portfolios[0]!.cards[0]!
+    const nowMs = new Date('2026-03-13T09:00:00Z').getTime()
+
+    expect(getDueDateStatus({ ...card, dueDate: null }, nowMs)).toBeNull()
+    expect(getDueDateStatus({ ...card, dueDate: '2026-03-12' }, nowMs)?.tone).toBe('overdue')
+    expect(getDueDateStatus({ ...card, dueDate: '2026-03-14' }, nowMs)?.tone).toBe('soon')
+    expect(getDueDateStatus({ ...card, dueDate: '2026-03-30' }, nowMs)?.tone).toBe('later')
   })
 })
