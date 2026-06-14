@@ -1437,8 +1437,9 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
       }
 
       const sourceErrors = data.sync?.errors ?? []
-      const nextError = data.error ?? (sourceErrors.length > 0 ? sourceErrors.slice(0, 3).join(' · ') : null)
-      const keepPreviousSnapshot = showRefresh && data.rows.length === 0 && Boolean(nextError)
+      const nextError = data.error ?? null
+      const hasSourceIssues = sourceErrors.length > 0
+      const keepPreviousSnapshot = showRefresh && data.rows.length === 0 && (Boolean(nextError) || hasSourceIssues)
 
       setRows((currentRows) => (keepPreviousSnapshot && currentRows.length > 0 ? currentRows : data.rows))
       if (!keepPreviousSnapshot) {
@@ -1448,10 +1449,10 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
       setErrorMessage(nextError)
       setSyncSummary(data.sync
         ? keepPreviousSnapshot
-          ? `${data.sync.errors.length || 1} source error(s) · kept previous snapshot`
-          : `${data.sync.rowsWritten} live rows refreshed${data.sync.errors.length > 0 ? ` · ${data.sync.errors.length} source error(s)` : ''}`
+          ? `${sourceErrors.length || 1} source issue(s) · kept previous snapshot`
+          : `${data.sync.rowsWritten} live rows refreshed${hasSourceIssues ? ` · ${sourceErrors.length} source issue(s)` : ''}`
         : null)
-      options.onLoaded?.(data.rows.length > 0, Boolean(nextError))
+      options.onLoaded?.(data.rows.length > 0, Boolean(nextError || (data.rows.length === 0 && hasSourceIssues)))
     } finally {
       setLoading(false)
       setRefreshing(false)

@@ -100,13 +100,6 @@ interface ShopifyCostLineItem {
   variantTitle?: string | null
   quantity?: number | string | null
   requiresShipping?: boolean | null
-  product?: {
-    title?: string | null
-  } | null
-  variant?: {
-    sku?: string | null
-    title?: string | null
-  } | null
 }
 
 interface ShopifyCostOrder {
@@ -125,6 +118,49 @@ interface ShopifyCostOrder {
       node?: ShopifyCostLineItem | null
     }>
   } | null
+}
+
+interface ShopifyCostOrdersPayload {
+  orders?: {
+    pageInfo?: {
+      hasNextPage?: boolean
+      endCursor?: string | null
+    }
+    edges?: Array<{
+      node?: ShopifyCostOrder | null
+    }>
+  }
+}
+
+interface ShopifyMoneyBag {
+  shopMoney?: {
+    amount?: string | null
+  } | null
+}
+
+interface ShopifySalesOrder {
+  id: string
+  createdAt?: string | null
+  cancelledAt?: string | null
+  displayFulfillmentStatus?: string | null
+  currentSubtotalPriceSet?: ShopifyMoneyBag | null
+  currentTotalPriceSet?: ShopifyMoneyBag | null
+  currentTotalTaxSet?: ShopifyMoneyBag | null
+  currentTotalDiscountsSet?: ShopifyMoneyBag | null
+  totalShippingPriceSet?: ShopifyMoneyBag | null
+  totalRefundedSet?: ShopifyMoneyBag | null
+}
+
+interface ShopifySalesOrdersPayload {
+  orders?: {
+    pageInfo?: {
+      hasNextPage?: boolean
+      endCursor?: string | null
+    }
+    edges?: Array<{
+      node?: ShopifySalesOrder | null
+    }>
+  }
 }
 
 interface PerformanceRow {
@@ -196,6 +232,10 @@ interface JsonFetchResult<T> {
   raw: string
 }
 
+interface ShopifyGraphqlError {
+  message?: string
+}
+
 type HandlerRequest = Request | {
   method?: string
   url?: string
@@ -238,7 +278,8 @@ function sendJson(res: HandlerResponse | undefined, payload: unknown, status = 2
   res.setHeader?.('Content-Type', 'application/json')
 
   if (typeof res.status === 'function' && typeof res.json === 'function') {
-    res.status(status).json(payload)
+    res.status(status)
+    res.json(payload)
     return undefined
   }
 
@@ -394,12 +435,12 @@ async function supabaseRestFetch(path: string, auth: string, init: RequestInit =
   const supabaseUrl = getSupabaseUrl()
   const anonKey = getSupabaseAnonKey()
   const serviceKey = useServiceRole ? getSupabaseServiceKey() : ''
+  const apikey = serviceKey || anonKey
 
-  if (!supabaseUrl || (!anonKey && !serviceKey)) {
+  if (!supabaseUrl || !apikey) {
     throw new Error('Supabase client env is not configured')
   }
 
-  const apikey = serviceKey || anonKey
   const authorization = serviceKey ? `Bearer ${serviceKey}` : auth
 
   return fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -416,6 +457,10 @@ async function supabaseRestFetch(path: string, auth: string, init: RequestInit =
 function toNumber(value: unknown) {
   const number = Number(value ?? 0)
   return Number.isFinite(number) ? number : 0
+}
+
+function moneyAmount(bag?: ShopifyMoneyBag | null) {
+  return toNumber(bag?.shopMoney?.amount)
 }
 
 function toNumberOrNull(value: unknown) {
@@ -502,6 +547,38 @@ function apiErrorMessage(data: unknown, raw: string) {
   return raw.slice(0, 300)
 }
 
+function stringFromError(error: unknown) {
+  return error instanceof Error ? error.message : String(error || 'unknown error')
+}
+
+function compactErrorMessage(message: string) {
+  const segments = message
+    .split(/\s*·\s*/)
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  const compacted = Array.from(new Set(segments)).join(' · ') || 'unknown error'
+  return compacted.length > 240 ? `${compacted.slice(0, 237)}...` : compacted
+}
+
+function graphqlErrorMessage(errors: ShopifyGraphqlError[]) {
+  return compactErrorMessage(errors.map((error) => error.message || 'unknown error').join(' · '))
+}
+
+function sourceError(brand: BrandSlug, source: string, error: unknown) {
+  const rawMessage = compactErrorMessage(stringFromError(error))
+  const normalized = rawMessage.toLowerCase()
+
+  if (normalized.includes('read_products')) {
+    return `${brand} ${source}: Shopify app is missing read_products; product-level COGS sync was skipped`
+  }
+
+  if (normalized.includes('shopifyql parse failed') || normalized.includes('shopifyql returned no table data')) {
+    return `${brand} ${source}: Shopify analytics did not return table data; kept the last available Shopify snapshot`
+  }
+
+  return `${brand} ${source}: ${rawMessage}`
+}
+
 function hasConfiguredPlatform(platform: ConnectionPlatform, config?: PlatformConfig) {
   if (!config || config.enabled === false) {
     return false
@@ -555,6 +632,28 @@ function rowHasPlatformData(row: PerformanceRow, platform: ConnectionPlatform) {
   }
 }
 
+function syncErrorPrefixes(brand: BrandConfig, platform: ConnectionPlatform) {
+  switch (platform) {
+    case 'shopify':
+      return [`${brand.slug} shopify:`, `${brand.slug} shopify costs:`]
+    case 'google_ads':
+      return [`${brand.slug} google:`]
+    default:
+      return [`${brand.slug} ${platform}:`]
+  }
+}
+
+function findSyncErrorForPlatform(brand: BrandConfig, platform: ConnectionPlatform, syncErrors: string[]) {
+  const prefixes = syncErrorPrefixes(brand, platform)
+  const error = syncErrors.find((item) => prefixes.some((prefix) => item.startsWith(prefix)))
+  if (!error) {
+    return null
+  }
+
+  const prefix = prefixes.find((candidate) => error.startsWith(candidate)) ?? ''
+  return error.slice(prefix.length).trim()
+}
+
 function latestSyncForRows(rows: PerformanceRow[]) {
   return rows.reduce<string | null>((latest, row) => {
     if (!row.lastSync) {
@@ -587,7 +686,7 @@ function buildConnectionHealth(brands: BrandConfig[], rows: PerformanceRow[], sy
       const configured = hasConfiguredPlatform(platform, config)
       const platformRows = brandRows.filter((row) => rowHasPlatformData(row, platform))
       const lastPulledAt = latestSyncForRows(platformRows)
-      const error = syncErrors.find((item) => item.startsWith(`${brand.slug} ${platform === 'google_ads' ? 'google' : platform}:`))
+      const error = findSyncErrorForPlatform(brand, platform, syncErrors)
 
       if (!configured) {
         return {
@@ -611,7 +710,7 @@ function buildConnectionHealth(brands: BrandConfig[], rows: PerformanceRow[], sy
           platformLabel: label,
           accountLabel: getAccountLabel(brand, platform, config),
           status: 'error',
-          detail: error.replace(`${brand.slug} ${platform === 'google_ads' ? 'google' : platform}:`, '').trim(),
+          detail: error,
           lastPulledAt,
           rowsPulled: platformRows.length,
         }
@@ -826,107 +925,100 @@ async function shopifyToken(brand: BrandConfig) {
   return payload.access_token
 }
 
-async function shopifyql(brand: BrandConfig, token: string, query: string) {
-  const store = brand.platforms?.shopify?.store
-  const apiVersion = getServerEnv('SHOPIFY_API_VERSION') || 'unstable'
-  const gql = `{ shopifyqlQuery(query: ${JSON.stringify(query)}) { parseErrors tableData { columns { name dataType } rows } } }`
-  const response = await fetchJson<{
-    data?: {
-      shopifyqlQuery?: {
-        parseErrors?: unknown[]
-        tableData?: {
-          columns?: Array<{ name: string }>
-          rows?: Array<unknown[] | Record<string, unknown>>
-        }
-      }
-    }
-  }>(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
-    method: 'POST',
-    headers: {
-      'X-Shopify-Access-Token': token,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query: gql }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`${brand.slug} ShopifyQL failed (${response.status}): ${apiErrorMessage(response.data, response.raw)}`)
-  }
-
-  const payload = response.data
-  const data = payload.data?.shopifyqlQuery
-  if (!data || (Array.isArray(data.parseErrors) && data.parseErrors.length > 0)) {
-    throw new Error(`${brand.slug} ShopifyQL parse failed: ${JSON.stringify(data?.parseErrors ?? null)}`)
-  }
-
-  const columns = data.tableData?.columns?.map((column) => column.name) ?? []
-  return (data.tableData?.rows ?? []).map((values) => {
-    if (Array.isArray(values)) {
-      return Object.fromEntries(columns.map((column, index) => [column, values[index]]))
-    }
-
-    if (values && typeof values === 'object') {
-      return values
-    }
-
-    return {}
-  })
-}
-
+// Revenue/sales are derived from the Orders Admin API (read_orders) instead of
+// ShopifyQL, which requires read_reports + Level 2 protected-customer-data access.
+// Trade-off: sessions and conversion_rate are unavailable without read_reports.
 async function shopifyDaily(brand: BrandConfig, since: string, until: string) {
   const token = await shopifyToken(brand)
   if (!token) {
     return new Map<string, ShopifyDay>()
   }
 
-  const salesRows = await shopifyql(
-    brand,
-    token,
-    `FROM sales SHOW total_sales, gross_sales, net_sales, orders, discounts, returns, taxes GROUP BY day SINCE ${since} UNTIL ${until} ORDER BY day`,
-  )
-  const sessionRows = await shopifyql(
-    brand,
-    token,
-    `FROM sessions SHOW sessions, conversion_rate GROUP BY day SINCE ${since} UNTIL ${until} ORDER BY day`,
-  ).catch(() => [])
+  const timezone = brand.timezone || 'America/New_York'
+  const orderQuery = `created_at:>=${since} created_at:<${addIsoDays(until, 1)}`
+  const query = `
+    query SalesOrders($cursor: String, $orderQuery: String!) {
+      orders(first: 100, after: $cursor, query: $orderQuery, sortKey: CREATED_AT) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        edges {
+          node {
+            id
+            createdAt
+            cancelledAt
+            displayFulfillmentStatus
+            currentSubtotalPriceSet { shopMoney { amount } }
+            currentTotalPriceSet { shopMoney { amount } }
+            currentTotalTaxSet { shopMoney { amount } }
+            currentTotalDiscountsSet { shopMoney { amount } }
+            totalShippingPriceSet { shopMoney { amount } }
+            totalRefundedSet { shopMoney { amount } }
+          }
+        }
+      }
+    }
+  `
   const rows = new Map<string, ShopifyDay>()
+  let cursor: string | null = null
+  let page = 0
 
-  for (const item of salesRows) {
-    const date = String(item.day ?? '').slice(0, 10)
-    if (!date) continue
-    const totalSales = toNumber(item.total_sales)
-    const grossSales = toNumber(item.gross_sales)
-    const netSales = toNumber(item.net_sales)
-    const taxes = toNumber(item.taxes)
-    const discounts = Math.abs(toNumber(item.discounts))
-    const returns = Math.abs(toNumber(item.returns))
-    const orders = toNumber(item.orders)
-    const revenue = totalSales - taxes
-    rows.set(date, {
-      revenue,
-      totalSales,
-      grossSales,
-      netSales,
-      orders,
-      aov: orders > 0 ? revenue / orders : 0,
-      discounts,
-      returns,
-      taxes,
-      shipping: totalSales - netSales - taxes,
-      sessions: 0,
-      cvr: 0,
-    })
+  while (page < 30) {
+    page += 1
+    const payload: ShopifySalesOrdersPayload = await shopifyAdminGraphql<ShopifySalesOrdersPayload>(
+      brand,
+      token,
+      query,
+      { cursor, orderQuery },
+    )
+
+    for (const edge of payload.orders?.edges ?? []) {
+      const order = edge.node
+      if (!order?.createdAt || orderWasCancelledBeforeFulfillment(order)) {
+        continue
+      }
+
+      const date = formatDateInTimezone(new Date(order.createdAt), timezone)
+      if (date < since || date > until) {
+        continue
+      }
+
+      const total = moneyAmount(order.currentTotalPriceSet)
+      const tax = moneyAmount(order.currentTotalTaxSet)
+      const subtotal = moneyAmount(order.currentSubtotalPriceSet)
+      const discounts = moneyAmount(order.currentTotalDiscountsSet)
+      const shipping = moneyAmount(order.totalShippingPriceSet)
+      const refunds = moneyAmount(order.totalRefundedSet)
+      const revenue = total - tax
+
+      const current = rows.get(date) ?? {}
+      rows.set(date, {
+        ...current,
+        revenue: toNumber(current.revenue) + revenue,
+        totalSales: toNumber(current.totalSales) + total,
+        netSales: toNumber(current.netSales) + subtotal,
+        grossSales: toNumber(current.grossSales) + subtotal + discounts,
+        taxes: toNumber(current.taxes) + tax,
+        shipping: toNumber(current.shipping) + shipping,
+        discounts: toNumber(current.discounts) + discounts,
+        returns: toNumber(current.returns) + refunds,
+        orders: toNumber(current.orders) + 1,
+        sessions: 0,
+        cvr: 0,
+      })
+    }
+
+    if (!payload.orders?.pageInfo?.hasNextPage || !payload.orders.pageInfo.endCursor) {
+      break
+    }
+
+    cursor = payload.orders.pageInfo.endCursor
   }
 
-  for (const item of sessionRows) {
-    const date = String(item.day ?? '').slice(0, 10)
-    if (!date) continue
-    const current = rows.get(date) ?? {}
-    rows.set(date, {
-      ...current,
-      sessions: toNumber(item.sessions),
-      cvr: toNumber(item.conversion_rate),
-    })
+  for (const [date, day] of rows) {
+    const orders = toNumber(day.orders)
+    rows.set(date, { ...day, aov: orders > 0 ? toNumber(day.revenue) / orders : 0 })
   }
 
   return rows
@@ -935,7 +1027,7 @@ async function shopifyDaily(brand: BrandConfig, since: string, until: string) {
 async function shopifyAdminGraphql<T>(brand: BrandConfig, token: string, query: string, variables: Record<string, unknown>) {
   const store = brand.platforms?.shopify?.store
   const apiVersion = getServerEnv('SHOPIFY_API_VERSION') || 'unstable'
-  const response = await fetchJson<{ data?: T; errors?: Array<{ message?: string }> }>(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
+  const response = await fetchJson<{ data?: T; errors?: ShopifyGraphqlError[] }>(`https://${store}/admin/api/${apiVersion}/graphql.json`, {
     method: 'POST',
     headers: {
       'X-Shopify-Access-Token': token,
@@ -949,7 +1041,7 @@ async function shopifyAdminGraphql<T>(brand: BrandConfig, token: string, query: 
   }
 
   if (response.data.errors?.length) {
-    throw new Error(`${brand.slug} Shopify Admin GraphQL errors: ${response.data.errors.map((error) => error.message ?? 'unknown error').join(' · ')}`)
+    throw new Error(`${brand.slug} Shopify Admin GraphQL errors: ${graphqlErrorMessage(response.data.errors)}`)
   }
 
   return response.data.data as T
@@ -988,15 +1080,15 @@ function isRuleEffective(rule: PerformanceCostRule, date: string) {
 }
 
 function lineSku(line: ShopifyCostLineItem) {
-  return normalizeForMatch(line.sku || line.variant?.sku)
+  return normalizeForMatch(line.sku)
 }
 
 function lineTitle(line: ShopifyCostLineItem) {
-  return [line.title, line.name, line.product?.title].map(normalizeForMatch).filter(Boolean).join(' ')
+  return [line.title, line.name].map(normalizeForMatch).filter(Boolean).join(' ')
 }
 
 function lineVariant(line: ShopifyCostLineItem) {
-  return normalizeForMatch(line.variantTitle || line.variant?.title)
+  return normalizeForMatch(line.variantTitle)
 }
 
 function ruleMatchesLine(rule: PerformanceCostRule, line: ShopifyCostLineItem) {
@@ -1059,7 +1151,7 @@ function addRuleApplied(rulesApplied: Record<string, number>, label: string) {
   rulesApplied[label] = (rulesApplied[label] ?? 0) + 1
 }
 
-function orderWasCancelledBeforeFulfillment(order: ShopifyCostOrder) {
+function orderWasCancelledBeforeFulfillment(order: { cancelledAt?: string | null; displayFulfillmentStatus?: string | null }) {
   if (!order.cancelledAt) {
     return false
   }
@@ -1198,13 +1290,6 @@ async function shopifyOrderCostsDaily(brand: BrandConfig, since: string, until: 
                   variantTitle
                   quantity
                   requiresShipping
-                  product {
-                    title
-                  }
-                  variant {
-                    sku
-                    title
-                  }
                 }
               }
             }
@@ -1219,17 +1304,12 @@ async function shopifyOrderCostsDaily(brand: BrandConfig, since: string, until: 
 
   while (page < 30) {
     page += 1
-    const payload = await shopifyAdminGraphql<{
-      orders?: {
-        pageInfo?: {
-          hasNextPage?: boolean
-          endCursor?: string | null
-        }
-        edges?: Array<{
-          node?: ShopifyCostOrder | null
-        }>
-      }
-    }>(brand, token, query, { cursor, orderQuery })
+    const payload: ShopifyCostOrdersPayload = await shopifyAdminGraphql<ShopifyCostOrdersPayload>(
+      brand,
+      token,
+      query,
+      { cursor, orderQuery },
+    )
 
     for (const edge of payload.orders?.edges ?? []) {
       const order = edge.node
@@ -1607,41 +1687,48 @@ async function syncPerformance(from: string, to: string, auth: string, useServic
   const errors: string[] = []
   let rowsWritten = 0
   const costRules = await readCostRules(auth, useServiceRole).catch((error) => {
-    errors.push(`cost rules: ${error instanceof Error ? error.message : 'unknown error'}`)
+    errors.push(`cost rules: ${compactErrorMessage(stringFromError(error))}`)
     return [] as PerformanceCostRule[]
   })
 
   for (const brand of brands) {
     const brandCostRules = costRules.filter((rule) => rule.brandSlug === brand.slug)
+    let shopifyFailed = false
     const [meta, shopify, shopifyCosts, axon, google] = await Promise.all([
       metaDaily(brand, from, to).catch((error) => {
-        errors.push(`${brand.slug} meta: ${error instanceof Error ? error.message : 'unknown error'}`)
+        errors.push(sourceError(brand.slug, 'meta', error))
         return new Map<string, PlatformDay>()
       }),
       shopifyDaily(brand, from, to).catch((error) => {
-        errors.push(`${brand.slug} shopify: ${error instanceof Error ? error.message : 'unknown error'}`)
+        shopifyFailed = true
+        errors.push(sourceError(brand.slug, 'shopify', error))
         return new Map<string, ShopifyDay>()
       }),
       shopifyOrderCostsDaily(brand, from, to, brandCostRules).catch((error) => {
-        errors.push(`${brand.slug} shopify costs: ${error instanceof Error ? error.message : 'unknown error'}`)
+        errors.push(sourceError(brand.slug, 'shopify costs', error))
         return new Map<string, ShopifyCostDay>()
       }),
       axonDaily(brand, from, to).catch((error) => {
-        errors.push(`${brand.slug} axon: ${error instanceof Error ? error.message : 'unknown error'}`)
+        errors.push(sourceError(brand.slug, 'axon', error))
         return new Map<string, PlatformDay>()
       }),
       googleDaily(brand, from, to).catch((error) => {
-        errors.push(`${brand.slug} google: ${error instanceof Error ? error.message : 'unknown error'}`)
+        errors.push(sourceError(brand.slug, 'google', error))
         return new Map<string, PlatformDay>()
       }),
     ])
+
+    if (shopifyFailed && hasConfiguredPlatform('shopify', brand.platforms?.shopify)) {
+      continue
+    }
+
     const rows = buildRows(brand, { meta, shopify, shopifyCosts, axon, google })
 
     try {
       await upsertRows(rows, auth, useServiceRole)
       rowsWritten += rows.length
     } catch (error) {
-      errors.push(`${brand.slug} supabase: ${error instanceof Error ? error.message : 'unknown error'}`)
+      errors.push(sourceError(brand.slug, 'supabase', error))
     }
   }
 
