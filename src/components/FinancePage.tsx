@@ -659,12 +659,12 @@ function ShopifyExtras({ rows, showCostMetrics }: { rows: BrandDailyPerformanceR
       <SectionHeading title="Store" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
         {metrics.map(([label, value]) => (
-          <div key={label} style={{ ...panelStyle, padding: 12, minHeight: 116, display: 'grid', alignContent: 'space-between', minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div key={label} style={{ ...panelStyle, padding: 12, minHeight: 132, display: 'grid', alignContent: 'space-between', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, minHeight: 22 }}>
               <MetricMark color={shopifyGreen} />
               <span style={{ color: '#465a70', fontSize: 13, fontWeight: 500 }}>{label}</span>
             </div>
-            <div style={{ ...numericStyle, color: ink, fontSize: 26, lineHeight: 1.15, fontWeight: 650 }}>{value}</div>
+            <div style={{ ...numericStyle, color: ink, fontSize: 27, lineHeight: 1.15, fontWeight: 650, marginTop: 20 }}>{value}</div>
           </div>
         ))}
       </div>
@@ -901,6 +901,7 @@ function CostRulesPanel({
   onChangeRule,
   onDeleteRule,
   onSave,
+  onClose,
 }: {
   rules: PerformanceCostRule[]
   selectedBrand: PerformanceBrandSlug
@@ -912,17 +913,18 @@ function CostRulesPanel({
   onChangeRule: (id: string, patch: Partial<PerformanceCostRule>) => void
   onDeleteRule: (rule: PerformanceCostRule) => void
   onSave: () => void
+  onClose?: () => void
 }) {
   const brandRules = rules.filter((rule) => rule.brandSlug === selectedBrand)
   const productRules = brandRules.filter((rule) => rule.costType === 'product')
   const shippingRules = brandRules.filter((rule) => rule.costType === 'shipping')
 
   return (
-    <section style={{ ...panelStyle, padding: 16 }}>
+    <section style={{ ...panelStyle, padding: 16, width: 'min(1180px, 100%)', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(15, 23, 42, 0.22)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Costs</h2>
-          <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>{brandName.get(selectedBrand)} · {brandRules.length} rules</div>
+          <h2 style={{ margin: 0, color: ink, fontSize: 16, lineHeight: 1.2, fontWeight: 550, letterSpacing: 0 }}>Cost &amp; shipping rules</h2>
+          <div style={{ color: subdued, fontSize: 12, marginTop: 4 }}>{brandName.get(selectedBrand)} · {brandRules.length} rules · how COGS and shipping are calculated per SKU</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {PERFORMANCE_BRANDS.map((brand) => (
@@ -957,6 +959,16 @@ function CostRulesPanel({
           >
             {saving ? 'Saving' : 'Save costs'}
           </button>
+          {onClose ? (
+            <button
+              type="button"
+              aria-label="Close cost rules"
+              onClick={onClose}
+              style={{ ...controlButtonStyle, width: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: '#52647a' }}
+            >
+              ✕
+            </button>
+          ) : null}
         </div>
       </div>
       {error ? (
@@ -1407,6 +1419,7 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
   const [datePreset, setDatePreset] = useState<DatePreset>('yesterday')
   const [customRange, setCustomRange] = useState<DateRange | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [costRulesOpen, setCostRulesOpen] = useState(false)
   const [connectionPanelOpen, setConnectionPanelOpen] = useState(false)
   const [draftPreset, setDraftPreset] = useState<DatePreset>('yesterday')
   const [draftRange, setDraftRange] = useState<DateRange | null>(null)
@@ -1607,6 +1620,25 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {headerUtilityContent}
+            {showCostMetrics ? (
+              <button
+                type="button"
+                title="Cost & shipping rules"
+                onClick={() => setCostRulesOpen(true)}
+                style={{
+                  ...controlButtonStyle,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  color: costRulesOpen ? shopifyBlue : '#52647a',
+                  borderColor: costRulesOpen ? shopifyBlue : '#cfd7e2',
+                  background: costRulesOpen ? '#eef6ff' : '#ffffff',
+                }}
+              >
+                <SettingsIcon style={{ width: 15, height: 15 }} />
+                Costs
+              </button>
+            ) : null}
             <div ref={connectionPanelRef} style={{ position: 'relative', display: 'inline-flex' }}>
               <button
                 type="button"
@@ -1711,7 +1743,7 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
         ) : null}
 
         {syncSummary ? (
-          <div style={{ padding: '15px 16px', marginBottom: 20, background: shopifyBlue, color: '#ffffff', borderRadius: 0, boxShadow: '0 8px 18px rgba(31, 118, 242, 0.18)', fontSize: 13, lineHeight: 1.5 }}>
+          <div style={{ padding: '15px 16px', marginBottom: 20, background: shopifyBlue, color: '#ffffff', borderRadius: 8, boxShadow: '0 8px 18px rgba(31, 118, 242, 0.18)', fontSize: 13, lineHeight: 1.5 }}>
             {syncSummary}
           </div>
         ) : null}
@@ -1802,23 +1834,6 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
         <div style={{ marginBottom: 58 }}>
           <ShopifyExtras rows={visibleRows} showCostMetrics={showCostMetrics} />
         </div>
-
-        {showCostMetrics ? (
-          <div style={{ marginBottom: 58 }}>
-            <CostRulesPanel
-              rules={costRules}
-              selectedBrand={costRuleBrand}
-              loading={costRulesLoading}
-              saving={costRulesSaving}
-              error={costRulesError}
-              onSelectBrand={setCostRuleBrand}
-              onAddRule={addCostRule}
-              onChangeRule={changeCostRule}
-              onDeleteRule={removeCostRule}
-              onSave={saveCostRules}
-            />
-          </div>
-        ) : null}
 
         {showPerformanceTrend ? (
           <div style={{ marginBottom: 58 }}>
@@ -1948,6 +1963,44 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
             </section>
           </aside>
         </div>
+
+        {costRulesOpen && showCostMetrics ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cost and shipping rules"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setCostRulesOpen(false)
+              }
+            }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.28)',
+              zIndex: 50,
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              padding: '40px 24px',
+              overflowY: 'auto',
+            }}
+          >
+            <CostRulesPanel
+              rules={costRules}
+              selectedBrand={costRuleBrand}
+              loading={costRulesLoading}
+              saving={costRulesSaving}
+              error={costRulesError}
+              onSelectBrand={setCostRuleBrand}
+              onAddRule={addCostRule}
+              onChangeRule={changeCostRule}
+              onDeleteRule={removeCostRule}
+              onSave={saveCostRules}
+              onClose={() => setCostRulesOpen(false)}
+            />
+          </div>
+        ) : null}
 
         {pickerOpen ? (
           <div
