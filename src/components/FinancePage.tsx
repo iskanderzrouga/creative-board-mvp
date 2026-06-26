@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   PERFORMANCE_BRANDS,
+  brandSupportsProductPL,
   deletePerformanceCostRule,
   loadBrandDailyPerformance,
   loadPerformanceCostRules,
+  loadProductPL,
   savePerformanceCostRule,
   syncBrandDailyPerformance,
   type BrandDailyPerformanceRow,
@@ -13,6 +15,7 @@ import {
   type PerformanceConnectionPlatform,
   type PerformanceConnectionStatus,
   type PerformanceBrandSlug,
+  type ProductPLRow,
 } from '../financePerformance'
 import { SettingsIcon } from './icons/AppIcons'
 
@@ -501,6 +504,196 @@ function BrandCard({
         </div>
       </div>
     </div>
+  )
+}
+
+interface ProductPLColumn {
+  key: string
+  name: string
+  revenue: number
+  productCogs: number
+  shippingCost: number
+  paymentFees: number
+  refundReserve: number
+  contribution: number
+  adSpend: number
+  netProfit: number
+  roas: number
+  breakevenRoas: number
+}
+
+const profitGreen = '#047857'
+const profitRed = '#be123c'
+
+function profitColor(value: number) {
+  return value >= 0 ? profitGreen : profitRed
+}
+
+function ProductProfitCard({ product }: { product: ProductPLRow }) {
+  const color = product.netProfit >= 0 ? profitGreen : profitRed
+  return (
+    <div style={{ ...panelStyle, padding: 14, minHeight: 150, display: 'grid', alignContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: product.color }} />
+          <span style={{ color: '#465a70', fontSize: 13, fontWeight: 550 }}>{product.name}</span>
+        </div>
+        <span style={{ color, background: product.netProfit >= 0 ? '#ecfdf5' : '#fef2f2', borderRadius: 999, padding: '3px 9px', fontSize: 11, fontWeight: 650 }}>
+          {product.netProfit >= 0 ? 'Profit' : 'Loss'}
+        </span>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <div style={{ ...numericStyle, color, fontSize: 27, lineHeight: 1.15, fontWeight: 650 }}>{formatMoney(product.netProfit)}</div>
+        <div style={{ color: subdued, fontSize: 12, marginTop: 6 }}>
+          net · {formatPercent(product.netMargin * 100)} margin · {formatMoney(product.revenue)} revenue
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+        <div>
+          <div style={{ color: subdued, fontSize: 11 }}>ROAS</div>
+          <strong style={{ ...numericStyle, color: ink, fontSize: 15, fontWeight: 650 }}>{formatMetric(product.roas)}</strong>
+        </div>
+        <div>
+          <div style={{ color: subdued, fontSize: 11 }}>Breakeven</div>
+          <strong style={{ ...numericStyle, color: product.roas >= product.breakevenRoas ? profitGreen : profitRed, fontSize: 15, fontWeight: 650 }}>{formatMetric(product.breakevenRoas)}</strong>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProductProfitSection({
+  products,
+  loading,
+  error,
+  rangeLabel,
+}: {
+  products: ProductPLRow[]
+  loading: boolean
+  error: string | null
+  rangeLabel: string
+}) {
+  const total: ProductPLColumn | null = products.length > 0
+    ? (() => {
+        const sum = (pick: (row: ProductPLRow) => number) => products.reduce((acc, row) => acc + pick(row), 0)
+        const revenue = sum((row) => row.revenue)
+        const contribution = sum((row) => row.contribution)
+        const adSpend = sum((row) => row.adSpend)
+        return {
+          key: 'total',
+          name: 'Total',
+          revenue,
+          productCogs: sum((row) => row.productCogs),
+          shippingCost: sum((row) => row.shippingCost),
+          paymentFees: sum((row) => row.paymentFees),
+          refundReserve: sum((row) => row.refundReserve),
+          contribution,
+          adSpend,
+          netProfit: sum((row) => row.netProfit),
+          roas: adSpend > 0 ? revenue / adSpend : 0,
+          breakevenRoas: contribution > 0 ? revenue / contribution : 0,
+        }
+      })()
+    : null
+
+  const columns: ProductPLColumn[] = total ? [...products, total] : []
+
+  const lines: Array<{ label: string; value: (col: ProductPLColumn) => number; magnitudePct?: boolean; tone?: 'sub' | 'net' }> = [
+    { label: 'Revenue', value: (col) => col.revenue },
+    { label: 'Product COGS', value: (col) => -col.productCogs, magnitudePct: true },
+    { label: 'Shipping', value: (col) => -col.shippingCost, magnitudePct: true },
+    { label: 'Payment fees', value: (col) => -col.paymentFees, magnitudePct: true },
+    { label: 'Refund reserve', value: (col) => -col.refundReserve, magnitudePct: true },
+    { label: 'Contribution', value: (col) => col.contribution, tone: 'sub' },
+    { label: 'Ad spend', value: (col) => -col.adSpend, magnitudePct: true },
+    { label: 'Net profit', value: (col) => col.netProfit, tone: 'net' },
+  ]
+
+  const cell: CSSProperties = { ...numericStyle, padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }
+  const pctCell: CSSProperties = { ...cell, color: subdued, fontSize: 11 }
+  const groupBorder = '1px solid #eef1f4'
+
+  return (
+    <section>
+      <SectionHeading title="Profit by product" aside={<span style={{ color: subdued, fontSize: 12 }}>{rangeLabel}</span>} />
+      {error ? (
+        <div style={{ ...panelStyle, padding: '14px 16px', borderColor: '#fbbf24', background: '#fffbeb', color: '#92400e', fontSize: 13, lineHeight: 1.5 }}>
+          {error}
+        </div>
+      ) : loading ? (
+        <div style={{ ...panelStyle, padding: '18px 16px', color: subdued, fontSize: 13 }}>Calculating product P&amp;L from live Meta + Shopify…</div>
+      ) : products.length === 0 ? (
+        <div style={{ ...panelStyle, padding: '18px 16px', color: subdued, fontSize: 13 }}>No product sales in this range.</div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14, marginBottom: 16 }}>
+            {products.map((product) => (
+              <ProductProfitCard key={product.key} product={product} />
+            ))}
+          </div>
+          <section style={{ ...panelStyle, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: 120 + columns.length * 150, borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: '#fbfcfd' }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: subdued, fontWeight: 650, borderBottom: `1px solid ${hairline}` }}></th>
+                    {columns.map((col) => (
+                      <th key={col.key} colSpan={2} style={{ padding: '10px 12px', textAlign: 'right', color: col.key === 'total' ? ink : '#465a70', fontWeight: 650, borderBottom: `1px solid ${hairline}`, borderLeft: groupBorder, whiteSpace: 'nowrap' }}>
+                        {col.name}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr style={{ background: '#fbfcfd', color: subdued, fontSize: 11 }}>
+                    <th style={{ padding: '0 12px 8px', borderBottom: `1px solid ${hairline}` }}></th>
+                    {columns.map((col) => (
+                      <Fragment key={col.key}>
+                        <th style={{ padding: '0 12px 8px', textAlign: 'right', fontWeight: 500, borderBottom: `1px solid ${hairline}`, borderLeft: groupBorder }}>$</th>
+                        <th style={{ padding: '0 12px 8px', textAlign: 'right', fontWeight: 500, borderBottom: `1px solid ${hairline}` }}>% rev</th>
+                      </Fragment>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const isSub = line.tone === 'sub'
+                    const isNet = line.tone === 'net'
+                    const rowBackground = isNet ? '#fef6f6' : isSub ? '#fbfcfe' : '#ffffff'
+                    return (
+                      <tr key={line.label} style={{ borderBottom: groupBorder, background: rowBackground }}>
+                        <td style={{ padding: '8px 12px', color: isSub || isNet ? ink : '#5f6f82', fontWeight: isSub || isNet ? 650 : 500, whiteSpace: 'nowrap' }}>{line.label}</td>
+                        {columns.map((col) => {
+                          const value = line.value(col)
+                          const pct = col.revenue > 0 ? (line.magnitudePct ? Math.abs(value) : value) / col.revenue * 100 : 0
+                          const valueColor = isNet ? profitColor(value) : isSub ? profitColor(value) : ink
+                          return (
+                            <Fragment key={col.key}>
+                              <td style={{ ...cell, color: valueColor, fontWeight: isSub || isNet ? 650 : 550, borderLeft: groupBorder }}>{formatMoney(value)}</td>
+                              <td style={pctCell}>{formatPercent(pct)}</td>
+                            </Fragment>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                  <tr style={{ borderBottom: groupBorder }}>
+                    <td style={{ padding: '8px 12px', color: '#5f6f82', fontWeight: 500, whiteSpace: 'nowrap' }}>ROAS</td>
+                    {columns.map((col) => (
+                      <td key={col.key} colSpan={2} style={{ ...cell, color: ink, fontWeight: 650, borderLeft: groupBorder }}>{formatMetric(col.roas)}</td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 12px', color: '#5f6f82', fontWeight: 500, whiteSpace: 'nowrap' }}>Breakeven ROAS</td>
+                    {columns.map((col) => (
+                      <td key={col.key} colSpan={2} style={{ ...cell, color: col.roas >= col.breakevenRoas ? profitGreen : profitRed, fontWeight: 650, borderLeft: groupBorder }}>{formatMetric(col.breakevenRoas)}</td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -1420,6 +1613,9 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
   const [customRange, setCustomRange] = useState<DateRange | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [costRulesOpen, setCostRulesOpen] = useState(false)
+  const [productPL, setProductPL] = useState<ProductPLRow[]>([])
+  const [productPLLoading, setProductPLLoading] = useState(false)
+  const [productPLError, setProductPLError] = useState<string | null>(null)
   const [connectionPanelOpen, setConnectionPanelOpen] = useState(false)
   const [draftPreset, setDraftPreset] = useState<DatePreset>('yesterday')
   const [draftRange, setDraftRange] = useState<DateRange | null>(null)
@@ -1513,6 +1709,43 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
     }
     return getPresetRange(datePreset, anchorDate)
   }, [anchorDate, customRange, datePreset])
+
+  useEffect(() => {
+    if (brandFilter === 'all' || !brandSupportsProductPL(brandFilter)) {
+      setProductPL([])
+      setProductPLError(null)
+      setProductPLLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setProductPLLoading(true)
+    setProductPLError(null)
+    void loadProductPL(brandFilter, { from: activeRange.from, to: activeRange.to })
+      .then((bundle) => {
+        if (cancelled) {
+          return
+        }
+        setProductPL(bundle.products)
+        setProductPLError(bundle.error ?? null)
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        setProductPL([])
+        setProductPLError(error instanceof Error ? error.message : 'Product P&L unavailable')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setProductPLLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [brandFilter, activeRange.from, activeRange.to])
 
   const visibleRows = useMemo(
     () => rows
@@ -1815,6 +2048,17 @@ export function FinancePage({ headerUtilityContent, onOpenSettings }: FinancePag
             ) : null}
           </div>
         </section>
+
+        {brandFilter !== 'all' && brandSupportsProductPL(brandFilter) ? (
+          <div style={{ marginBottom: 58 }}>
+            <ProductProfitSection
+              products={productPL}
+              loading={productPLLoading}
+              error={productPLError}
+              rangeLabel={getRangeLabel(activeRange)}
+            />
+          </div>
+        ) : null}
 
         {brandFilter === 'all' ? (
           <section style={{ marginBottom: 58 }}>

@@ -345,6 +345,74 @@ export function syncBrandDailyPerformance(input: { from?: string; to?: string; d
   return requestPerformance('POST', input)
 }
 
+export interface ProductPLRow {
+  key: string
+  name: string
+  color: string
+  revenue: number
+  units: number
+  orders: number
+  productCogs: number
+  shippingCost: number
+  paymentFees: number
+  refundReserve: number
+  contribution: number
+  adSpend: number
+  netProfit: number
+  roas: number
+  breakevenRoas: number
+  contributionMargin: number
+  netMargin: number
+}
+
+export interface ProductPLBundle {
+  products: ProductPLRow[]
+  brandSlug: string
+  from?: string
+  to?: string
+  generatedAt?: string
+  unsupported?: boolean
+  error?: string
+}
+
+const PRODUCT_PL_SUPPORTED_BRANDS: PerformanceBrandSlug[] = ['trueclean']
+
+export function brandSupportsProductPL(brandSlug: PerformanceBrandSlug) {
+  return PRODUCT_PL_SUPPORTED_BRANDS.includes(brandSlug)
+}
+
+export async function loadProductPL(
+  brandSlug: PerformanceBrandSlug,
+  input: { from?: string; to?: string } = {},
+): Promise<ProductPLBundle> {
+  const token = await getAccessToken()
+  if (!token) {
+    return { products: [], brandSlug, error: 'Sign in with a real Supabase session to load product P&L.' }
+  }
+
+  const params = new URLSearchParams({ brand: brandSlug })
+  if (input.from) params.set('from', input.from)
+  if (input.to) params.set('to', input.to)
+
+  try {
+    const response = await fetch(`/api/finance/trueclean-product-pl?${params.toString()}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })
+    const payload = (await response.json().catch(() => ({}))) as Partial<ProductPLBundle>
+    return {
+      products: Array.isArray(payload.products) ? payload.products : [],
+      brandSlug,
+      from: payload.from,
+      to: payload.to,
+      generatedAt: payload.generatedAt,
+      unsupported: payload.unsupported,
+      error: response.ok ? payload.error : stringifyApiError(payload.error ?? `Request failed (${response.status})`),
+    }
+  } catch (error) {
+    return { products: [], brandSlug, error: error instanceof Error ? error.message : 'Product P&L unavailable' }
+  }
+}
+
 export async function loadPerformanceCostRules() {
   const supabase = getSupabaseClient()
   if (!supabase) {
